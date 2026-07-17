@@ -1,0 +1,119 @@
+schema_version = 1
+network = "Kodama"
+protocol = ".kodama/PROTOCOL.md"
+max_active_bytes = 24576
+
+pillars = [
+  "Repository guidance is local, layered, portable, and reviewable.",
+  "Every strong architectural claim names how it is verified.",
+  "Agent judgment drafts the model; deterministic code owns compilation and checks.",
+]
+operating_rules = [
+  "Read the applicable AGENTS.md chain before editing.",
+  "Preserve unmanaged files and modified generated files.",
+  "Keep the runtime dependency-free and compatible with Python 3.11 or newer.",
+]
+stop_and_ask = [
+  "A change weakens generated-file ownership protections.",
+  "A verification claim cannot be tied to checked-in evidence.",
+  "A migration would overwrite existing repository guidance.",
+]
+done_criteria = [
+  "Ruff and pytest pass.",
+  "Kodama reports no manifest, coverage, or drift errors.",
+  "User-facing behavior is reflected in README.md or docs.",
+]
+
+[coverage]
+roots = ["src", "tests"]
+source_suffixes = [".py"]
+
+[coverage.exemptions]
+
+[checks.pytest]
+invoke = "pytest"
+location = "pyproject.toml"
+proof_contains = "pytest"
+description = "Run behavior and safety tests."
+
+[checks.ruff]
+invoke = "ruff check ."
+location = "pyproject.toml"
+proof_contains = "[tool.ruff]"
+description = "Run static lint checks."
+
+[[scopes]]
+id = "root"
+path = "."
+map = "AGENTS.md"
+point_of_view = "Product boundaries, manifest semantics, documentation, and release workflow."
+owns = ["README.md", "pyproject.toml", "docs", ".kodama", ".github/workflows"]
+guardrails = ["Keep Kodama local-first, CI-neutral, and usable without a hosted service."]
+edges = [
+  { type = "delegates-to", to = "core", what = "The product contract is implemented by the CLI core." },
+  { type = "documented-by", to = "bootstrap-skill", what = "The skill guides agent-assisted repository discovery." },
+]
+
+[[scopes]]
+id = "core"
+path = "src/kodama"
+map = "src/kodama/AGENTS.md"
+point_of_view = "Deterministic parsing, rendering, ownership, verification, and CLI behavior."
+owns = ["src/kodama"]
+guardrails = [
+  "Never execute commands registered in a repository manifest.",
+  "Resolve every manifest-controlled path inside the repository root.",
+]
+edges = [{ type = "verified-by", to = "tests", what = "Safety and behavior are captured as tests." }]
+
+[[scopes]]
+id = "tests"
+path = "tests"
+map = "tests/AGENTS.md"
+point_of_view = "Behavioral contracts, destructive-operation guards, and regression coverage."
+owns = ["tests"]
+guardrails = ["Use isolated temporary repositories for filesystem behavior."]
+edges = [{ type = "verifies", to = "core", what = "Tests exercise public CLI outcomes." }]
+
+[[scopes]]
+id = "bootstrap-skill"
+path = "skills/bootstrap-kodama"
+map = "skills/bootstrap-kodama/AGENTS.md"
+point_of_view = "Agent-assisted discovery and migration into the deterministic manifest model."
+owns = ["skills/bootstrap-kodama"]
+guardrails = ["Do not let the skill bypass CLI ownership protections or invent enforcement proof."]
+edges = [{ type = "invokes", to = "core", what = "The skill uses the CLI after drafting the manifest." }]
+
+[[invariants]]
+id = "managed-output-safety"
+scope = "core"
+statement = "Compilation refuses unmanaged and modified generated maps."
+severity = "critical"
+verification = "command"
+enforced_by = "pytest"
+
+[[invariants]]
+id = "no-command-execution"
+scope = "core"
+statement = "Validation inspects command proof but never executes registered commands."
+severity = "critical"
+verification = "manual"
+evidence_file = "docs/architecture.md"
+anchor = "does not call a model"
+
+[[invariants]]
+id = "thin-authoring-layer"
+scope = "bootstrap-skill"
+statement = "The skill delegates deterministic compilation and verification to the CLI."
+severity = "important"
+verification = "manual"
+evidence_file = "skills/bootstrap-kodama/SKILL.md"
+anchor = "Keep those responsibilities separate"
+
+[[invariants]]
+id = "safety-regressions-tested"
+scope = "tests"
+statement = "Generated ownership and path boundaries have regression tests."
+severity = "important"
+verification = "command"
+enforced_by = "pytest"

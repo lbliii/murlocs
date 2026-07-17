@@ -1,0 +1,20 @@
+{
+  "generated": {
+    "AGENTS.md": {
+      "sha256": "4b2693e2d3a4b36b16ef55b78b35ea86c299aa0f80bf22624bcf9a17f9079e08"
+    },
+    "skills/bootstrap-kodama/AGENTS.md": {
+      "sha256": "7835506b678e7a3def0cc2e33e5444bfb1dd4937b56601841e5fa93103108fb5"
+    },
+    "src/kodama/AGENTS.md": {
+      "sha256": "549d08d725ebdcb730a07523cdd9a0a7ede461552afb0effe8bc3f6cdbf7b3e9"
+    },
+    "tests/AGENTS.md": {
+      "sha256": "d0a07af4956412f1c67abd7aadbe61cb4d0bcc31a4ca5543b12add70ef52c0dd"
+    }
+  },
+  "lock_version": 1,
+  "manifest_sha256": "474c200e2731ce8992ef97a128424c948ab32efc0dc6c933eddd853893ba4ce8",
+  "schema_version": 1,
+  "tool_version": "0.1.0"
+}
