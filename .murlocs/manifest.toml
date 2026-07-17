@@ -1,12 +1,12 @@
 schema_version = 1
-network = "Kodama"
-protocol = ".kodama/PROTOCOL.md"
+network = "Murlocs"
+protocol = ".murlocs/PROTOCOL.md"
 max_active_bytes = 24576
 
 pillars = [
   "Repository guidance is local, layered, portable, and reviewable.",
   "Every strong architectural claim names how it is verified.",
-  "Agent judgment drafts the model; deterministic code owns compilation and checks.",
+  "Agent judgment raises the model; deterministic code owns compilation and checks.",
 ]
 operating_rules = [
   "Read the applicable AGENTS.md chain before editing.",
@@ -20,7 +20,8 @@ stop_and_ask = [
 ]
 done_criteria = [
   "Ruff and pytest pass.",
-  "Kodama reports no manifest, coverage, or drift errors.",
+  "Milo verifies CLI, schema, discovery, and MCP transport parity.",
+  "Murlocs reports no manifest, coverage, or drift errors.",
   "User-facing behavior is reflected in README.md or docs.",
 ]
 
@@ -42,13 +43,19 @@ location = "pyproject.toml"
 proof_contains = "[tool.ruff]"
 description = "Run static lint checks."
 
+[checks.milo-verify]
+invoke = "milo verify src/murlocs/cli.py"
+location = "pyproject.toml"
+proof_contains = "milo-cli"
+description = "Verify typed CLI, schema, discovery, and MCP transport surfaces."
+
 [[scopes]]
 id = "root"
 path = "."
 map = "AGENTS.md"
 point_of_view = "Product boundaries, manifest semantics, documentation, and release workflow."
-owns = ["README.md", "pyproject.toml", "docs", ".kodama", ".github/workflows"]
-guardrails = ["Keep Kodama local-first, CI-neutral, and usable without a hosted service."]
+owns = ["README.md", "pyproject.toml", "docs", ".murlocs", ".github/workflows"]
+guardrails = ["Keep Murlocs local-first, CI-neutral, and usable without a hosted service."]
 edges = [
   { type = "delegates-to", to = "core", what = "The product contract is implemented by the CLI core." },
   { type = "documented-by", to = "bootstrap-skill", what = "The skill guides agent-assisted repository discovery." },
@@ -56,13 +63,14 @@ edges = [
 
 [[scopes]]
 id = "core"
-path = "src/kodama"
-map = "src/kodama/AGENTS.md"
+path = "src/murlocs"
+map = "src/murlocs/AGENTS.md"
 point_of_view = "Deterministic parsing, rendering, ownership, verification, and CLI behavior."
-owns = ["src/kodama"]
+owns = ["src/murlocs"]
 guardrails = [
   "Never execute commands registered in a repository manifest.",
   "Resolve every manifest-controlled path inside the repository root.",
+  "Keep write commands CLI-only until agent writes have repository confinement and approval policy.",
 ]
 edges = [{ type = "verified-by", to = "tests", what = "Safety and behavior are captured as tests." }]
 
@@ -77,10 +85,10 @@ edges = [{ type = "verifies", to = "core", what = "Tests exercise public CLI out
 
 [[scopes]]
 id = "bootstrap-skill"
-path = "skills/bootstrap-kodama"
-map = "skills/bootstrap-kodama/AGENTS.md"
+path = "skills/bootstrap-murlocs"
+map = "skills/bootstrap-murlocs/AGENTS.md"
 point_of_view = "Agent-assisted discovery and migration into the deterministic manifest model."
-owns = ["skills/bootstrap-kodama"]
+owns = ["skills/bootstrap-murlocs"]
 guardrails = ["Do not let the skill bypass CLI ownership protections or invent enforcement proof."]
 edges = [{ type = "invokes", to = "core", what = "The skill uses the CLI after drafting the manifest." }]
 
@@ -102,12 +110,20 @@ evidence_file = "docs/architecture.md"
 anchor = "does not call a model"
 
 [[invariants]]
+id = "typed-surface-parity"
+scope = "core"
+statement = "One typed Milo registry defines terminal, programmatic, MCP, and discovery surfaces."
+severity = "important"
+verification = "command"
+enforced_by = "milo-verify"
+
+[[invariants]]
 id = "thin-authoring-layer"
 scope = "bootstrap-skill"
 statement = "The skill delegates deterministic compilation and verification to the CLI."
 severity = "important"
 verification = "manual"
-evidence_file = "skills/bootstrap-kodama/SKILL.md"
+evidence_file = "skills/bootstrap-murlocs/SKILL.md"
 anchor = "Keep those responsibilities separate"
 
 [[invariants]]

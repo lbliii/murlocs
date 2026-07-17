@@ -1,3 +1,0 @@
-"""Kodama repository guidance compiler."""
-
-__version__ = "0.1.0"

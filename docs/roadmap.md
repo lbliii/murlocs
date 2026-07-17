@@ -5,12 +5,13 @@
 - Deterministic `init`, `compile`, `check`, and `explain` commands.
 - Versioned TOML manifest and content-addressed ownership lockfile.
 - Scopes, typed edges, invariants, proof wiring, coverage, and context budgets.
-- Thin `bootstrap-kodama` authoring skill.
+- Thin `bootstrap-murlocs` authoring skill.
+- Milo-backed CLI, MCP, and agent-readable discovery surfaces.
 - GitHub Actions reference workflow.
 
 ## v0.2 — migration and adapters
 
-- `kodama import` for existing `AGENTS.md`, `CLAUDE.md`, and repository instruction files.
+- `murlocs import` for existing `AGENTS.md`, `CLAUDE.md`, and repository instruction files.
 - Explicit adopt, diff, prune, and rollback workflows.
 - Render adapters for tools that do not consume `AGENTS.md`.
 - Machine-readable `check` and `explain` output.
@@ -23,5 +24,5 @@
 - Cross-repository dependency contracts without a persistent service.
 - Optional evidence freshness and changed-path impact reporting.
 
-Kodama should remain local-first and CI-neutral. A hosted control plane is not a prerequisite for
+Murlocs should remain local-first and CI-neutral. A hosted control plane is not a prerequisite for
 useful, trustworthy repository guidance.

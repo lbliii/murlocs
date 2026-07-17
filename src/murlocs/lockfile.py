@@ -5,10 +5,10 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from kodama import __version__
-from kodama.errors import KodamaError
+from murlocs import __version__
+from murlocs.errors import MurlocsError
 
-LOCK_PATH = Path(".kodama/lock.json")
+LOCK_PATH = Path(".murlocs/lock.json")
 
 
 @dataclass(frozen=True)
@@ -37,7 +37,7 @@ def read_lock(root: Path) -> Lock | None:
         }
         return Lock(generated=generated, manifest_sha256=str(data["manifest_sha256"]))
     except (json.JSONDecodeError, KeyError, TypeError) as exc:
-        raise KodamaError(f"invalid lockfile: {path}") from exc
+        raise MurlocsError(f"invalid lockfile: {path}") from exc
 
 
 def render_lock(manifest_bytes: bytes, outputs: dict[str, str]) -> str:

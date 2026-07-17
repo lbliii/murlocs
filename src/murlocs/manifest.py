@@ -4,12 +4,12 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
-from kodama.errors import KodamaError
-from kodama.model import Check, Edge, Invariant, Manifest, Scope
+from murlocs.errors import MurlocsError
+from murlocs.model import Check, Edge, Invariant, Manifest, Scope
 
 MANIFEST_TEMPLATE = """schema_version = 1
 network = "{network}"
-protocol = ".kodama/PROTOCOL.md"
+protocol = ".murlocs/PROTOCOL.md"
 max_active_bytes = 24576
 
 pillars = [
@@ -26,7 +26,7 @@ stop_and_ask = [
 ]
 done_criteria = [
   "Relevant tests and checks pass.",
-  "Kodama reports no manifest, coverage, or drift errors.",
+  "Murlocs reports no manifest, coverage, or drift errors.",
 ]
 
 [coverage]
@@ -40,20 +40,20 @@ id = "root"
 path = "."
 map = "AGENTS.md"
 point_of_view = "Repository-wide architecture, workflow, and integration boundaries."
-owns = ["README.md", ".kodama/manifest.toml", ".kodama/PROTOCOL.md"]
+owns = ["README.md", ".murlocs/manifest.toml", ".murlocs/PROTOCOL.md"]
 guardrails = ["Prefer the smallest change that preserves declared invariants."]
 
 [[invariants]]
 id = "guidance-stays-verified"
 scope = "root"
-statement = "Generated guidance must match the checked-in Kodama manifest."
+statement = "Generated guidance must match the checked-in Murlocs manifest."
 severity = "critical"
 verification = "manual"
-evidence_file = ".kodama/PROTOCOL.md"
+evidence_file = ".murlocs/PROTOCOL.md"
 anchor = "Use this protocol"
 """
 
-PROTOCOL_TEMPLATE = """# Kodama review protocol
+PROTOCOL_TEMPLATE = """# Murlocs review protocol
 
 Use this protocol when a change crosses a scope boundary or touches a critical invariant.
 
@@ -67,18 +67,18 @@ Use this protocol when a change crosses a scope boundary or touches a critical i
 
 def _required(data: dict[str, Any], key: str, context: str) -> Any:
     if key not in data:
-        raise KodamaError(f"missing {context}.{key}")
+        raise MurlocsError(f"missing {context}.{key}")
     return data[key]
 
 
 def load_manifest(root: Path) -> Manifest:
-    path = root / ".kodama" / "manifest.toml"
+    path = root / ".murlocs" / "manifest.toml"
     try:
         data = tomllib.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError as exc:
-        raise KodamaError(f"manifest not found: {path}") from exc
+        raise MurlocsError(f"manifest not found: {path}") from exc
     except tomllib.TOMLDecodeError as exc:
-        raise KodamaError(f"invalid TOML in {path}: {exc}") from exc
+        raise MurlocsError(f"invalid TOML in {path}: {exc}") from exc
 
     try:
         coverage = data.get("coverage", {})
@@ -143,7 +143,7 @@ def load_manifest(root: Path) -> Manifest:
             checks=checks,
         )
     except (TypeError, ValueError, AttributeError) as exc:
-        raise KodamaError(f"invalid manifest shape: {exc}") from exc
+        raise MurlocsError(f"invalid manifest shape: {exc}") from exc
 
 
 def _optional_string(value: Any) -> str | None:

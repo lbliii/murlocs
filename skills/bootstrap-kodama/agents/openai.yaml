@@ -1,4 +1,0 @@
-interface:
-  display_name: "Bootstrap Kodama"
-  short_description: "Bootstrap repository guidance networks"
-  default_prompt: "Use $bootstrap-kodama to map this repository into a verified Kodama guidance network."

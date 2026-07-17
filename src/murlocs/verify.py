@@ -3,11 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from kodama.errors import KodamaError
-from kodama.lockfile import read_lock, sha256_bytes, sha256_text
-from kodama.model import Manifest
-from kodama.paths import relative_posix, repo_path
-from kodama.render import render_outputs
+from murlocs.errors import MurlocsError
+from murlocs.lockfile import read_lock, sha256_bytes, sha256_text
+from murlocs.model import Manifest
+from murlocs.paths import relative_posix, repo_path
+from murlocs.render import render_outputs
 
 
 @dataclass(frozen=True)
@@ -89,7 +89,7 @@ def _duplicates(values: list[str], label: str, findings: list[Finding]) -> None:
 def _safe_path(root: Path, raw: str, label: str, findings: list[Finding]) -> Path | None:
     try:
         return repo_path(root, raw, field=label)
-    except KodamaError as exc:
+    except MurlocsError as exc:
         findings.append(Finding("path", str(exc)))
         return None
 
@@ -142,7 +142,7 @@ def _is_safe(root: Path, raw: str) -> bool:
     try:
         repo_path(root, raw, field="path")
         return True
-    except KodamaError:
+    except MurlocsError:
         return False
 
 
@@ -160,10 +160,10 @@ def _drift_findings(manifest: Manifest) -> list[Finding]:
         )
     try:
         lock = read_lock(manifest.root)
-    except KodamaError as exc:
+    except MurlocsError as exc:
         return [Finding("lock", str(exc))]
     if lock is None:
-        return findings + [Finding("lock", "lockfile is missing; run kodama compile")]
+        return findings + [Finding("lock", "lockfile is missing; run murlocs compile")]
     if lock.manifest_sha256 != sha256_bytes(manifest.manifest_path.read_bytes()):
         findings.append(Finding("drift", "manifest changed since the last compile"))
     for relative, content in expected.items():

@@ -1,12 +1,12 @@
 # Architecture
 
-Kodama separates judgment from enforcement.
+Murlocs separates judgment from enforcement.
 
 ```text
-agent-assisted discovery ──> .kodama/manifest.toml ──> deterministic compiler
+agent-assisted discovery ──> .murlocs/manifest.toml ──> deterministic compiler
                                       │                         │
                                       │                         ├──> AGENTS.md maps
-                                      │                         └──> .kodama/lock.json
+                                      │                         └──> .murlocs/lock.json
                                       └────────────────────────────> verifier / explain
 ```
 
@@ -14,7 +14,8 @@ agent-assisted discovery ──> .kodama/manifest.toml ──> deterministic com
 
 The bootstrap skill may inspect a repository and propose scopes, invariants, edges, and evidence.
 Those proposals become reviewable only when written to the manifest. The CLI does not call a model,
-use the network, or execute commands recorded in the manifest.
+use the network, or execute commands recorded in the manifest. Milo derives terminal, programmatic,
+MCP, and agent-discovery surfaces from the same typed handlers.
 
 The lockfile records the exact hash of every generated map. Compilation will write a missing map or
 replace an unchanged map it already owns. It refuses unmanaged files, modified generated files, path
@@ -30,13 +31,13 @@ Compilation is a pure projection of the manifest plus the tool version:
 4. Preflight ownership for every output.
 5. Atomically replace managed outputs and write a content-addressed lockfile.
 
-Generated maps are standard `AGENTS.md`, so compatible agents do not need Kodama installed at
+Generated maps are standard `AGENTS.md`, so compatible agents do not need Murlocs installed at
 runtime. Nested maps add local context; the root map carries network-wide rules and the review
 protocol link.
 
 ## Verification semantics
 
-`kodama check` establishes that the declared guidance is internally coherent and synchronized. It
+`murlocs check` establishes that the declared guidance is internally coherent and synchronized. It
 does not establish that every architectural claim is true. Truth is made auditable through explicit
 verification modes:
 

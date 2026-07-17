@@ -63,4 +63,4 @@ class Manifest:
 
     @property
     def manifest_path(self) -> Path:
-        return self.root / ".kodama" / "manifest.toml"
+        return self.root / ".murlocs" / "manifest.toml"

@@ -16,4 +16,5 @@ jobs:
       - run: uv sync --extra dev
       - run: uv run ruff check .
       - run: uv run pytest
-      - run: uv run kodama check
+      - run: uv run murlocs check
+      - run: uv run milo verify src/murlocs/cli.py

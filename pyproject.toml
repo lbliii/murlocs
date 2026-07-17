@@ -3,11 +3,11 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "kodama-stewards"
+name = "murlocs"
 version = "0.1.0"
-description = "Compile and verify repository-local guidance networks for coding agents."
+description = "Raise and verify repository-local guidance networks for coding agents."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.14"
 license = { text = "MIT" }
 authors = [{ name = "Luke Lane" }]
 keywords = ["agents", "AGENTS.md", "repository", "governance", "coding-agents"]
@@ -15,20 +15,18 @@ classifiers = [
   "Development Status :: 3 - Alpha",
   "License :: OSI Approved :: MIT License",
   "Programming Language :: Python :: 3",
-  "Programming Language :: Python :: 3.11",
-  "Programming Language :: Python :: 3.12",
-  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
 ]
-dependencies = []
+dependencies = ["milo-cli>=0.4.2,<0.5"]
 
 [project.scripts]
-kodama = "kodama.cli:main"
+murlocs = "murlocs.cli:main"
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "ruff>=0.9"]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/kodama"]
+packages = ["src/murlocs"]
 
 [tool.pytest.ini_options]
 addopts = "-q"
@@ -36,7 +34,7 @@ testpaths = ["tests"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py311"
+target-version = "py314"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
