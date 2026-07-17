@@ -14,7 +14,7 @@ Product boundaries, manifest semantics, documentation, and release workflow.
 
 - Read the applicable AGENTS.md chain before editing.
 - Preserve unmanaged files and modified generated files.
-- Keep the runtime dependency-free and compatible with Python 3.11 or newer.
+- Run the tool with Python 3.14 or newer and keep deterministic behavior at the core.
 
 ## Owns
 

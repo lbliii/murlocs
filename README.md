@@ -38,6 +38,9 @@ murlocs explain src/my_package/feature.py
 murlocs --dry-run compile
 ```
 
+Murlocs also installs `mrr` as a short alias. It exposes the same commands and surfaces, so
+`mrr check` is equivalent to `murlocs check` while its help and usage text retain the shorter name.
+
 `murlocs init` refuses to overwrite an existing `AGENTS.md`. Migration is deliberately explicit:
 read the existing guidance, represent it in the manifest, and only then hand ownership to Murlocs.
 
@@ -64,8 +67,9 @@ registered command during `check`; command execution remains an explicit human o
 | `murlocs check` | Validate schema, graph, proofs, coverage, budget, ownership, and drift. |
 | `murlocs explain PATH` | Print the ordered scope and invariant chain that governs a path. |
 
-Milo also provides `murlocs --mcp`, `murlocs --llms-txt`, structured JSON output, shell
-completions, and in-process typed dispatch. Only `check` and `explain` are agent-visible in v0.1.
+Milo also provides `murlocs --mcp` (or `mrr --mcp`), `murlocs --llms-txt`, structured JSON output,
+shell completions, and in-process typed dispatch. Only `check` and `explain` are agent-visible in
+v0.1.
 
 See [Architecture](docs/architecture.md) for trust boundaries and [Roadmap](docs/roadmap.md) for
 the planned migration and ecosystem work.

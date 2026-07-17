@@ -232,3 +232,11 @@ def test_usage_errors_retain_argparse_exit_code_two():
     result = invoke("check", "--unknown-option")
     assert result.exit_code == 2
     assert "unrecognized arguments" in result.stderr
+
+
+def test_short_alias_uses_its_own_program_name():
+    result = build_cli(name="mrr").invoke(["--help"])
+
+    assert result.exit_code == 0
+    assert result.output.startswith("mrr ")
+    assert not result.output.startswith("murlocs ")

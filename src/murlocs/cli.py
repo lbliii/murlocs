@@ -343,10 +343,10 @@ def explain_command(
     )
 
 
-def build_cli() -> CLI:
+def build_cli(*, name: str = "murlocs") -> CLI:
     """Build an invocation-local Milo command registry."""
     app = CLI(
-        name="murlocs",
+        name=name,
         description="Raise and verify repository-local guidance networks.",
         version=__version__,
     )
@@ -394,8 +394,13 @@ cli = build_cli()
 
 
 def main(argv: list[str] | None = None) -> None:
-    """Run the packaged command through an invocation-local Milo registry."""
-    build_cli().run(argv)
+    """Run the canonical packaged command."""
+    build_cli(name="murlocs").run(argv)
+
+
+def mrr(argv: list[str] | None = None) -> None:
+    """Run the short packaged alias with alias-aware help and errors."""
+    build_cli(name="mrr").run(argv)
 
 
 if __name__ == "__main__":
