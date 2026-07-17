@@ -4,17 +4,34 @@
 
 Product boundaries, manifest semantics, documentation, and release workflow.
 
+Ordinary work: use this root map plus only scoped maps on the target path.
+Do not open `.murlocs/PROTOCOL.md` or `.murlocs/manifest.toml` unless the task is an explicit review, audit, or guidance-network change.
+
 ## Pillars
 
 - Repository guidance is local, layered, portable, and reviewable.
 - Every strong architectural claim names how it is verified.
 - Agent judgment raises the model; deterministic code owns compilation and checks.
 
+## Search discipline
+
+- Read the root map before repository discovery.
+- Open only the nearest scoped map for the path being investigated unless the task crosses a declared edge.
+
 ## Operating rules
 
 - Read the applicable AGENTS.md chain before editing.
 - Preserve unmanaged files and modified generated files.
 - Run the tool with Python 3.14 or newer and keep deterministic behavior at the core.
+
+## Network
+
+| Scope | Map | Invariants | Command-backed |
+| --- | --- | ---: | ---: |
+| bootstrap-skill | `skills/bootstrap-murlocs/AGENTS.md` | 1 | 0% |
+| core | `src/murlocs/AGENTS.md` | 4 | 75% |
+| root | `AGENTS.md` | 0 | — |
+| tests | `tests/AGENTS.md` | 1 | 100% |
 
 ## Owns
 

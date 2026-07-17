@@ -4,6 +4,9 @@
 
 Agent-assisted discovery and migration into the deterministic manifest model.
 
+Ordinary work: use this map directly with the root map and only other maps whose scopes the task crosses.
+Do not open `.murlocs/PROTOCOL.md` or `.murlocs/manifest.toml` unless the task is an explicit review, audit, or guidance-network change.
+
 ## Owns
 
 - skills/bootstrap-murlocs

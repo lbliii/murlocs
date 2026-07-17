@@ -141,6 +141,24 @@ def test_check_detects_uncovered_source_unit(tmp_path):
     assert "src/pkg" in result.stderr
 
 
+def test_check_detects_source_unit_with_only_nested_files(tmp_path):
+    root = tmp_path / "repo"
+    nested = root / "src" / "pkg" / "nested"
+    nested.mkdir(parents=True)
+    (nested / "feature.py").write_text("VALUE = 1\n", encoding="utf-8")
+    initialize(root)
+    manifest = root / ".murlocs" / "manifest.toml"
+    manifest.write_text(
+        manifest.read_text(encoding="utf-8").replace("roots = []", 'roots = ["src"]'),
+        encoding="utf-8",
+    )
+
+    result = invoke("check", "--repo", str(root))
+
+    assert result.exit_code == 1
+    assert "src/pkg" in result.stderr
+
+
 def test_reasoned_coverage_exemption(tmp_path):
     root = make_repo(tmp_path)
     initialize(root)

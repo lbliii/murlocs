@@ -18,7 +18,7 @@ Chirp and Kida are the paired pilots. Their existing `.stewards` networks are ma
 semantic preservation, proof integrity, context discipline, and safe ownership transfer. See the
 [paired-pilot audit](pilots/chirp-kida.md) for the baseline and discovered gaps.
 
-### v0.2a — migration parity contract
+### v0.2a — migration parity contract (complete)
 
 - Specify a lossless mapping from the legacy `.stewards` dialect to the Murlocs schema.
 - Preserve search policy, advisory judgment, typed ownership, review triggers, and generated-map

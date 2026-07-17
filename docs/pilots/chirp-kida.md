@@ -96,6 +96,23 @@ The bootstrap skill may help interpret genuinely repository-specific policy, but
 schema conversion should be deterministic. Agent judgment must not be required merely to rename
 fields or preserve existing structured intent.
 
+## v0.2a result
+
+The compatibility contract now translates both complete live manifests in memory:
+
+| Result | Chirp | Kida |
+| --- | ---: | ---: |
+| Scopes translated | 34 | 24 |
+| Invariants translated | 50 | 49 |
+| Checks translated | 36 | 29 |
+| Generated maps rendered | 34 | 24 |
+| Blocking proof-debt findings | 33 | 5 |
+| Unsupported-field losses | 0 | 0 |
+
+Compact repository-derived fixtures preserve the shared contract in Murlocs CI. A live read-only
+audit of the full manifests remains the pilot gate because the source repositories evolve
+independently. Import and adoption remain pending v0.2b.
+
 ## Pilot acceptance criteria
 
 The v0.2 pilot is successful when:

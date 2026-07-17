@@ -1,0 +1,51 @@
+network = "Kida"
+protocol = ".stewards/PROTOCOL.md"
+max_active_bytes = 24576
+coverage_roots = ["src/kida"]
+pillars = ["Compile-time safety wins over runtime convenience."]
+search_policy = ["Trace a syntax feature through its bounded semantic pipeline."]
+operating_rules = ["Runtime dependencies remain empty."]
+stop_and_ask = ["A change adds syntax or weakens sandbox policy."]
+done_criteria = ["Run focused parser and compiler checks."]
+
+[check.compiler-suite]
+invoke = "uv run pytest tests/test_compiler.py -q"
+location = "tests/test_compiler.py"
+proof_contains = "test_compile_time_contract"
+
+[[steward]]
+id = "root"
+path = "AGENTS.md"
+point_of_view = "Repository-wide template-engine contracts."
+
+[[steward]]
+id = "compiler"
+path = "src/kida/compiler/AGENTS.md"
+point_of_view = "Validated nodes become deterministic Python AST."
+guardrails = ["Unsupported nodes fail with stable diagnostics."]
+edges = [{ type = "consumes", to = "root", what = "Root defines public contracts." }]
+
+[steward.owns]
+code = ["src/kida/compiler/"]
+tests = ["tests/test_compiler.py"]
+docs = ["docs/compiler.md"]
+
+[judgment.compiler]
+advocate = ["Explicit compilation phases."]
+do_not = ["Move statically decidable behavior to runtime."]
+serves = ["Template authors and framework integrators."]
+
+[[invariant]]
+id = "compiler-contract"
+steward = "root"
+statement = "The compiler preserves validated syntax semantics."
+severity = "P0"
+verification = "machine"
+enforced_by = "compiler-suite"
+
+[[invariant]]
+id = "optimization-guidance"
+steward = "compiler"
+statement = "Optimization claims retain benchmark context."
+severity = "P2"
+verification = "none"

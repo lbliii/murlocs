@@ -46,3 +46,20 @@ verification modes:
 - `unknown`: records debt without pretending the claim is enforced.
 
 This distinction prevents documentation aspirations from silently becoming enforcement claims.
+
+## Legacy compatibility boundary
+
+The v0.2a compatibility layer translates the known Chirp and Kida `.stewards` manifest dialect in
+memory. It performs no repository writes and rejects unknown fields instead of dropping them. The
+translation preserves search policy, typed ownership groups, advisory judgment, graph edges,
+context budgets, and the original P0–P3 severity spelling. Verification modes map explicitly:
+`machine` to `command`, `manual` to `manual`, and `none` to `unknown`.
+
+P0, P1, P2, and P3 have canonical meanings of critical, important, advisory, and advisory,
+respectively, while their source spelling remains visible. Registered checks without a
+`proof_contains` anchor remain loadable for loss reporting but cause `murlocs check` to report
+blocking proof debt. Validation may inspect repository-local paths named by commands, but it still
+does not execute those commands.
+
+Import, rendered diff, ownership adoption, pruning, and rollback are intentionally outside this
+layer. They require the explicit write boundary planned for v0.2b.

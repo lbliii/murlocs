@@ -1,20 +1,20 @@
 {
   "generated": {
     "AGENTS.md": {
-      "sha256": "0c2c146053d135f86c96638d54a30768e828c5ffc214b13752390ac7f556bbb1"
+      "sha256": "6fe99520b8ab087f2c2b2ca3ced8c3e733c35a9e5164aedf6e65f7af6f0cf85e"
     },
     "skills/bootstrap-murlocs/AGENTS.md": {
-      "sha256": "3d5d6da6886c62cac0dd0e32f9a069d6d1be50f2058ca0c6307b93bb5300fd08"
+      "sha256": "69f6ba9129b51b73baf89da10d739957823d72d173ee9d2f69265e6199ba0def"
     },
     "src/murlocs/AGENTS.md": {
-      "sha256": "9d0d2575f02db43a5711f16fe3273021c8a2503aa78fd35a432d7815456781c5"
+      "sha256": "cde1184400f5a1e6fd6f6686e54a574c9968d42579ed502d996fa57e5993f79e"
     },
     "tests/AGENTS.md": {
-      "sha256": "342b7ece7d1cee478b96ec8e746d46a168ee65641f84f73da40601b0f780d267"
+      "sha256": "cda9e6e02b2cf9c7844dcbea868301b54272c7c3b0b318969dc00396ffdd8fc6"
     }
   },
   "lock_version": 1,
-  "manifest_sha256": "58b53eaf57e2e30ddcc920891ba26e4fbf1c55bbf206d29688091fcbec661a3e",
+  "manifest_sha256": "403d5560ec8e1960452b727d373441e7ba5710123af4b723c6cfae02a9099189",
   "schema_version": 1,
   "tool_version": "0.1.0"
 }

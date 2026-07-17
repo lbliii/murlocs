@@ -4,6 +4,9 @@
 
 Deterministic parsing, rendering, ownership, verification, and CLI behavior.
 
+Ordinary work: use this map directly with the root map and only other maps whose scopes the task crosses.
+Do not open `.murlocs/PROTOCOL.md` or `.murlocs/manifest.toml` unless the task is an explicit review, audit, or guidance-network change.
+
 ## Owns
 
 - src/murlocs
@@ -16,10 +19,19 @@ Deterministic parsing, rendering, ownership, verification, and CLI behavior.
 
 ## Invariants
 
-- **managed-output-safety** (critical): Compilation refuses unmanaged and modified generated maps. Verify with `pytest`.
+- **managed-output-safety** (critical): Compilation refuses unmanaged and modified generated maps. Verify with `pytest` (`pytest`).
 - **no-command-execution** (critical): Validation inspects command proof but never executes registered commands. Evidence: `docs/architecture.md` contains `does not call a model`.
-- **typed-surface-parity** (important): One typed Milo registry defines terminal, programmatic, MCP, and discovery surfaces. Verify with `milo-verify`.
+- **typed-surface-parity** (important): One typed Milo registry defines terminal, programmatic, MCP, and discovery surfaces. Verify with `milo verify src/murlocs/cli.py` (`milo-verify`).
+- **legacy-migration-parity** (critical): Known legacy steward fields translate deterministically or fail visibly without repository writes. Verify with `pytest` (`pytest`).
 
 ## Edges
 
 - `verified-by` → `tests`: Safety and behavior are captured as tests.
+
+## Advocate
+
+- Deterministic, loss-reporting translation for known repository guidance schemas.
+
+## Do not
+
+- Execute registered checks or silently discard unsupported migration fields.

@@ -12,14 +12,38 @@ class Edge:
 
 
 @dataclass(frozen=True)
+class OwnershipGroup:
+    kind: str
+    paths: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class Ownership:
+    paths: tuple[str, ...] = ()
+    groups: tuple[OwnershipGroup, ...] = ()
+
+    @property
+    def all_paths(self) -> tuple[str, ...]:
+        return self.paths + tuple(path for group in self.groups for path in group.paths)
+
+
+@dataclass(frozen=True)
+class Judgment:
+    advocate: tuple[str, ...] = ()
+    do_not: tuple[str, ...] = ()
+    serves: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class Scope:
     id: str
     path: str
     map: str
     point_of_view: str
-    owns: tuple[str, ...]
+    owns: Ownership
     guardrails: tuple[str, ...] = ()
     edges: tuple[Edge, ...] = ()
+    judgment: Judgment = Judgment()
 
 
 @dataclass(frozen=True)
@@ -39,7 +63,7 @@ class Check:
     name: str
     invoke: str
     location: str
-    proof_contains: str
+    proof_contains: str | None = None
     description: str = ""
 
 
@@ -51,12 +75,14 @@ class Manifest:
     protocol: str
     max_active_bytes: int
     pillars: tuple[str, ...]
+    search_policy: tuple[str, ...]
     operating_rules: tuple[str, ...]
     stop_and_ask: tuple[str, ...]
     done_criteria: tuple[str, ...]
     coverage_roots: tuple[str, ...]
     source_suffixes: tuple[str, ...]
     coverage_exemptions: dict[str, str]
+    require_scope_invariants: bool
     scopes: tuple[Scope, ...]
     invariants: tuple[Invariant, ...]
     checks: dict[str, Check] = field(default_factory=dict)

@@ -1,0 +1,51 @@
+network = "Chirp"
+protocol = ".stewards/PROTOCOL.md"
+max_active_bytes = 24576
+coverage_roots = ["src/chirp"]
+pillars = ["Typed returns preserve hypermedia intent."]
+search_policy = ["Read the root map before repository discovery."]
+operating_rules = ["Public behavior moves with focused proof and documentation."]
+stop_and_ask = ["A change alters return-type semantics."]
+done_criteria = ["Run the narrowest relevant checks."]
+
+[check.templating-suite]
+invoke = "uv run pytest tests/test_templating.py -q"
+location = "tests/test_templating.py"
+
+[[steward]]
+id = "root"
+path = "AGENTS.md"
+point_of_view = "Repository-wide hypermedia contracts."
+
+[[steward]]
+id = "templating"
+path = "src/chirp/templating/AGENTS.md"
+point_of_view = "One named-block template surface."
+guardrails = ["Missing visible blocks fail loudly."]
+edges = [{ type = "verified-by", to = "root", what = "Root checks carry proof." }]
+
+[steward.owns]
+code = ["src/chirp/templating/"]
+tests = ["tests/test_templating.py"]
+docs = ["docs/hypermedia.md"]
+
+[judgment.templating]
+advocate = ["DOM-level assertions with actionable diagnostics."]
+do_not = ["Create a parallel partials architecture."]
+
+[[invariant]]
+id = "templating-contract"
+steward = "root"
+statement = "Named blocks preserve the public rendering contract."
+severity = "P0"
+verification = "machine"
+enforced_by = "templating-suite"
+
+[[invariant]]
+id = "missing-blocks-fail"
+steward = "templating"
+statement = "Missing visible blocks fail loudly."
+severity = "P1"
+verification = "manual"
+evidence_file = "src/chirp/errors.py"
+anchor = "BlockNotFoundError"

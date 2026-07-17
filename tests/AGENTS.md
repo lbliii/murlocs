@@ -4,6 +4,9 @@
 
 Behavioral contracts, destructive-operation guards, and regression coverage.
 
+Ordinary work: use this map directly with the root map and only other maps whose scopes the task crosses.
+Do not open `.murlocs/PROTOCOL.md` or `.murlocs/manifest.toml` unless the task is an explicit review, audit, or guidance-network change.
+
 ## Owns
 
 - tests
@@ -14,7 +17,7 @@ Behavioral contracts, destructive-operation guards, and regression coverage.
 
 ## Invariants
 
-- **safety-regressions-tested** (important): Generated ownership and path boundaries have regression tests. Verify with `pytest`.
+- **safety-regressions-tested** (important): Generated ownership and path boundaries have regression tests. Verify with `pytest` (`pytest`).
 
 ## Edges
 

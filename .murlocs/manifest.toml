@@ -8,6 +8,10 @@ pillars = [
   "Every strong architectural claim names how it is verified.",
   "Agent judgment raises the model; deterministic code owns compilation and checks.",
 ]
+search_policy = [
+  "Read the root map before repository discovery.",
+  "Open only the nearest scoped map for the path being investigated unless the task crosses a declared edge.",
+]
 operating_rules = [
   "Read the applicable AGENTS.md chain before editing.",
   "Preserve unmanaged files and modified generated files.",
@@ -92,6 +96,10 @@ owns = ["skills/bootstrap-murlocs"]
 guardrails = ["Do not let the skill bypass CLI ownership protections or invent enforcement proof."]
 edges = [{ type = "invokes", to = "core", what = "The skill uses the CLI after drafting the manifest." }]
 
+[judgments.core]
+advocate = ["Deterministic, loss-reporting translation for known repository guidance schemas."]
+do_not = ["Execute registered checks or silently discard unsupported migration fields."]
+
 [[invariants]]
 id = "managed-output-safety"
 scope = "core"
@@ -116,6 +124,14 @@ statement = "One typed Milo registry defines terminal, programmatic, MCP, and di
 severity = "important"
 verification = "command"
 enforced_by = "milo-verify"
+
+[[invariants]]
+id = "legacy-migration-parity"
+scope = "core"
+statement = "Known legacy steward fields translate deterministically or fail visibly without repository writes."
+severity = "critical"
+verification = "command"
+enforced_by = "pytest"
 
 [[invariants]]
 id = "thin-authoring-layer"

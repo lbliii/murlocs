@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shlex
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -8,6 +9,16 @@ from murlocs.lockfile import read_lock, sha256_bytes, sha256_text
 from murlocs.model import Manifest
 from murlocs.paths import relative_posix, repo_path
 from murlocs.render import render_outputs
+
+SEVERITY_EQUIVALENTS = {
+    "critical": "critical",
+    "important": "important",
+    "advisory": "advisory",
+    "P0": "critical",
+    "P1": "important",
+    "P2": "advisory",
+    "P3": "advisory",
+}
 
 
 @dataclass(frozen=True)
@@ -37,6 +48,8 @@ def validate(manifest: Manifest) -> list[Finding]:
     for scope in manifest.scopes:
         _safe_path(manifest.root, scope.path, "scope path", findings)
         _safe_path(manifest.root, scope.map, "map path", findings)
+        for owned in scope.owns.all_paths:
+            _safe_path(manifest.root, owned, f"scope {scope.id} ownership path", findings)
         for edge in scope.edges:
             if edge.to not in known_scopes:
                 findings.append(
@@ -45,12 +58,20 @@ def validate(manifest: Manifest) -> list[Finding]:
 
     if "root" not in known_scopes:
         findings.append(Finding("scope", "a root scope is required"))
+    else:
+        root_scope = next(scope for scope in manifest.scopes if scope.id == "root")
+        if root_scope.path != "." or root_scope.map != "AGENTS.md":
+            findings.append(Finding("scope", "root scope must map . to AGENTS.md"))
+    invariant_scopes = {item.scope for item in manifest.invariants}
+    if manifest.require_scope_invariants:
+        for scope_id in sorted(known_scopes - invariant_scopes):
+            findings.append(Finding("invariant", f"scope has no invariant: {scope_id}"))
     for invariant in manifest.invariants:
         if invariant.scope not in known_scopes:
             findings.append(
                 Finding("invariant", f"{invariant.id} references unknown scope {invariant.scope}")
             )
-        if invariant.severity not in {"critical", "important", "advisory"}:
+        if normalize_severity(invariant.severity) is None:
             findings.append(Finding("severity", f"{invariant.id} has invalid severity"))
         if invariant.verification == "command":
             if not invariant.enforced_by or invariant.enforced_by not in manifest.checks:
@@ -66,8 +87,21 @@ def validate(manifest: Manifest) -> list[Finding]:
             findings.append(Finding("proof", f"{invariant.id} has invalid verification mode"))
 
     for name, check in manifest.checks.items():
-        if not _contains(manifest.root, check.location, check.proof_contains, findings):
+        if not check.proof_contains:
+            findings.append(Finding("proof-debt", f"check {name} has no proof_contains anchor"))
+            location = _safe_path(
+                manifest.root,
+                check.location,
+                f"check {name} proof location",
+                findings,
+            )
+            if location is not None and not location.is_file():
+                findings.append(
+                    Finding("check", f"{name} proof location does not exist: {check.location}")
+                )
+        elif not _contains(manifest.root, check.location, check.proof_contains, findings):
             findings.append(Finding("check", f"{name} proof was not found at {check.location}"))
+        findings.extend(_command_path_findings(manifest.root, name, check.invoke))
 
     protocol = _safe_path(manifest.root, manifest.protocol, "protocol", findings)
     if protocol is not None and not protocol.is_file():
@@ -104,6 +138,56 @@ def _contains(root: Path, raw: str, needle: str, findings: list[Finding]) -> boo
         return False
 
 
+def normalize_severity(value: str) -> str | None:
+    """Return the canonical meaning while preserving the manifest's original spelling."""
+    return SEVERITY_EQUIVALENTS.get(value)
+
+
+def _command_path_findings(root: Path, name: str, invoke: str) -> list[Finding]:
+    try:
+        tokens = shlex.split(invoke)
+    except ValueError as exc:
+        return [Finding("check", f"{name} command cannot be parsed: {exc}")]
+
+    top_level = {path.name for path in root.iterdir()}
+    findings: list[Finding] = []
+    checked: set[str] = set()
+    for token in tokens:
+        candidate = token.split("::", 1)[0]
+        if (
+            not candidate
+            or candidate.startswith("-")
+            or "://" in candidate
+            or "=" in candidate
+            or any(character in candidate for character in "*?[]{}")
+        ):
+            continue
+        path = Path(candidate)
+        parts = path.parts
+        looks_local = candidate == "." or candidate.startswith("../")
+        if parts and parts[0] in top_level:
+            looks_local = True
+        if path.is_absolute():
+            try:
+                candidate = path.resolve().relative_to(root.resolve()).as_posix()
+                looks_local = True
+            except ValueError:
+                continue
+        if not looks_local or candidate in checked:
+            continue
+        checked.add(candidate)
+        try:
+            local = repo_path(root, candidate, field=f"check {name} command path")
+        except MurlocsError as exc:
+            findings.append(Finding("check", str(exc)))
+            continue
+        if not local.exists():
+            findings.append(
+                Finding("check", f"{name} command path does not exist: {candidate}")
+            )
+    return findings
+
+
 def _coverage_findings(manifest: Manifest) -> list[Finding]:
     findings: list[Finding] = []
     mapped_dirs = {
@@ -117,12 +201,15 @@ def _coverage_findings(manifest: Manifest) -> list[Finding]:
         if coverage_root is None or not coverage_root.exists():
             findings.append(Finding("coverage", f"coverage root does not exist: {root_name}"))
             continue
-        candidates = [coverage_root]
-        candidates.extend(path for path in coverage_root.iterdir() if path.is_dir())
-        for candidate in candidates:
+        candidates = [(coverage_root, False)]
+        candidates.extend(
+            (path, True) for path in coverage_root.iterdir() if path.is_dir()
+        )
+        for candidate, recursive in candidates:
+            children = candidate.rglob("*") if recursive else candidate.iterdir()
             has_source = any(
                 child.is_file() and child.suffix in manifest.source_suffixes
-                for child in candidate.iterdir()
+                for child in children
             )
             if not has_source:
                 continue
