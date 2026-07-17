@@ -113,6 +113,14 @@ Compact repository-derived fixtures preserve the shared contract in Murlocs CI. 
 audit of the full manifests remains the pilot gate because the source repositories evolve
 independently. Import and adoption remain pending v0.2b.
 
+## v0.2b result
+
+The migration workflow now provides read-only inventory and semantic/rendered diff, candidate TOML
+generation, explicit adoption with byte-exact legacy-map preflight, recoverable legacy pruning, and
+hash-guarded rollback. Full live Chirp and Kida inventory and semantic diff remain read-only pilot
+checks; adoption is exercised only in isolated fixture repositories until each project's proof debt
+is resolved in v0.2c.
+
 ## Pilot acceptance criteria
 
 The v0.2 pilot is successful when:

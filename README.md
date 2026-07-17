@@ -44,6 +44,26 @@ Murlocs also installs `mrr` as a short alias. It exposes the same commands and s
 `murlocs init` refuses to overwrite an existing `AGENTS.md`. Migration is deliberately explicit:
 read the existing guidance, represent it in the manifest, and only then hand ownership to Murlocs.
 
+## Migrating a legacy steward network
+
+Migration separates inspection, candidate creation, ownership transfer, and cleanup:
+
+```bash
+murlocs inventory
+murlocs diff --mode semantic
+murlocs import --from stewards --output .murlocs/manifest.toml
+# Review the candidate and resolve every proof-debt finding.
+murlocs --dry-run adopt
+murlocs adopt
+murlocs prune
+```
+
+`import` never adopts existing maps. `adopt` accepts only byte-current legacy-generated maps and
+stores their exact contents under `.murlocs/backups/` before replacement. `prune` moves the legacy
+`.stewards` directory into that backup. Until adopted maps are edited, `murlocs rollback` restores
+the pre-adoption instruction network byte-for-byte. User-owned files such as `CLAUDE.md` are only
+inventoried and are never changed by this workflow.
+
 ## The model
 
 The manifest uses plain infrastructure terms even though the project has a mythological name:
@@ -64,12 +84,18 @@ registered command during `check`; command execution remains an explicit human o
 | --- | --- |
 | `murlocs init` | Create a starter manifest and protocol, then compile the first root map. |
 | `murlocs compile` | Render managed maps and update the content-addressed lockfile. |
+| `murlocs inventory` | Find guidance files, generators, proof debt, and ownership conflicts. |
+| `murlocs import` | Translate legacy guidance into candidate TOML without adopting maps. |
+| `murlocs diff` | Show semantic migration facts and rendered map patches. |
+| `murlocs adopt` | Replace byte-current legacy maps after recoverable backup. |
+| `murlocs prune` | Move legacy tooling into the active migration backup. |
+| `murlocs rollback` | Restore the exact pre-adoption guidance network. |
 | `murlocs check` | Validate schema, graph, proofs, coverage, budget, ownership, and drift. |
 | `murlocs explain PATH` | Print the ordered scope and invariant chain that governs a path. |
 
 Milo also provides `murlocs --mcp` (or `mrr --mcp`), `murlocs --llms-txt`, structured JSON output,
-shell completions, and in-process typed dispatch. Only `check` and `explain` are agent-visible in
-v0.1.
+shell completions, and in-process typed dispatch. Only read-only `inventory`, `diff`, `check`, and
+`explain` are agent-visible.
 
 See [Architecture](docs/architecture.md) for trust boundaries and [Roadmap](docs/roadmap.md) for
 the planned migration and ecosystem work.

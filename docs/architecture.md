@@ -62,4 +62,22 @@ blocking proof debt. Validation may inspect repository-local paths named by comm
 does not execute those commands.
 
 Import, rendered diff, ownership adoption, pruning, and rollback are intentionally outside this
-layer. They require the explicit write boundary planned for v0.2b.
+translation layer.
+
+## Migration transaction
+
+`inventory` and `diff` are read-only and agent-visible. `import`, `adopt`, `prune`, and `rollback`
+remain CLI-only. Import prints candidate TOML by default; writing a candidate requires an explicit
+output path and does not claim any generated map.
+
+Adoption requires a reviewed `.murlocs/manifest.toml`, a live legacy manifest, valid proof wiring,
+and byte-for-byte current legacy maps. Before replacing a map, Murlocs copies its exact bytes into a
+repository-local migration backup. It then writes Murlocs maps, a normal ownership lockfile, and an
+active migration record. Unknown, unmanaged, stale, or manually modified legacy maps stop the whole
+preflight before any map changes.
+
+Prune moves `.stewards` into that same backup rather than deleting it. Rollback first verifies that
+every adopted map still has its recorded hash, then restores original maps and the legacy directory
+and removes the adoption lock when none existed before. A post-adoption edit therefore blocks
+rollback instead of being overwritten. Candidate manifests, migration records, and backups remain
+for review; cleanup is a separate future policy rather than an implicit destructive side effect.

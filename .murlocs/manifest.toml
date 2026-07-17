@@ -134,6 +134,14 @@ verification = "command"
 enforced_by = "pytest"
 
 [[invariants]]
+id = "migration-rollback-safety"
+scope = "core"
+statement = "Adoption backs up exact legacy maps and rollback refuses modified adopted output."
+severity = "critical"
+verification = "command"
+enforced_by = "pytest"
+
+[[invariants]]
 id = "thin-authoring-layer"
 scope = "bootstrap-skill"
 statement = "The skill delegates deterministic compilation and verification to the CLI."

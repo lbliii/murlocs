@@ -37,6 +37,8 @@ LEGACY_INVARIANT_FIELDS = {
 }
 LEGACY_JUDGMENT_FIELDS = {"advocate", "do_not", "serves"}
 VERIFICATION_MAPPING = {"machine": "command", "manual": "manual", "none": "unknown"}
+LEGACY_MARKER = "<!-- generated from .stewards/manifest.toml — edit the manifest, not this file -->"
+LEGACY_BACKING = {"machine": "machine-backed", "manual": "manual", "none": "none"}
 
 
 @dataclass(frozen=True)
@@ -120,6 +122,169 @@ def translate_stewards_manifest(
         "judgments": judgments,
     }
     return StewardTranslation(manifest=manifest, findings=tuple(findings))
+
+
+def render_legacy_steward_maps(data: dict[str, Any]) -> dict[str, str]:
+    """Render the known legacy dialect for dirty-map detection during adoption."""
+    _reject_unknown("legacy manifest", data, LEGACY_TOP_LEVEL)
+    stewards = _array(data, "steward")
+    checks = _table(data, "check")
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for invariant in _array(data, "invariant"):
+        grouped.setdefault(str(invariant.get("steward", "")), []).append(invariant)
+    judgments = data.get("judgment", {})
+    maps: dict[str, str] = {}
+    for steward in stewards:
+        if not isinstance(steward, dict):
+            raise MurlocsError("legacy steward entries must be tables")
+        path = _string(steward, "path", context="legacy steward")
+        if steward.get("id") == "root":
+            maps[path] = _render_legacy_root(data, stewards, grouped)
+        else:
+            maps[path] = _render_legacy_node(
+                steward,
+                grouped.get(str(steward.get("id", "")), []),
+                checks,
+                judgments.get(str(steward.get("id", "")), {}),
+            )
+    return maps
+
+
+def _legacy_proof(invariant: dict[str, Any], checks: dict[str, Any]) -> str:
+    if invariant.get("verification") == "machine":
+        check_id = invariant.get("enforced_by", "?")
+        invoke = checks.get(check_id, {}).get("invoke")
+        if invoke:
+            return f"`{str(invoke).replace('|', '\\|')}` (`{check_id}`)"
+        return f"`{check_id}`"
+    if invariant.get("evidence_file"):
+        return f"{invariant['evidence_file']} · `{invariant.get('anchor', '')}`"
+    return "—"
+
+
+def _legacy_bullets(output: list[str], heading: str, items: list[str]) -> None:
+    if items:
+        output.extend(["", f"## {heading}", ""])
+        output.extend(f"- {item}" for item in items)
+
+
+def _render_legacy_node(
+    steward: dict[str, Any],
+    invariants: list[dict[str, Any]],
+    checks: dict[str, Any],
+    judgment: dict[str, Any],
+) -> str:
+    output = [
+        LEGACY_MARKER,
+        "",
+        f"# Steward: {steward['id']}",
+        "",
+        str(steward.get("point_of_view", "")),
+        "",
+        "Ordinary work: use this map directly with the root map and run only affected checks.",
+        "Do not open `.stewards/PROTOCOL.md` or `.stewards/manifest.toml` unless the task "
+        "is an explicit review/audit or steward-network maintenance.",
+        "",
+        "## Protects",
+        "",
+        "| Invariant | Sev | Backing | Proof / anchor |",
+        "| --- | --- | --- | --- |",
+    ]
+    for invariant in invariants:
+        statement = str(invariant["statement"]).replace("|", "\\|")
+        output.append(
+            f"| {statement} | {invariant.get('severity', '')} | "
+            f"{LEGACY_BACKING.get(str(invariant.get('verification')), 'none')} | "
+            f"{_legacy_proof(invariant, checks)} |"
+        )
+    _legacy_bullets(output, "Guardrails", steward.get("guardrails", []))
+    edges = steward.get("edges", [])
+    if edges:
+        output.extend(["", "## Edges", ""])
+        output.extend(
+            f"- {edge.get('type', '?')} → **{edge.get('to')}** ({edge.get('what', '')})"
+            for edge in edges
+        )
+    owns = steward.get("owns", {})
+    if owns:
+        output.extend(["", "## Owns", ""])
+        for key in ("code", "tests", "docs"):
+            if owns.get(key):
+                values = ", ".join(f"`{value}`" for value in owns[key])
+                output.append(f"- **{key}:** {values}")
+    _legacy_bullets(output, "Advocate", judgment.get("advocate", []))
+    _legacy_bullets(output, "Do Not", judgment.get("do_not", []))
+    _legacy_bullets(output, "Serves", judgment.get("serves", []))
+    return "\n".join(output).rstrip() + "\n"
+
+
+def _render_legacy_root(
+    data: dict[str, Any],
+    stewards: list[dict[str, Any]],
+    grouped: dict[str, list[dict[str, Any]]],
+) -> str:
+    output = [
+        LEGACY_MARKER,
+        "",
+        f"# Agent Constitution — {data.get('network', 'repository')}",
+        "",
+        "Ordinary work: use this root map plus only scoped maps on the target path.",
+        "Do not open `.stewards/PROTOCOL.md` or `.stewards/manifest.toml` unless the task "
+        "is an explicit review/audit or steward-network maintenance.",
+        "",
+        "## Pillars",
+        "",
+    ]
+    output.extend(f"- {item}" for item in data.get("pillars", []))
+    _legacy_bullets(output, "Search Discipline", data.get("search_policy", []))
+    _legacy_bullets(output, "Operating Rules", data.get("operating_rules", []))
+    output.extend(
+        [
+            "",
+            "## Network",
+            "",
+            "| Steward | Map | Invariants | Automated backing |",
+            "| --- | --- | --- | --- |",
+        ]
+    )
+    for steward in sorted(stewards, key=lambda item: item["id"]):
+        invariants = grouped.get(steward["id"], [])
+        machine = sum(item.get("verification") == "machine" for item in invariants)
+        percent = f"{100 * machine // len(invariants)}%" if invariants else "—"
+        output.append(
+            f"| {steward['id']} | `{steward['path']}` | {len(invariants)} | {percent} |"
+        )
+    root_invariants = grouped.get("root", [])
+    if root_invariants:
+        output.extend(
+            [
+                "",
+                "## Protects (constitution)",
+                "",
+                "| Invariant | Sev | Backing | Proof / anchor |",
+                "| --- | --- | --- | --- |",
+            ]
+        )
+        for invariant in root_invariants:
+            statement = str(invariant["statement"]).replace("|", "\\|")
+            output.append(
+                f"| {statement} | {invariant.get('severity', '')} | "
+                f"{LEGACY_BACKING.get(str(invariant.get('verification')), 'none')} | "
+                f"{_legacy_proof(invariant, data.get('check', {}))} |"
+            )
+    _legacy_bullets(output, "Stop & Ask", data.get("stop_and_ask", []))
+    _legacy_bullets(output, "Done Criteria", data.get("done_criteria", []))
+    output.extend(
+        [
+            "",
+            "---",
+            "",
+            "Explicit review/audit only: [.stewards/PROTOCOL.md](.stewards/PROTOCOL.md). "
+            "Steward maintenance only: [.stewards/manifest.toml](.stewards/manifest.toml), "
+            "then `python .stewards/verify.py --coverage`.",
+        ]
+    )
+    return "\n".join(output).rstrip() + "\n"
 
 
 def _translate_checks(raw: dict[str, Any]) -> dict[str, dict[str, Any]]:

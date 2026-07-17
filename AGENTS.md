@@ -29,7 +29,7 @@ Do not open `.murlocs/PROTOCOL.md` or `.murlocs/manifest.toml` unless the task i
 | Scope | Map | Invariants | Command-backed |
 | --- | --- | ---: | ---: |
 | bootstrap-skill | `skills/bootstrap-murlocs/AGENTS.md` | 1 | 0% |
-| core | `src/murlocs/AGENTS.md` | 4 | 75% |
+| core | `src/murlocs/AGENTS.md` | 5 | 80% |
 | root | `AGENTS.md` | 0 | — |
 | tests | `tests/AGENTS.md` | 1 | 100% |
 

@@ -23,6 +23,7 @@ Do not open `.murlocs/PROTOCOL.md` or `.murlocs/manifest.toml` unless the task i
 - **no-command-execution** (critical): Validation inspects command proof but never executes registered commands. Evidence: `docs/architecture.md` contains `does not call a model`.
 - **typed-surface-parity** (important): One typed Milo registry defines terminal, programmatic, MCP, and discovery surfaces. Verify with `milo verify src/murlocs/cli.py` (`milo-verify`).
 - **legacy-migration-parity** (critical): Known legacy steward fields translate deterministically or fail visibly without repository writes. Verify with `pytest` (`pytest`).
+- **migration-rollback-safety** (critical): Adoption backs up exact legacy maps and rollback refuses modified adopted output. Verify with `pytest` (`pytest`).
 
 ## Edges
 

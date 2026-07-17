@@ -218,11 +218,17 @@ def test_milo_agent_surface_is_read_only_by_default():
     tools = {tool.name for tool in MCPClient(app).list_tools()}
     discovery = generate_llms_txt(app)
 
-    assert tools == {"check", "explain"}
+    assert tools == {"check", "diff", "explain", "inventory"}
     assert "**check**" in discovery
     assert "**explain**" in discovery
+    assert "**inventory**" in discovery
+    assert "**diff**" in discovery
     assert "**init**" not in discovery
     assert "**compile**" not in discovery
+    assert "**import**" not in discovery
+    assert "**adopt**" not in discovery
+    assert "**prune**" not in discovery
+    assert "**rollback**" not in discovery
     assert app.commands["check"].annotations == {
         "readOnlyHint": True,
         "idempotentHint": True,

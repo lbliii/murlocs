@@ -28,7 +28,7 @@ semantic preservation, proof integrity, context discipline, and safe ownership t
 - Add compact Chirp- and Kida-derived fixtures that lock the shared migration contract without
   copying either repository's complete manifest into Murlocs.
 
-### v0.2b — safe import and adoption
+### v0.2b — safe import and adoption (complete)
 
 - Add read-only `murlocs inventory` for existing `AGENTS.md`, `CLAUDE.md`, `.stewards`, checks, and
   ownership conflicts.

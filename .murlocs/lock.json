@@ -1,20 +1,20 @@
 {
   "generated": {
     "AGENTS.md": {
-      "sha256": "6fe99520b8ab087f2c2b2ca3ced8c3e733c35a9e5164aedf6e65f7af6f0cf85e"
+      "sha256": "6da7ba9fbeb7aaea4d0bf8883a09177cca874e06a5a82d71afcbc615c8e352b4"
     },
     "skills/bootstrap-murlocs/AGENTS.md": {
       "sha256": "69f6ba9129b51b73baf89da10d739957823d72d173ee9d2f69265e6199ba0def"
     },
     "src/murlocs/AGENTS.md": {
-      "sha256": "cde1184400f5a1e6fd6f6686e54a574c9968d42579ed502d996fa57e5993f79e"
+      "sha256": "82f6fff8c6cac32a272bf9be98c13f855b87d94b59aefc939a5ba6d592f7de2d"
     },
     "tests/AGENTS.md": {
       "sha256": "cda9e6e02b2cf9c7844dcbea868301b54272c7c3b0b318969dc00396ffdd8fc6"
     }
   },
   "lock_version": 1,
-  "manifest_sha256": "403d5560ec8e1960452b727d373441e7ba5710123af4b723c6cfae02a9099189",
+  "manifest_sha256": "0fde0f766319db1cf63646ebb308b56ac65e02229ff8123cac0030dd426a5ecc",
   "schema_version": 1,
   "tool_version": "0.1.0"
 }

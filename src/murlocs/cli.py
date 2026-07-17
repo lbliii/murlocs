@@ -9,6 +9,15 @@ from milo import CLI, Context, Option, Positional
 from murlocs import __version__
 from murlocs.errors import MurlocsError
 from murlocs.manifest import PROTOCOL_TEMPLATE, load_manifest, render_manifest
+from murlocs.migration import (
+    adopt_manifest,
+    candidate_from_stewards,
+    diff_stewards_candidate,
+    inventory_repository,
+    prune_legacy,
+    rollback_migration,
+    write_candidate,
+)
 from murlocs.model import Manifest
 from murlocs.paths import repo_path
 from murlocs.render import compile_manifest, prepare_manifest
@@ -86,6 +95,87 @@ class ExplainPayload(TypedDict):
     ok: bool
     path: str
     scopes: list[ScopePayload]
+
+
+class InventoryInstructionPayload(TypedDict):
+    path: str
+    kind: str
+    generator: str
+
+
+class LegacySummaryPayload(TypedDict):
+    network: str
+    scopes: int
+    invariants: int
+    checks: int
+    proof_debt: int
+
+
+class MurlocsStatusPayload(TypedDict):
+    manifest: bool
+    lock: bool
+    migration: bool
+
+
+class InventoryPayload(TypedDict):
+    ok: bool
+    root: str
+    instructions: list[InventoryInstructionPayload]
+    legacy_stewards: LegacySummaryPayload | None
+    murlocs: MurlocsStatusPayload
+    ownership_conflicts: list[str]
+
+
+class TranslationFindingPayload(TypedDict):
+    level: str
+    code: str
+    message: str
+    subjects: list[str]
+
+
+class SemanticDiffPayload(TypedDict):
+    network: str
+    scopes: int
+    invariants: int
+    checks: int
+    findings: list[TranslationFindingPayload]
+
+
+class RenderedDiffPayload(TypedDict):
+    path: str
+    status: str
+    diff: str
+
+
+class DiffPayload(TypedDict, total=False):
+    ok: bool
+    semantic: SemanticDiffPayload
+    rendered: list[RenderedDiffPayload]
+
+
+class ImportPayload(TypedDict):
+    ok: bool
+    source: str
+    manifest: str
+    findings: list[TranslationFindingPayload]
+    written: list[str]
+    dry_run: bool
+
+
+class MigrationActionPayload(TypedDict, total=False):
+    ok: bool
+    id: str
+    status: str
+    backup: str
+    adopted: list[str]
+    originals: list[str]
+    created: list[str]
+    pruned: list[str]
+    restore: list[str]
+    remove: list[str]
+    restore_legacy: bool
+    lock_existed: bool
+    adopted_sha256: dict[str, str]
 
 
 def _render_result(result: Any, _ctx: Any) -> str:
@@ -343,6 +433,195 @@ def explain_command(
     )
 
 
+def inventory_command(
+    repo: Annotated[str, Option(metavar="PATH")] = ".",
+) -> InventoryPayload | FailurePayload:
+    """Inventory repository guidance and migration ownership conflicts.
+
+    Args:
+        repo: Repository root to inspect without writing files.
+    """
+    try:
+        inventory = inventory_repository(_root(repo))
+    except (MurlocsError, OSError, ValueError) as exc:
+        return _failure("MURLOCS_INVENTORY", exc)
+    legacy = inventory["legacy_stewards"]
+    lines = [f"found {len(inventory['instructions'])} instruction file(s)"]
+    if legacy:
+        lines.append(
+            f"legacy network: {legacy['scopes']} scope(s), {legacy['invariants']} invariant(s), "
+            f"{legacy['checks']} check(s), {legacy['proof_debt']} proof-debt item(s)"
+        )
+    lines.extend(
+        f"{item['generator']:>8}  {item['path']}" for item in inventory["instructions"]
+    )
+    return CommandResult(
+        {"ok": True, **inventory},
+        terminal_text="\n".join(lines),
+    )
+
+
+def import_command(
+    repo: Annotated[str, Option(metavar="PATH")] = ".",
+    source: Annotated[str, Option(aliases=("--from",), metavar="FORMAT")] = "stewards",
+    output: Annotated[str | None, Option(metavar="PATH")] = None,
+    ctx: Context | None = None,
+) -> ImportPayload | FailurePayload:
+    """Translate legacy guidance into a candidate manifest without adopting maps.
+
+    Args:
+        repo: Repository root containing the legacy guidance network.
+        source: Legacy format. Only `stewards` is supported in v0.2.
+        output: Optional repository-relative candidate path; stdout when omitted.
+        ctx: Milo host context used to honor dry-run policy.
+    """
+    try:
+        if source != "stewards":
+            raise MurlocsError(f"unsupported import source: {source}")
+        root = _root(repo)
+        candidate = candidate_from_stewards(root)
+        written: list[str] = []
+        dry_run = bool(ctx is not None and ctx.dry_run)
+        if output and not dry_run:
+            written = write_candidate(root, candidate, output)
+        elif output:
+            written = [output]
+            if output == ".murlocs/manifest.toml":
+                written.append(".murlocs/PROTOCOL.md")
+    except (MurlocsError, OSError, ValueError) as exc:
+        return _failure("MURLOCS_IMPORT", exc)
+    findings = [
+        {
+            "level": item.level,
+            "code": item.code,
+            "message": item.message,
+            "subjects": list(item.subjects),
+        }
+        for item in candidate.findings
+    ]
+    finding_lines = [
+        f"{item.level}: {item.code} ({len(item.subjects)})" for item in candidate.findings
+    ]
+    if not output:
+        report = "\n".join(f"# migration {line}" for line in finding_lines)
+        terminal = candidate.manifest_toml + ("\n" + report if report else "")
+    else:
+        terminal = "\n".join(
+            [
+                *(
+                    f"{'would write' if dry_run else 'wrote'} {path}"
+                    for path in written
+                ),
+                *finding_lines,
+            ]
+        )
+    return CommandResult(
+        {
+            "ok": True,
+            "source": source,
+            "manifest": candidate.manifest_toml,
+            "findings": findings,
+            "written": written,
+            "dry_run": dry_run,
+        },
+        terminal_text=terminal,
+    )
+
+
+def diff_command(
+    repo: Annotated[str, Option(metavar="PATH")] = ".",
+    mode: Literal["semantic", "rendered", "both"] = "both",
+) -> DiffPayload | FailurePayload:
+    """Compare the legacy network with its candidate Murlocs projection.
+
+    Args:
+        repo: Repository root containing `.stewards/manifest.toml`.
+        mode: Include semantic summary, rendered patches, or both.
+    """
+    try:
+        result = diff_stewards_candidate(_root(repo))
+    except (MurlocsError, OSError, ValueError) as exc:
+        return _failure("MURLOCS_DIFF", exc)
+    payload: dict[str, Any] = {"ok": True}
+    lines: list[str] = []
+    if mode in {"semantic", "both"}:
+        payload["semantic"] = result["semantic"]
+        semantic = result["semantic"]
+        lines.append(
+            f"{semantic['network']}: {semantic['scopes']} scope(s), "
+            f"{semantic['invariants']} invariant(s), {semantic['checks']} check(s)"
+        )
+        lines.extend(
+            f"{item['level']}: {item['code']} ({len(item['subjects'])})"
+            for item in semantic["findings"]
+        )
+    if mode in {"rendered", "both"}:
+        payload["rendered"] = result["rendered"]
+        for item in result["rendered"]:
+            lines.append(f"{item['status']:>7}  {item['path']}")
+            if item["status"] != "same":
+                lines.append(item["diff"].rstrip())
+    return CommandResult(payload, terminal_text="\n".join(lines))
+
+
+def adopt_command(
+    repo: Annotated[str, Option(metavar="PATH")] = ".",
+    ctx: Context | None = None,
+) -> MigrationActionPayload | FailurePayload:
+    """Explicitly adopt reviewed candidate maps with recoverable backups.
+
+    Args:
+        repo: Repository root with a reviewed `.murlocs/manifest.toml`.
+        ctx: Milo host context used to honor dry-run policy.
+    """
+    try:
+        result = adopt_manifest(_root(repo), dry_run=bool(ctx is not None and ctx.dry_run))
+    except (MurlocsError, OSError, ValueError) as exc:
+        return _failure("MURLOCS_ADOPT", exc)
+    paths = result.get("adopted", list(result.get("adopted_sha256", {})))
+    verb = "would adopt" if ctx is not None and ctx.dry_run else "adopted"
+    return CommandResult({"ok": True, **result}, terminal_text=f"{verb} {len(paths)} map(s)")
+
+
+def prune_command(
+    repo: Annotated[str, Option(metavar="PATH")] = ".",
+    ctx: Context | None = None,
+) -> MigrationActionPayload | FailurePayload:
+    """Move legacy steward tooling into the active recoverable backup.
+
+    Args:
+        repo: Adopted repository root.
+        ctx: Milo host context used to honor dry-run policy.
+    """
+    try:
+        result = prune_legacy(_root(repo), dry_run=bool(ctx is not None and ctx.dry_run))
+    except (MurlocsError, OSError, ValueError) as exc:
+        return _failure("MURLOCS_PRUNE", exc)
+    count = len(result.get("pruned", []))
+    verb = "would prune" if ctx is not None and ctx.dry_run else "pruned"
+    return CommandResult({"ok": True, **result}, terminal_text=f"{verb} {count} legacy file(s)")
+
+
+def rollback_command(
+    repo: Annotated[str, Option(metavar="PATH")] = ".",
+    ctx: Context | None = None,
+) -> MigrationActionPayload | FailurePayload:
+    """Restore the exact pre-adoption guidance network from its backup.
+
+    Args:
+        repo: Repository root with active Murlocs migration state.
+        ctx: Milo host context used to honor dry-run policy.
+    """
+    try:
+        result = rollback_migration(
+            _root(repo), dry_run=bool(ctx is not None and ctx.dry_run)
+        )
+    except (MurlocsError, OSError, ValueError) as exc:
+        return _failure("MURLOCS_ROLLBACK", exc)
+    verb = "would roll back" if ctx is not None and ctx.dry_run else "rolled back"
+    return CommandResult({"ok": True, **result}, terminal_text=f"{verb} migration")
+
+
 def build_cli(*, name: str = "murlocs") -> CLI:
     """Build an invocation-local Milo command registry."""
     app = CLI(
@@ -368,11 +647,53 @@ def build_cli(*, name: str = "murlocs") -> CLI:
         },
         terminal_renderer=_render_result,
     )(compile_command)
+    app.command(
+        "import",
+        description="Translate legacy guidance into a candidate manifest",
+        surfaces=("cli",),
+        annotations={"destructiveHint": True, "openWorldHint": True},
+        terminal_renderer=_render_result,
+    )(import_command)
+    app.command(
+        "adopt",
+        description="Adopt reviewed candidate maps with recoverable backups",
+        surfaces=("cli",),
+        annotations={"destructiveHint": True, "openWorldHint": True},
+        terminal_renderer=_render_result,
+    )(adopt_command)
+    app.command(
+        "prune",
+        description="Move legacy tooling into the migration backup",
+        surfaces=("cli",),
+        annotations={"destructiveHint": True, "openWorldHint": True},
+        terminal_renderer=_render_result,
+    )(prune_command)
+    app.command(
+        "rollback",
+        description="Restore the pre-adoption guidance network",
+        surfaces=("cli",),
+        annotations={"destructiveHint": True, "openWorldHint": True},
+        terminal_renderer=_render_result,
+    )(rollback_command)
     inspection = {
         "readOnlyHint": True,
         "idempotentHint": True,
         "openWorldHint": True,
     }
+    app.command(
+        "inventory",
+        description="Inventory repository guidance and ownership conflicts",
+        surfaces=("cli", "mcp", "llms"),
+        annotations=inspection,
+        terminal_renderer=_render_result,
+    )(inventory_command)
+    app.command(
+        "diff",
+        description="Compare legacy guidance with its candidate projection",
+        surfaces=("cli", "mcp", "llms"),
+        annotations=inspection,
+        terminal_renderer=_render_result,
+    )(diff_command)
     app.command(
         "check",
         description="Validate guidance, proofs, coverage, ownership, and drift",
