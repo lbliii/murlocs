@@ -97,10 +97,26 @@ changed layer file, or a reordered layer set, is reported as drift by `murlocs c
 the root manifest itself is unchanged. Single-file manifests continue to work unchanged; their
 lock records the one manifest source.
 
-## Provenance and explanation
+## Ownership and provenance
 
-Generated maps for a layered network carry a provenance block naming the exact ordered source
-layers that contributed to them and the owners who review each source. `murlocs explain PATH`
-extends this with the effective-value trace, accepted overrides, and shadowed values. See
-[Ownership provenance](#) in the generated maps and `murlocs explain --json` for the full
-structured trace.
+Each layer declaration may name guidance `owners`. Generated maps for a layered network carry a
+`## Provenance` block naming the exact ordered source layers that contributed to them, the file
+a contributor should edit, and the owners who review each source. Reordering or changing a
+contributing layer changes both the provenance block and the lock state.
+
+Two opt-in policies make ownership enforceable while keeping the core local-first and CI-neutral:
+
+```toml
+[policies]
+require_layer_owners = true   # every declared layer must name at least one owner
+validate_codeowners = true    # each layer file must have an exact matching CODEOWNERS entry
+```
+
+`require_layer_owners` fails `murlocs check` if any layer omits owners. `validate_codeowners`
+reads `.github/CODEOWNERS` (or `CODEOWNERS` / `docs/CODEOWNERS`) and fails when a layer file has
+no exact-path entry or when its CODEOWNERS owners do not match the manifest owners. Both policies
+default to off, so repositories without CODEOWNERS keep working unchanged. Ownership problems are
+reported before compilation writes any generated file.
+
+`murlocs explain PATH` extends provenance with the effective-value trace, accepted overrides, and
+shadowed values; see `murlocs explain --json` for the full structured trace.

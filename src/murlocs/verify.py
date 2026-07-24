@@ -3,8 +3,11 @@ from __future__ import annotations
 import shlex
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
+from murlocs.codeowners import find_codeowners, normalize_path, parse_codeowners
 from murlocs.errors import MurlocsError
+from murlocs.layers import ROOT_SOURCE_ID
 from murlocs.lockfile import Lock, read_lock, sha256_bytes, sha256_text
 from murlocs.model import Manifest
 from murlocs.paths import relative_posix, repo_path
@@ -108,7 +111,59 @@ def validate(manifest: Manifest) -> list[Finding]:
         findings.append(Finding("protocol", f"protocol file does not exist: {manifest.protocol}"))
 
     findings.extend(_coverage_findings(manifest))
+    findings.extend(_ownership_findings(manifest))
     findings.extend(_drift_findings(manifest))
+    return findings
+
+
+def _ownership_findings(manifest: Manifest) -> list[Finding]:
+    """Enforce layer-owner and opt-in CODEOWNERS policies for layered manifests."""
+    if not manifest.layered:
+        return []
+    findings: list[Finding] = []
+    declared_layers = [
+        source for source in manifest.sources if source.id != ROOT_SOURCE_ID
+    ]
+    if manifest.require_layer_owners:
+        for source in declared_layers:
+            if not source.owners:
+                findings.append(
+                    Finding("ownership", f"layer {source.id} declares no owner")
+                )
+    if manifest.validate_codeowners:
+        findings.extend(_codeowners_findings(manifest, declared_layers))
+    return findings
+
+
+def _codeowners_findings(manifest: Manifest, declared_layers: list[Any]) -> list[Finding]:
+    codeowners = find_codeowners(manifest.root)
+    if codeowners is None:
+        return [
+            Finding(
+                "ownership",
+                "validate_codeowners is enabled but no CODEOWNERS file was found",
+            )
+        ]
+    entries = parse_codeowners(codeowners.read_text(encoding="utf-8"))
+    findings: list[Finding] = []
+    for source in declared_layers:
+        path = normalize_path(source.path)
+        if path not in entries:
+            findings.append(
+                Finding(
+                    "ownership",
+                    f"layer {source.id} has no exact CODEOWNERS entry: {source.path}",
+                )
+            )
+            continue
+        if set(entries[path]) != set(source.owners):
+            findings.append(
+                Finding(
+                    "ownership",
+                    f"layer {source.id} owners do not match CODEOWNERS: "
+                    f"manifest={sorted(source.owners)} codeowners={sorted(entries[path])}",
+                )
+            )
     return findings
 
 

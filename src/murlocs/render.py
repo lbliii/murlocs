@@ -78,7 +78,35 @@ def render_scope(manifest: Manifest, scope: Scope) -> str:
                 "",
             ]
         )
+    _provenance(lines, manifest, scope)
     return "\n".join(lines).rstrip() + "\n"
+
+
+def _provenance(lines: list[str], manifest: Manifest, scope: Scope) -> None:
+    """Name the ordered source layers and owners that contributed to this map."""
+    if not manifest.layered:
+        return
+    if scope.id == "root":
+        layer_ids: tuple[str, ...] = tuple(source.id for source in manifest.sources)
+    else:
+        layer_ids = manifest.scope_layers.get(scope.id, ())
+    contributing = [manifest.source(layer_id) for layer_id in layer_ids]
+    contributing = [source for source in contributing if source is not None]
+    if not contributing:
+        return
+    lines.extend(
+        [
+            "## Provenance",
+            "",
+            "Edit the source layer below, then run `murlocs compile`. "
+            "Do not edit this generated map.",
+            "",
+        ]
+    )
+    for source in contributing:
+        owners = ", ".join(source.owners) if source.owners else "unowned"
+        lines.append(f"- `{source.id}` ({source.kind}) — `{source.path}` · owners: {owners}")
+    lines.append("")
 
 
 def _section(lines: list[str], title: str, values: tuple[str, ...]) -> None:

@@ -109,6 +109,8 @@ class Manifest:
     scopes: tuple[Scope, ...]
     invariants: tuple[Invariant, ...]
     checks: dict[str, Check] = field(default_factory=dict)
+    require_layer_owners: bool = False
+    validate_codeowners: bool = False
     layered: bool = False
     sources: tuple[LayerSource, ...] = ()
     scope_layers: dict[str, tuple[str, ...]] = field(default_factory=dict)

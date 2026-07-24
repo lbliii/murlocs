@@ -184,6 +184,14 @@ def parse_manifest_data(
                 policies.get("require_scope_invariants", False),
                 "policies.require_scope_invariants",
             ),
+            require_layer_owners=_boolean(
+                policies.get("require_layer_owners", False),
+                "policies.require_layer_owners",
+            ),
+            validate_codeowners=_boolean(
+                policies.get("validate_codeowners", False),
+                "policies.validate_codeowners",
+            ),
             scopes=scopes,
             invariants=invariants,
             checks=checks,
