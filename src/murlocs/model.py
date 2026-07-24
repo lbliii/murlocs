@@ -68,6 +68,29 @@ class Check:
 
 
 @dataclass(frozen=True)
+class LayerSource:
+    """One ordered source file that contributes to the resolved manifest."""
+
+    id: str
+    kind: str
+    path: str
+    sha256: str
+    owners: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class Override:
+    """A later layer replacing a value an earlier layer set."""
+
+    subject: str
+    field: str
+    winner_layer: str
+    shadowed_layer: str
+    winner_value: str
+    shadowed_value: str
+
+
+@dataclass(frozen=True)
 class Manifest:
     root: Path
     schema_version: int
@@ -86,7 +109,19 @@ class Manifest:
     scopes: tuple[Scope, ...]
     invariants: tuple[Invariant, ...]
     checks: dict[str, Check] = field(default_factory=dict)
+    require_layer_owners: bool = False
+    validate_codeowners: bool = False
+    layered: bool = False
+    sources: tuple[LayerSource, ...] = ()
+    scope_layers: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    overrides: tuple[Override, ...] = ()
 
     @property
     def manifest_path(self) -> Path:
         return self.root / ".murlocs" / "manifest.toml"
+
+    def source(self, layer_id: str) -> LayerSource | None:
+        for source in self.sources:
+            if source.id == layer_id:
+                return source
+        return None

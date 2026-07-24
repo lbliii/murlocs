@@ -3,9 +3,12 @@ from __future__ import annotations
 import shlex
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
+from murlocs.codeowners import find_codeowners, normalize_path, parse_codeowners
 from murlocs.errors import MurlocsError
-from murlocs.lockfile import read_lock, sha256_bytes, sha256_text
+from murlocs.layers import ROOT_SOURCE_ID
+from murlocs.lockfile import Lock, read_lock, sha256_bytes, sha256_text
 from murlocs.model import Manifest
 from murlocs.paths import relative_posix, repo_path
 from murlocs.render import render_outputs
@@ -108,7 +111,59 @@ def validate(manifest: Manifest) -> list[Finding]:
         findings.append(Finding("protocol", f"protocol file does not exist: {manifest.protocol}"))
 
     findings.extend(_coverage_findings(manifest))
+    findings.extend(_ownership_findings(manifest))
     findings.extend(_drift_findings(manifest))
+    return findings
+
+
+def _ownership_findings(manifest: Manifest) -> list[Finding]:
+    """Enforce layer-owner and opt-in CODEOWNERS policies for layered manifests."""
+    if not manifest.layered:
+        return []
+    findings: list[Finding] = []
+    declared_layers = [
+        source for source in manifest.sources if source.id != ROOT_SOURCE_ID
+    ]
+    if manifest.require_layer_owners:
+        for source in declared_layers:
+            if not source.owners:
+                findings.append(
+                    Finding("ownership", f"layer {source.id} declares no owner")
+                )
+    if manifest.validate_codeowners:
+        findings.extend(_codeowners_findings(manifest, declared_layers))
+    return findings
+
+
+def _codeowners_findings(manifest: Manifest, declared_layers: list[Any]) -> list[Finding]:
+    codeowners = find_codeowners(manifest.root)
+    if codeowners is None:
+        return [
+            Finding(
+                "ownership",
+                "validate_codeowners is enabled but no CODEOWNERS file was found",
+            )
+        ]
+    entries = parse_codeowners(codeowners.read_text(encoding="utf-8"))
+    findings: list[Finding] = []
+    for source in declared_layers:
+        path = normalize_path(source.path)
+        if path not in entries:
+            findings.append(
+                Finding(
+                    "ownership",
+                    f"layer {source.id} has no exact CODEOWNERS entry: {source.path}",
+                )
+            )
+            continue
+        if set(entries[path]) != set(source.owners):
+            findings.append(
+                Finding(
+                    "ownership",
+                    f"layer {source.id} owners do not match CODEOWNERS: "
+                    f"manifest={sorted(source.owners)} codeowners={sorted(entries[path])}",
+                )
+            )
     return findings
 
 
@@ -253,6 +308,7 @@ def _drift_findings(manifest: Manifest) -> list[Finding]:
         return findings + [Finding("lock", "lockfile is missing; run murlocs compile")]
     if lock.manifest_sha256 != sha256_bytes(manifest.manifest_path.read_bytes()):
         findings.append(Finding("drift", "manifest changed since the last compile"))
+    findings.extend(_source_drift(manifest, lock))
     for relative, content in expected.items():
         if not _is_safe(manifest.root, relative):
             continue
@@ -265,6 +321,24 @@ def _drift_findings(manifest: Manifest) -> list[Finding]:
             findings.append(Finding("drift", f"generated map is stale or modified: {relative}"))
     for orphaned in sorted(set(lock.generated) - set(expected)):
         findings.append(Finding("drift", f"lockfile owns undeclared map: {orphaned}"))
+    return findings
+
+
+def _source_drift(manifest: Manifest, lock: Lock) -> list[Finding]:
+    """Verify the ordered layer set and its content hashes against the lockfile."""
+    if not lock.sources:
+        # A pre-layering lockfile only records the root manifest hash, which the
+        # caller already checks. Nothing more to compare for a single-file manifest.
+        return []
+    findings: list[Finding] = []
+    locked = [(item.path, item.sha256) for item in lock.sources]
+    current = [(item.path, item.sha256) for item in manifest.sources]
+    if [path for path, _ in locked] != [path for path, _ in current]:
+        findings.append(Finding("drift", "layer set changed since the last compile"))
+        return findings
+    for (path, expected), (_, actual) in zip(locked, current, strict=True):
+        if expected != actual and path != ".murlocs/manifest.toml":
+            findings.append(Finding("drift", f"layer changed since the last compile: {path}"))
     return findings
 
 

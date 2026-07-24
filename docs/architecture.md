@@ -64,6 +64,20 @@ does not execute those commands.
 Import, rendered diff, ownership adoption, pruning, and rollback are intentionally outside this
 translation layer.
 
+## Layered steward networks
+
+A steward manifest that declares an ordered `[[layer]]` set is imported into the Murlocs layered
+model rather than flattened. Layer order, kinds, owners, scope declarations, and explicit
+`override` intent are preserved: each legacy layer file becomes a Murlocs layer fragment under
+`.murlocs/layers/`, and the root steward manifest becomes the Murlocs control plane with matching
+`[[layers]]` registrations. Unknown fields and unsupported merge behavior — for example an
+`override` on a non-overlay layer — are refused or reported as blocking loss instead of being
+silently dropped, and import refuses to write a candidate that carries blocking loss. `inventory`
+and semantic `diff` report the layered structure and distinguish equivalent rendered guidance from
+lost authoring and governance semantics. Adoption renders the effective legacy maps to detect
+byte-current output and keeps the same recoverable-backup and modified-output protections; a
+post-adoption edit blocks rollback rather than being overwritten.
+
 ## Migration transaction
 
 `inventory` and `diff` are read-only and agent-visible. `import`, `adopt`, `prune`, and `rollback`

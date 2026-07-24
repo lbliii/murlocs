@@ -20,7 +20,8 @@ from murlocs.migration import (
 )
 from murlocs.model import Manifest
 from murlocs.paths import repo_path
-from murlocs.render import compile_manifest, prepare_manifest
+from murlocs.render import compile_manifest, prepare_manifest, render_outputs
+from murlocs.rollout import ScopePlan, apply_add_scope, plan_add_scope
 from murlocs.verify import Finding, validate
 
 
@@ -84,17 +85,50 @@ class InvariantPayload(TypedDict):
     statement: str
 
 
+class LayerPayload(TypedDict):
+    id: str
+    kind: str
+    path: str
+    owners: list[str]
+
+
 class ScopePayload(TypedDict):
     id: str
     map: str
     point_of_view: str
     invariants: list[InvariantPayload]
+    layers: list[LayerPayload]
+
+
+class OverridePayload(TypedDict):
+    subject: str
+    field: str
+    winner_layer: str
+    winner_path: str
+    shadowed_layer: str
+    shadowed_path: str
+    winner_value: str
+    shadowed_value: str
+
+
+class FocusedCheckPayload(TypedDict):
+    name: str
+    invoke: str
+    location: str
+
+
+class BudgetPayload(TypedDict):
+    active_bytes: int
+    max_active_bytes: int
 
 
 class ExplainPayload(TypedDict):
     ok: bool
     path: str
     scopes: list[ScopePayload]
+    overrides: list[OverridePayload]
+    checks: list[FocusedCheckPayload]
+    budget: BudgetPayload
 
 
 class InventoryInstructionPayload(TypedDict):
@@ -309,6 +343,107 @@ def compile_command(
     )
 
 
+class AddScopePayload(TypedDict):
+    ok: bool
+    scope: str
+    layer: str
+    map: str
+    owners: list[str]
+    added: list[str]
+    changed: list[str]
+    deferred: dict[str, str]
+    uncovered: list[str]
+    written: list[str]
+    dry_run: bool
+
+
+def add_scope_command(
+    path: Annotated[str, Positional("PATH")],
+    repo: Annotated[str, Option(metavar="PATH")] = ".",
+    id: Annotated[str | None, Option(metavar="ID")] = None,
+    pov: Annotated[str | None, Option(metavar="TEXT")] = None,
+    owners: Annotated[list[str] | None, Option(metavar="OWNER")] = None,
+    defer: Annotated[list[str] | None, Option(metavar="PATH=REASON")] = None,
+    ctx: Context | None = None,
+) -> AddScopePayload | FailurePayload:
+    """Introduce a scoped guidance layer for a selected directory.
+
+    Args:
+        path: Repository directory to give its own scoped map.
+        repo: Repository root containing `.murlocs/manifest.toml`.
+        id: Scope and layer id; defaults to a slug of the path.
+        pov: Point of view for the new scope.
+        owners: Guidance owners recorded on the new layer.
+        defer: Source-bearing paths intentionally left out, as `PATH=REASON`.
+        ctx: Milo host context used to honor dry-run policy.
+    """
+    try:
+        root = _root(repo)
+        deferrals = _parse_deferrals(defer or [])
+        plan, manifest = plan_add_scope(
+            root,
+            path,
+            scope_id=id,
+            point_of_view=pov,
+            owners=tuple(owners or ()),
+            deferrals=deferrals,
+        )
+        dry_run = bool(ctx is not None and ctx.dry_run)
+        written: list[str] = []
+        if not dry_run:
+            written = apply_add_scope(root, plan, manifest)
+    except MurlocsError as exc:
+        return _failure("MURLOCS_ADD_SCOPE", exc)
+
+    return CommandResult(
+        {
+            "ok": True,
+            "scope": plan.scope_id,
+            "layer": plan.layer_path,
+            "map": plan.map_path,
+            "owners": list(plan.owners),
+            "added": plan.added,
+            "changed": plan.changed,
+            "deferred": plan.deferrals,
+            "uncovered": plan.uncovered,
+            "written": written,
+            "dry_run": dry_run,
+        },
+        terminal_text=_render_add_scope(plan, dry_run),
+    )
+
+
+def _parse_deferrals(entries: list[str]) -> dict[str, str]:
+    deferrals: dict[str, str] = {}
+    for entry in entries:
+        target, sep, reason = entry.partition("=")
+        if not sep or not target.strip() or not reason.strip():
+            raise MurlocsError(f"deferral must be PATH=REASON: {entry}")
+        deferrals[target.strip()] = reason.strip()
+    return deferrals
+
+
+def _render_add_scope(plan: ScopePlan, dry_run: bool) -> str:
+    verb = "would add" if dry_run else "added"
+    lines = [
+        f"{verb} scope {plan.scope_id} → {plan.map_path}",
+        f"layer: {plan.layer_path}"
+        + (f" (owners: {', '.join(plan.owners)})" if plan.owners else ""),
+    ]
+    for relative in plan.added:
+        lines.append(f"  + {relative}")
+    for relative in plan.changed:
+        lines.append(f"  ~ {relative}")
+    for defer_path, reason in sorted(plan.deferrals.items()):
+        lines.append(f"  deferred {defer_path}: {reason}")
+    for message in plan.uncovered:
+        lines.append(f"  uncovered: {message}")
+    if dry_run:
+        lines.extend(["", "manifest registration:", plan.decl_toml.rstrip()])
+        lines.extend(["", f"layer {plan.layer_path}:", plan.layer_toml.rstrip()])
+    return "\n".join(lines)
+
+
 def _precompile_findings(manifest: Manifest) -> list[Finding]:
     return [item for item in validate(manifest) if item.code not in {"drift", "lock"}]
 
@@ -397,13 +532,18 @@ def explain_command(
             except ValueError:
                 continue
         applicable.sort(key=lambda item: item[0])
+        outputs = render_outputs(manifest)
     except MurlocsError as exc:
         return _failure("MURLOCS_EXPLAIN", exc)
 
+    applicable_scopes = [scope for _, scope in applicable]
+    applicable_ids = {scope.id for scope in applicable_scopes}
     scopes: list[ScopePayload] = []
     lines = [f"Guidance for {relative.as_posix() or '.'}"]
-    for _, scope in applicable:
+    for scope in applicable_scopes:
         invariants = [item for item in manifest.invariants if item.scope == scope.id]
+        layer_ids = _contributing_layers(manifest, scope)
+        layer_payloads = _layer_payloads(manifest, layer_ids)
         scopes.append(
             {
                 "id": scope.id,
@@ -417,20 +557,125 @@ def explain_command(
                     }
                     for item in invariants
                 ],
+                "layers": layer_payloads,
             }
         )
         lines.extend(["", f"[{scope.id}] {scope.map}", f"  {scope.point_of_view}"])
+        if layer_payloads:
+            trace = ", ".join(
+                f"{layer['id']} ({layer['kind']})" for layer in layer_payloads
+            )
+            lines.append(f"  from: {trace}")
+            owners = sorted({owner for layer in layer_payloads for owner in layer["owners"]})
+            if owners:
+                lines.append(f"  owners: {', '.join(owners)}")
         for invariant in invariants:
             lines.append(f"  - {invariant.id} ({invariant.severity}): {invariant.statement}")
+
+    overrides = _applicable_overrides(manifest, applicable_ids)
+    if overrides:
+        lines.extend(["", "Overrides:"])
+        for override in overrides:
+            lines.append(
+                f"  {override['subject']}.{override['field']}: "
+                f"{override['winner_layer']} wins over {override['shadowed_layer']}"
+            )
+
+    focused_checks = _focused_checks(manifest, applicable_scopes)
+    if focused_checks:
+        lines.extend(["", "Focused checks:"])
+        for check in focused_checks:
+            lines.append(f"  {check['name']}: `{check['invoke']}`")
+
+    active_bytes = sum(
+        len(outputs.get(scope.map, "").encode("utf-8")) for scope in applicable_scopes
+    )
+    lines.extend(["", f"Active guidance: {active_bytes}/{manifest.max_active_bytes} bytes"])
 
     return CommandResult(
         {
             "ok": True,
             "path": relative.as_posix() or ".",
             "scopes": scopes,
+            "overrides": overrides,
+            "checks": focused_checks,
+            "budget": {
+                "active_bytes": active_bytes,
+                "max_active_bytes": manifest.max_active_bytes,
+            },
         },
         terminal_text="\n".join(lines),
     )
+
+
+def _contributing_layers(manifest: Manifest, scope: Any) -> tuple[str, ...]:
+    if not manifest.layered:
+        return ()
+    if scope.id == "root":
+        return tuple(source.id for source in manifest.sources)
+    return manifest.scope_layers.get(scope.id, ())
+
+
+def _layer_payloads(manifest: Manifest, layer_ids: tuple[str, ...]) -> list[LayerPayload]:
+    payloads: list[LayerPayload] = []
+    for layer_id in layer_ids:
+        source = manifest.source(layer_id)
+        if source is None:
+            continue
+        payloads.append(
+            {
+                "id": source.id,
+                "kind": source.kind,
+                "path": source.path,
+                "owners": list(source.owners),
+            }
+        )
+    return payloads
+
+
+def _applicable_overrides(manifest: Manifest, scope_ids: set[str]) -> list[OverridePayload]:
+    invariant_scope = {item.id: item.scope for item in manifest.invariants}
+    payloads: list[OverridePayload] = []
+    for override in manifest.overrides:
+        kind, _, name = override.subject.partition(":")
+        if kind == "scope" and name not in scope_ids:
+            continue
+        if kind == "invariant" and invariant_scope.get(name) not in scope_ids:
+            continue
+        if kind == "check":
+            continue
+        winner = manifest.source(override.winner_layer)
+        shadowed = manifest.source(override.shadowed_layer)
+        payloads.append(
+            {
+                "subject": override.subject,
+                "field": override.field,
+                "winner_layer": override.winner_layer,
+                "winner_path": winner.path if winner else "",
+                "shadowed_layer": override.shadowed_layer,
+                "shadowed_path": shadowed.path if shadowed else "",
+                "winner_value": override.winner_value,
+                "shadowed_value": override.shadowed_value,
+            }
+        )
+    return payloads
+
+
+def _focused_checks(manifest: Manifest, scopes: list[Any]) -> list[FocusedCheckPayload]:
+    ordered: list[FocusedCheckPayload] = []
+    seen: set[str] = set()
+    scope_ids = {scope.id for scope in scopes}
+    for invariant in manifest.invariants:
+        if invariant.scope not in scope_ids or invariant.verification != "command":
+            continue
+        check = manifest.checks.get(invariant.enforced_by or "")
+        if check is None or check.name in seen:
+            continue
+        seen.add(check.name)
+        ordered.append(
+            {"name": check.name, "invoke": check.invoke, "location": check.location}
+        )
+    return ordered
 
 
 def inventory_command(
@@ -647,6 +892,13 @@ def build_cli(*, name: str = "murlocs") -> CLI:
         },
         terminal_renderer=_render_result,
     )(compile_command)
+    app.command(
+        "add-scope",
+        description="Introduce a scoped guidance layer for a selected directory",
+        surfaces=("cli",),
+        annotations={"destructiveHint": True, "openWorldHint": True},
+        terminal_renderer=_render_result,
+    )(add_scope_command)
     app.command(
         "import",
         description="Translate legacy guidance into a candidate manifest",

@@ -63,6 +63,8 @@ def test_inventory_and_import_are_read_only_by_default(tmp_path):
         "scopes": 2,
         "invariants": 2,
         "checks": 1,
+        "layered": False,
+        "layers": [],
         "proof_debt": 0,
     }
     assert {item["generator"] for item in inventory["instructions"]} == {

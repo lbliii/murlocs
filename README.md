@@ -78,12 +78,20 @@ An invariant is `command`, `manual`, or `unknown`. Murlocs validates that comman
 a registered check and that manual claims point to real textual evidence. It never executes a
 registered command during `check`; command execution remains an explicit human or agent decision.
 
+## Layered authoring
+
+A single manifest is the simplest surface. As a network grows, the root manifest can declare an
+ordered set of owner-focused layer files (`base`, `domain`, and `overlay` kinds) that compose
+deterministically into the same canonical model. Single-file manifests keep working unchanged. See
+[Layered manifests](docs/layers.md) for the schema and merge contract.
+
 ## Commands
 
 | Command | Purpose |
 | --- | --- |
 | `murlocs init` | Create a starter manifest and protocol, then compile the first root map. |
 | `murlocs compile` | Render managed maps and update the content-addressed lockfile. |
+| `murlocs add-scope PATH` | Introduce a scoped guidance layer for a selected directory. |
 | `murlocs inventory` | Find guidance files, generators, proof debt, and ownership conflicts. |
 | `murlocs import` | Translate legacy guidance into candidate TOML without adopting maps. |
 | `murlocs diff` | Show semantic migration facts and rendered map patches. |
@@ -91,11 +99,15 @@ registered command during `check`; command execution remains an explicit human o
 | `murlocs prune` | Move legacy tooling into the active migration backup. |
 | `murlocs rollback` | Restore the exact pre-adoption guidance network. |
 | `murlocs check` | Validate schema, graph, proofs, coverage, budget, ownership, and drift. |
-| `murlocs explain PATH` | Print the ordered scope and invariant chain that governs a path. |
+| `murlocs explain PATH` | Print the ordered scope, invariant, layer provenance, override, and budget trace for a path. |
 
 Milo also provides `murlocs --mcp` (or `mrr --mcp`), `murlocs --llms-txt`, structured JSON output,
 shell completions, and in-process typed dispatch. Only read-only `inventory`, `diff`, `check`, and
 `explain` are agent-visible.
+
+The optional, separate `murlocs.eval` harness measures whether scoped guidance actually helps agents
+search less while staying correct. See [Guidance efficiency evaluation](docs/evaluation.md); it never
+runs as part of `compile` or `check`.
 
 See [Architecture](docs/architecture.md) for trust boundaries and [Roadmap](docs/roadmap.md) for
 the planned migration and ecosystem work.

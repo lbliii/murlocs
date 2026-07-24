@@ -1,16 +1,18 @@
 from __future__ import annotations
 
-import tomllib
 from pathlib import Path
 from typing import Any
 
 from murlocs.errors import MurlocsError
+from murlocs.layers import resolve_manifest
 from murlocs.model import (
     Check,
     Edge,
     Invariant,
     Judgment,
+    LayerSource,
     Manifest,
+    Override,
     Ownership,
     OwnershipGroup,
     Scope,
@@ -88,18 +90,26 @@ def _required(data: dict[str, Any], key: str, context: str) -> Any:
 
 
 def load_manifest(root: Path) -> Manifest:
-    path = root / ".murlocs" / "manifest.toml"
-    try:
-        data = tomllib.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError as exc:
-        raise MurlocsError(f"manifest not found: {path}") from exc
-    except tomllib.TOMLDecodeError as exc:
-        raise MurlocsError(f"invalid TOML in {path}: {exc}") from exc
+    resolved = resolve_manifest(root)
+    return parse_manifest_data(
+        root,
+        resolved.data,
+        layered=resolved.layered,
+        sources=resolved.sources,
+        scope_layers=resolved.scope_layers,
+        overrides=resolved.overrides,
+    )
 
-    return parse_manifest_data(root, data)
 
-
-def parse_manifest_data(root: Path, data: dict[str, Any]) -> Manifest:
+def parse_manifest_data(
+    root: Path,
+    data: dict[str, Any],
+    *,
+    layered: bool = False,
+    sources: tuple[LayerSource, ...] = (),
+    scope_layers: dict[str, tuple[str, ...]] | None = None,
+    overrides: tuple[Override, ...] = (),
+) -> Manifest:
     """Parse an already-loaded canonical manifest without reading or writing repository files."""
     try:
         coverage = data.get("coverage", {})
@@ -174,9 +184,21 @@ def parse_manifest_data(root: Path, data: dict[str, Any]) -> Manifest:
                 policies.get("require_scope_invariants", False),
                 "policies.require_scope_invariants",
             ),
+            require_layer_owners=_boolean(
+                policies.get("require_layer_owners", False),
+                "policies.require_layer_owners",
+            ),
+            validate_codeowners=_boolean(
+                policies.get("validate_codeowners", False),
+                "policies.validate_codeowners",
+            ),
             scopes=scopes,
             invariants=invariants,
             checks=checks,
+            layered=layered,
+            sources=sources,
+            scope_layers=dict(scope_layers or {}),
+            overrides=overrides,
         )
     except (TypeError, ValueError, AttributeError) as exc:
         raise MurlocsError(f"invalid manifest shape: {exc}") from exc

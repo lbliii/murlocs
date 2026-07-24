@@ -43,7 +43,7 @@ LEGACY_BACKING = {"machine": "machine-backed", "manual": "manual", "none": "none
 
 @dataclass(frozen=True)
 class TranslationFinding:
-    level: Literal["info", "debt"]
+    level: Literal["info", "debt", "blocking"]
     code: str
     message: str
     subjects: tuple[str, ...] = ()
@@ -423,3 +423,325 @@ def _strings(value: Any, context: str) -> list[str]:
     if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
         raise MurlocsError(f"{context} must be an array of strings")
     return list(value)
+
+
+# --- Layered steward networks -------------------------------------------------
+
+LEGACY_LAYERED_TOP_LEVEL = {
+    "network",
+    "protocol",
+    "max_active_bytes",
+    "coverage_roots",
+    "pillars",
+    "search_policy",
+    "operating_rules",
+    "stop_and_ask",
+    "done_criteria",
+    "owners",
+    "layer",
+}
+LEGACY_LAYER_DECL_FIELDS = {"id", "kind", "path", "owners"}
+LEGACY_LAYER_KINDS = {"base", "domain", "overlay"}
+LEGACY_LAYER_FRAGMENT_FIELDS = {
+    "steward",
+    "invariant",
+    "check",
+    "judgment",
+    "pillars",
+    "search_policy",
+    "operating_rules",
+    "stop_and_ask",
+    "done_criteria",
+}
+LEGACY_LAYER_STEWARD_FIELDS = LEGACY_STEWARD_FIELDS | {"override"}
+LEGACY_LAYER_INVARIANT_FIELDS = LEGACY_INVARIANT_FIELDS | {"override"}
+_LIST_FRAGMENT_FIELDS = (
+    "pillars",
+    "search_policy",
+    "operating_rules",
+    "stop_and_ask",
+    "done_criteria",
+)
+
+
+@dataclass(frozen=True)
+class LayeredStewardLayer:
+    id: str
+    kind: str
+    murlocs_path: str
+    steward_path: str
+    owners: tuple[str, ...]
+    fragment: dict[str, Any]
+    fragment_toml: str = ""
+
+
+@dataclass(frozen=True)
+class LayeredStewardTranslation:
+    manifest: dict[str, Any]
+    layers: tuple[LayeredStewardLayer, ...]
+    findings: tuple[TranslationFinding, ...]
+
+
+def is_layered_steward(data: dict[str, Any]) -> bool:
+    """A layered steward manifest declares an ordered ``[[layer]]`` set."""
+    return isinstance(data.get("layer"), list) and bool(data["layer"])
+
+
+def translate_layered_stewards(
+    data: dict[str, Any],
+    layer_datas: list[dict[str, Any]],
+    *,
+    require_scope_invariants: bool = False,
+) -> LayeredStewardTranslation:
+    """Translate a layered steward network into the Murlocs layered model.
+
+    ``layer_datas`` is aligned with ``data["layer"]``. Layer order, kinds, owners, scope
+    declarations, and explicit overrides are preserved rather than flattened. Unknown fields
+    or unsupported merge behavior are refused (or reported as blocking loss) instead of being
+    silently dropped.
+    """
+    _reject_unknown("layered steward manifest", data, LEGACY_LAYERED_TOP_LEVEL)
+    decls = data["layer"]
+    if len(layer_datas) != len(decls):
+        raise MurlocsError("layered steward manifest layer count does not match loaded files")
+
+    findings: list[TranslationFinding] = []
+    layers: list[LayeredStewardLayer] = []
+    layer_decls: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
+    missing_anchors: list[str] = []
+    aliased_severities: list[str] = []
+    unsupported: list[str] = []
+
+    for index, (decl, layer_data) in enumerate(zip(decls, layer_datas, strict=True)):
+        if not isinstance(decl, dict):
+            raise MurlocsError(f"layered steward layer[{index}] must be a table")
+        _reject_unknown(f"layered steward layer[{index}]", decl, LEGACY_LAYER_DECL_FIELDS)
+        layer_id = _string(decl, "id", context=f"layer[{index}]")
+        if layer_id in seen_ids:
+            raise MurlocsError(f"duplicate layered steward layer id: {layer_id}")
+        seen_ids.add(layer_id)
+        kind = _string(decl, "kind", context=f"layer {layer_id}")
+        if kind not in LEGACY_LAYER_KINDS:
+            raise MurlocsError(f"layer {layer_id} has unsupported kind: {kind}")
+        owners = tuple(_strings(decl.get("owners", []), f"layer {layer_id}.owners"))
+
+        _reject_unknown(f"layer {layer_id}", layer_data, LEGACY_LAYER_FRAGMENT_FIELDS)
+        checks = _translate_checks(_table(layer_data, "check"))
+        scopes = _translate_layer_scopes(_array(layer_data, "steward"), layer_id, kind, unsupported)
+        invariants = _translate_layer_invariants(_array(layer_data, "invariant"), layer_id)
+        judgments = _translate_judgments(layer_data.get("judgment", {}))
+
+        missing_anchors.extend(
+            name for name, check in checks.items() if not check.get("proof_contains")
+        )
+        aliased_severities.extend(
+            item["id"] for item in invariants if item["severity"] in {"P0", "P1", "P2", "P3"}
+        )
+
+        fragment: dict[str, Any] = {}
+        for field_name in _LIST_FRAGMENT_FIELDS:
+            if field_name in layer_data:
+                fragment[field_name] = _strings(layer_data[field_name], f"{layer_id}.{field_name}")
+        if checks:
+            fragment["checks"] = checks
+        if scopes:
+            fragment["scopes"] = scopes
+        if invariants:
+            fragment["invariants"] = invariants
+        if judgments:
+            fragment["judgments"] = judgments
+
+        murlocs_path = f".murlocs/layers/{layer_id}.toml"
+        layer_decls.append(
+            {"id": layer_id, "kind": kind, "path": murlocs_path, "owners": list(owners)}
+        )
+        layers.append(
+            LayeredStewardLayer(
+                id=layer_id,
+                kind=kind,
+                murlocs_path=murlocs_path,
+                steward_path=str(decl["path"]),
+                owners=owners,
+                fragment=fragment,
+            )
+        )
+
+    findings.append(
+        TranslationFinding(
+            level="info",
+            code="layered-import",
+            message="layer order, kinds, and owners are preserved as Murlocs layers",
+            subjects=tuple(layer.id for layer in layers),
+        )
+    )
+    if missing_anchors:
+        findings.append(
+            TranslationFinding(
+                level="debt",
+                code="missing-proof-anchor",
+                message="registered checks without proof_contains remain unanchored proof debt",
+                subjects=tuple(missing_anchors),
+            )
+        )
+    if aliased_severities:
+        findings.append(
+            TranslationFinding(
+                level="info",
+                code="legacy-severity",
+                message=(
+                    "legacy severity spelling is preserved; P0/P1/P2/P3 mean "
+                    "critical/important/advisory/advisory"
+                ),
+                subjects=tuple(aliased_severities),
+            )
+        )
+    if unsupported:
+        findings.append(
+            TranslationFinding(
+                level="blocking",
+                code="unsupported-composition",
+                message="composition semantics cannot be represented without loss",
+                subjects=tuple(unsupported),
+            )
+        )
+
+    manifest: dict[str, Any] = {
+        "schema_version": 1,
+        "network": _string(data, "network"),
+        "protocol": _string(data, "protocol"),
+        "max_active_bytes": int(data.get("max_active_bytes", 24576)),
+        "pillars": _strings(data.get("pillars", []), "pillars"),
+        "search_policy": _strings(data.get("search_policy", []), "search_policy"),
+        "operating_rules": _strings(data.get("operating_rules", []), "operating_rules"),
+        "stop_and_ask": _strings(data.get("stop_and_ask", []), "stop_and_ask"),
+        "done_criteria": _strings(data.get("done_criteria", []), "done_criteria"),
+        "coverage": {
+            "roots": _strings(data.get("coverage_roots", []), "coverage_roots"),
+            "source_suffixes": [".py"],
+            "exemptions": {},
+        },
+        "policies": {"require_scope_invariants": require_scope_invariants},
+        "owners": _strings(data.get("owners", []), "owners"),
+        "layers": layer_decls,
+    }
+    return LayeredStewardTranslation(
+        manifest=manifest, layers=tuple(layers), findings=tuple(findings)
+    )
+
+
+def _translate_layer_scopes(
+    raw: list[Any], layer_id: str, kind: str, unsupported: list[str]
+) -> list[dict[str, Any]]:
+    scopes: list[dict[str, Any]] = []
+    for index, value in enumerate(raw):
+        if not isinstance(value, dict):
+            raise MurlocsError(f"layer {layer_id} steward[{index}] must be a table")
+        context = f"layer {layer_id} steward[{index}]"
+        _reject_unknown(context, value, LEGACY_LAYER_STEWARD_FIELDS)
+        override = bool(value.get("override", False))
+        clean = {k: v for k, v in value.items() if k != "override"}
+        if override and kind != "overlay":
+            unsupported.append(f"{layer_id}:{clean.get('id', '?')}")
+        if override and "path" not in clean:
+            scope: dict[str, Any] = {"id": _string(clean, "id", context=context), "override": True}
+            if "point_of_view" in clean:
+                scope["point_of_view"] = _string(clean, "point_of_view", context=context)
+            if "guardrails" in clean:
+                scope["guardrails"] = _strings(clean["guardrails"], f"{context}.guardrails")
+            if "edges" in clean:
+                scope["edges"] = _translated_edges(clean["edges"], context)
+            if "owns" in clean:
+                scope["owns"] = _translated_owns(clean["owns"], context)
+            scopes.append(scope)
+            continue
+        [translated] = _translate_scopes([clean])
+        if override:
+            translated["override"] = True
+        scopes.append(translated)
+    return scopes
+
+
+def _translate_layer_invariants(raw: list[Any], layer_id: str) -> list[dict[str, Any]]:
+    prepared: list[Any] = []
+    overrides: list[bool] = []
+    for index, value in enumerate(raw):
+        if not isinstance(value, dict):
+            raise MurlocsError(f"layer {layer_id} invariant[{index}] must be a table")
+        _reject_unknown(
+            f"layer {layer_id} invariant[{index}]", value, LEGACY_LAYER_INVARIANT_FIELDS
+        )
+        overrides.append(bool(value.get("override", False)))
+        prepared.append({k: v for k, v in value.items() if k != "override"})
+    invariants = _translate_invariants(prepared)
+    for invariant, override in zip(invariants, overrides, strict=True):
+        if override:
+            invariant["override"] = True
+    return invariants
+
+
+def _translated_edges(edges: Any, context: str) -> list[dict[str, Any]]:
+    if not isinstance(edges, list):
+        raise MurlocsError(f"{context}.edges must be an array")
+    for edge_index, edge in enumerate(edges):
+        if not isinstance(edge, dict):
+            raise MurlocsError(f"{context}.edges[{edge_index}] must be a table")
+        _reject_unknown(f"{context}.edges[{edge_index}]", edge, LEGACY_EDGE_FIELDS)
+    return deepcopy(edges)
+
+
+def _translated_owns(raw: Any, context: str) -> dict[str, list[str]]:
+    if not isinstance(raw, dict):
+        raise MurlocsError(f"{context}.owns must be a table")
+    return {str(kind): _strings(paths, f"{context}.owns.{kind}") for kind, paths in raw.items()}
+
+
+def render_legacy_layered_maps(
+    data: dict[str, Any], layer_datas: list[dict[str, Any]]
+) -> dict[str, str]:
+    """Render the effective legacy maps of a layered steward network for dirty detection."""
+    flattened = _compose_legacy(data, layer_datas)
+    return render_legacy_steward_maps(flattened)
+
+
+def _compose_legacy(
+    data: dict[str, Any], layer_datas: list[dict[str, Any]]
+) -> dict[str, Any]:
+    """Flatten a layered steward network into one effective legacy dict for rendering only."""
+    _reject_unknown("layered steward manifest", data, LEGACY_LAYERED_TOP_LEVEL)
+    flat: dict[str, Any] = {
+        key: deepcopy(data[key])
+        for key in ("network", "protocol", "max_active_bytes", "coverage_roots")
+        if key in data
+    }
+    for field_name in _LIST_FRAGMENT_FIELDS:
+        flat[field_name] = list(data.get(field_name, []))
+    stewards: dict[str, dict[str, Any]] = {}
+    steward_order: list[str] = []
+    invariants: list[dict[str, Any]] = []
+    checks: dict[str, Any] = {}
+    judgments: dict[str, dict[str, Any]] = {}
+    for layer_data in layer_datas:
+        for field_name in _LIST_FRAGMENT_FIELDS:
+            flat[field_name].extend(layer_data.get(field_name, []))
+        for steward in _array(layer_data, "steward"):
+            steward_id = str(steward.get("id", ""))
+            clean = {k: v for k, v in steward.items() if k != "override"}
+            if steward_id in stewards:
+                stewards[steward_id].update(clean)
+            else:
+                stewards[steward_id] = deepcopy(clean)
+                steward_order.append(steward_id)
+        for invariant in _array(layer_data, "invariant"):
+            invariants.append({k: v for k, v in invariant.items() if k != "override"})
+        for name, check in _table(layer_data, "check").items():
+            checks[str(name)] = deepcopy(check)
+        for scope_id, judgment in layer_data.get("judgment", {}).items():
+            judgments[str(scope_id)] = deepcopy(judgment)
+    flat["steward"] = [stewards[steward_id] for steward_id in steward_order]
+    flat["invariant"] = invariants
+    if checks:
+        flat["check"] = checks
+    if judgments:
+        flat["judgment"] = judgments
+    return flat

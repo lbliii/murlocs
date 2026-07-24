@@ -1,0 +1,12 @@
+[[steward]]
+id = "root"
+path = "AGENTS.md"
+point_of_view = "Repository-wide contracts."
+
+[[invariant]]
+id = "root-contract"
+steward = "root"
+statement = "Public contracts stay stable."
+severity = "P0"
+verification = "machine"
+enforced_by = "widget-suite"
