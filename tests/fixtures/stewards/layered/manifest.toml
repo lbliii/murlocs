@@ -1,0 +1,26 @@
+network = "Demo"
+protocol = ".stewards/PROTOCOL.md"
+max_active_bytes = 24576
+coverage_roots = ["src"]
+pillars = ["Base pillar."]
+search_policy = ["Read the root map first."]
+operating_rules = ["Move behavior with focused proof."]
+stop_and_ask = ["A change crosses a scope boundary."]
+done_criteria = ["Focused checks pass."]
+
+[[layer]]
+id = "base"
+kind = "base"
+path = ".stewards/layers/base.toml"
+owners = ["@platform"]
+
+[[layer]]
+id = "widget"
+kind = "domain"
+path = ".stewards/layers/widget.toml"
+owners = ["@widget-team"]
+
+[[layer]]
+id = "overlay"
+kind = "overlay"
+path = ".stewards/layers/overlay.toml"

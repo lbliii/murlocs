@@ -7,21 +7,26 @@ import shutil
 import tempfile
 import tomllib
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from murlocs.errors import MurlocsError
+from murlocs.layers import compose
 from murlocs.lockfile import LOCK_PATH, render_lock, sha256_bytes, sha256_text
 from murlocs.manifest import load_manifest, parse_manifest_data
+from murlocs.model import LayerSource, Manifest
 from murlocs.paths import relative_posix, repo_path
 from murlocs.render import render_outputs
-from murlocs.serialization import render_manifest_data
+from murlocs.serialization import render_fragment_data, render_manifest_data
 from murlocs.stewards import (
     LEGACY_MARKER,
     TranslationFinding,
+    is_layered_steward,
+    render_legacy_layered_maps,
     render_legacy_steward_maps,
+    translate_layered_stewards,
     translate_stewards_manifest,
 )
 from murlocs.verify import validate
@@ -37,6 +42,24 @@ class MigrationCandidate:
     manifest_toml: str
     protocol_text: str
     findings: tuple[TranslationFinding, ...]
+    layered: bool = False
+    layer_files: tuple[tuple[str, str], ...] = ()
+    resolved_data: dict[str, Any] | None = None
+    sources: tuple[LayerSource, ...] = ()
+    scope_layers: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    overrides: tuple[Any, ...] = ()
+
+    def to_manifest(self, root: Path) -> Manifest:
+        if self.resolved_data is None:
+            return parse_manifest_data(root, self.manifest)
+        return parse_manifest_data(
+            root,
+            self.resolved_data,
+            layered=True,
+            sources=self.sources,
+            scope_layers=self.scope_layers,
+            overrides=self.overrides,
+        )
 
 
 def inventory_repository(root: Path) -> dict[str, Any]:
@@ -69,18 +92,53 @@ def inventory_repository(root: Path) -> dict[str, Any]:
     summary: dict[str, Any] | None = None
     if legacy.is_file():
         data = tomllib.loads(legacy.read_text(encoding="utf-8"))
-        translated = translate_stewards_manifest(data)
-        summary = {
-            "network": translated.manifest["network"],
-            "scopes": len(translated.manifest["scopes"]),
-            "invariants": len(translated.manifest["invariants"]),
-            "checks": len(translated.manifest["checks"]),
-            "proof_debt": sum(
-                len(finding.subjects)
-                for finding in translated.findings
-                if finding.level == "debt"
-            ),
-        }
+        if is_layered_steward(data):
+            translated = translate_layered_stewards(data, _read_steward_layers(root, data))
+            resolved = translated.manifest
+            scopes = sum(
+                1
+                for layer in translated.layers
+                for scope in layer.fragment.get("scopes", [])
+                if not scope.get("override")
+            )
+            invariants = sum(
+                1
+                for layer in translated.layers
+                for invariant in layer.fragment.get("invariants", [])
+                if not invariant.get("override")
+            )
+            checks = sum(len(layer.fragment.get("checks", {})) for layer in translated.layers)
+            summary = {
+                "network": resolved["network"],
+                "scopes": scopes,
+                "invariants": invariants,
+                "checks": checks,
+                "layered": True,
+                "layers": [
+                    {"id": layer.id, "kind": layer.kind, "owners": list(layer.owners)}
+                    for layer in translated.layers
+                ],
+                "proof_debt": sum(
+                    len(finding.subjects)
+                    for finding in translated.findings
+                    if finding.level == "debt"
+                ),
+            }
+        else:
+            translated = translate_stewards_manifest(data)
+            summary = {
+                "network": translated.manifest["network"],
+                "scopes": len(translated.manifest["scopes"]),
+                "invariants": len(translated.manifest["invariants"]),
+                "checks": len(translated.manifest["checks"]),
+                "layered": False,
+                "layers": [],
+                "proof_debt": sum(
+                    len(finding.subjects)
+                    for finding in translated.findings
+                    if finding.level == "debt"
+                ),
+            }
     return {
         "root": str(root),
         "instructions": instructions,
@@ -98,7 +156,7 @@ def inventory_repository(root: Path) -> dict[str, Any]:
     }
 
 
-def candidate_from_stewards(root: Path) -> MigrationCandidate:
+def _read_steward_manifest(root: Path) -> tuple[dict[str, Any], str]:
     manifest_path = root / ".stewards" / "manifest.toml"
     protocol_path = root / ".stewards" / "PROTOCOL.md"
     if not manifest_path.is_file():
@@ -106,38 +164,133 @@ def candidate_from_stewards(root: Path) -> MigrationCandidate:
     if not protocol_path.is_file():
         raise MurlocsError(f"legacy steward protocol not found: {protocol_path}")
     data = tomllib.loads(manifest_path.read_text(encoding="utf-8"))
+    return data, protocol_path.read_text(encoding="utf-8")
+
+
+def _read_steward_layers(root: Path, data: dict[str, Any]) -> list[dict[str, Any]]:
+    layer_datas: list[dict[str, Any]] = []
+    for index, decl in enumerate(data.get("layer", [])):
+        if not isinstance(decl, dict) or "path" not in decl:
+            raise MurlocsError(f"legacy steward layer[{index}] requires a path")
+        layer_path = repo_path(root, str(decl["path"]), field=f"steward layer[{index}] path")
+        if not layer_path.is_file():
+            raise MurlocsError(f"legacy steward layer file not found: {decl['path']}")
+        layer_datas.append(tomllib.loads(layer_path.read_text(encoding="utf-8")))
+    return layer_datas
+
+
+def candidate_from_stewards(root: Path) -> MigrationCandidate:
+    data, protocol_text = _read_steward_manifest(root)
+    if is_layered_steward(data):
+        return _layered_candidate(root, data, protocol_text)
     translated = translate_stewards_manifest(data)
     translated.manifest["protocol"] = ".murlocs/PROTOCOL.md"
     return MigrationCandidate(
         manifest=translated.manifest,
         manifest_toml=render_manifest_data(translated.manifest),
-        protocol_text=protocol_path.read_text(encoding="utf-8"),
+        protocol_text=protocol_text,
         findings=translated.findings,
     )
 
 
+def _layered_candidate(
+    root: Path, data: dict[str, Any], protocol_text: str
+) -> MigrationCandidate:
+    layer_datas = _read_steward_layers(root, data)
+    translated = translate_layered_stewards(data, layer_datas)
+    root_manifest = translated.manifest
+    root_manifest["protocol"] = ".murlocs/PROTOCOL.md"
+
+    sources = [
+        LayerSource(
+            id="manifest",
+            kind="base",
+            path=".murlocs/manifest.toml",
+            sha256="",
+            owners=tuple(root_manifest.get("owners", [])),
+        )
+    ]
+    fragments: list[dict[str, Any]] = [root_manifest]
+    layer_files: list[tuple[str, str]] = []
+    for layer in translated.layers:
+        sources.append(
+            LayerSource(
+                id=layer.id,
+                kind=layer.kind,
+                path=layer.murlocs_path,
+                sha256="",
+                owners=layer.owners,
+            )
+        )
+        fragments.append(layer.fragment)
+        layer_files.append((layer.murlocs_path, render_fragment_data(layer.fragment)))
+
+    # Unsupported composition is reported as blocking loss; do not resolve it into a model.
+    blocking = any(finding.level == "blocking" for finding in translated.findings)
+    if blocking:
+        return MigrationCandidate(
+            manifest=root_manifest,
+            manifest_toml=render_manifest_data(root_manifest),
+            protocol_text=protocol_text,
+            findings=translated.findings,
+            layered=True,
+            layer_files=tuple(layer_files),
+        )
+    resolved = compose(root_manifest, sources, fragments)
+    return MigrationCandidate(
+        manifest=root_manifest,
+        manifest_toml=render_manifest_data(root_manifest),
+        protocol_text=protocol_text,
+        findings=translated.findings,
+        layered=True,
+        layer_files=tuple(layer_files),
+        resolved_data=resolved.data,
+        sources=resolved.sources,
+        scope_layers=resolved.scope_layers,
+        overrides=resolved.overrides,
+    )
+
+
 def write_candidate(root: Path, candidate: MigrationCandidate, output: str) -> list[str]:
+    blocking = [item for item in candidate.findings if item.level == "blocking"]
+    if blocking:
+        joined = "; ".join(item.code for item in blocking)
+        raise MurlocsError(f"refusing to write candidate with blocking loss: {joined}")
     target = repo_path(root, output, field="candidate output")
     if target.exists():
         raise MurlocsError(f"refusing to overwrite candidate output: {output}")
+    canonical = target == root / ".murlocs" / "manifest.toml"
     protocol = root / ".murlocs" / "PROTOCOL.md"
-    if target == root / ".murlocs" / "manifest.toml" and protocol.exists():
+    if canonical and protocol.exists():
         raise MurlocsError("refusing to overwrite existing .murlocs/PROTOCOL.md")
+    layer_targets: list[tuple[Path, str]] = []
+    if canonical:
+        for relative, content in candidate.layer_files:
+            layer_target = repo_path(root, relative, field="candidate layer output")
+            if layer_target.exists():
+                raise MurlocsError(f"refusing to overwrite candidate layer: {relative}")
+            layer_targets.append((layer_target, content))
     written = [relative_posix(root, target)]
     _write_text_atomic(target, candidate.manifest_toml)
-    if target == root / ".murlocs" / "manifest.toml":
-        try:
+    try:
+        if canonical:
             _write_text_atomic(protocol, candidate.protocol_text)
-        except BaseException:
-            target.unlink(missing_ok=True)
-            raise
-        written.append(".murlocs/PROTOCOL.md")
+            written.append(".murlocs/PROTOCOL.md")
+            for layer_target, content in layer_targets:
+                _write_text_atomic(layer_target, content)
+                written.append(relative_posix(root, layer_target))
+    except BaseException:
+        target.unlink(missing_ok=True)
+        protocol.unlink(missing_ok=True)
+        for layer_target, _ in layer_targets:
+            layer_target.unlink(missing_ok=True)
+        raise
     return written
 
 
 def diff_stewards_candidate(root: Path) -> dict[str, Any]:
     candidate = candidate_from_stewards(root)
-    manifest = parse_manifest_data(root, candidate.manifest)
+    manifest = candidate.to_manifest(root)
     expected = render_outputs(manifest)
     rendered: list[dict[str, Any]] = []
     for relative, content in sorted(expected.items()):
@@ -159,6 +312,8 @@ def diff_stewards_candidate(root: Path) -> dict[str, Any]:
             "scopes": len(manifest.scopes),
             "invariants": len(manifest.invariants),
             "checks": len(manifest.checks),
+            "layered": candidate.layered,
+            "layers": len(candidate.layer_files),
             "findings": [_finding_dict(item) for item in candidate.findings],
         },
         "rendered": rendered,
@@ -178,7 +333,12 @@ def adopt_manifest(root: Path, *, dry_run: bool = False) -> dict[str, Any]:
     if not legacy_path.is_file():
         raise MurlocsError("adoption requires the source .stewards/manifest.toml")
     legacy_data = tomllib.loads(legacy_path.read_text(encoding="utf-8"))
-    legacy_maps = render_legacy_steward_maps(legacy_data)
+    if is_layered_steward(legacy_data):
+        legacy_maps = render_legacy_layered_maps(
+            legacy_data, _read_steward_layers(root, legacy_data)
+        )
+    else:
+        legacy_maps = render_legacy_steward_maps(legacy_data)
     outputs = render_outputs(manifest)
     if set(outputs) != set(legacy_maps):
         missing = sorted(set(legacy_maps) - set(outputs))

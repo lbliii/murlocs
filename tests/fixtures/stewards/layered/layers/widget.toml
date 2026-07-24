@@ -1,0 +1,27 @@
+[check.widget-suite]
+invoke = "uv run pytest tests/test_widget.py -q"
+location = "tests/test_widget.py"
+proof_contains = "test_widget_contract"
+
+[[steward]]
+id = "widget"
+path = "src/widget/AGENTS.md"
+point_of_view = "One widget surface."
+guardrails = ["Invalid widgets fail loudly."]
+edges = [{ type = "verified-by", to = "root", what = "Root carries proof." }]
+
+[steward.owns]
+code = ["src/widget/"]
+tests = ["tests/test_widget.py"]
+
+[judgment.widget]
+advocate = ["Actionable diagnostics."]
+
+[[invariant]]
+id = "widget-fails-loud"
+steward = "widget"
+statement = "Invalid widgets fail loudly."
+severity = "P1"
+verification = "manual"
+evidence_file = "src/widget/widget.py"
+anchor = "WidgetError"
