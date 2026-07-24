@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from murlocs.errors import MurlocsError
-from murlocs.lockfile import read_lock, sha256_bytes, sha256_text
+from murlocs.lockfile import Lock, read_lock, sha256_bytes, sha256_text
 from murlocs.model import Manifest
 from murlocs.paths import relative_posix, repo_path
 from murlocs.render import render_outputs
@@ -253,6 +253,7 @@ def _drift_findings(manifest: Manifest) -> list[Finding]:
         return findings + [Finding("lock", "lockfile is missing; run murlocs compile")]
     if lock.manifest_sha256 != sha256_bytes(manifest.manifest_path.read_bytes()):
         findings.append(Finding("drift", "manifest changed since the last compile"))
+    findings.extend(_source_drift(manifest, lock))
     for relative, content in expected.items():
         if not _is_safe(manifest.root, relative):
             continue
@@ -265,6 +266,24 @@ def _drift_findings(manifest: Manifest) -> list[Finding]:
             findings.append(Finding("drift", f"generated map is stale or modified: {relative}"))
     for orphaned in sorted(set(lock.generated) - set(expected)):
         findings.append(Finding("drift", f"lockfile owns undeclared map: {orphaned}"))
+    return findings
+
+
+def _source_drift(manifest: Manifest, lock: Lock) -> list[Finding]:
+    """Verify the ordered layer set and its content hashes against the lockfile."""
+    if not lock.sources:
+        # A pre-layering lockfile only records the root manifest hash, which the
+        # caller already checks. Nothing more to compare for a single-file manifest.
+        return []
+    findings: list[Finding] = []
+    locked = [(item.path, item.sha256) for item in lock.sources]
+    current = [(item.path, item.sha256) for item in manifest.sources]
+    if [path for path, _ in locked] != [path for path, _ in current]:
+        findings.append(Finding("drift", "layer set changed since the last compile"))
+        return findings
+    for (path, expected), (_, actual) in zip(locked, current, strict=True):
+        if expected != actual and path != ".murlocs/manifest.toml":
+            findings.append(Finding("drift", f"layer changed since the last compile: {path}"))
     return findings
 
 

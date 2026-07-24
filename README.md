@@ -78,6 +78,13 @@ An invariant is `command`, `manual`, or `unknown`. Murlocs validates that comman
 a registered check and that manual claims point to real textual evidence. It never executes a
 registered command during `check`; command execution remains an explicit human or agent decision.
 
+## Layered authoring
+
+A single manifest is the simplest surface. As a network grows, the root manifest can declare an
+ordered set of owner-focused layer files (`base`, `domain`, and `overlay` kinds) that compose
+deterministically into the same canonical model. Single-file manifests keep working unchanged. See
+[Layered manifests](docs/layers.md) for the schema and merge contract.
+
 ## Commands
 
 | Command | Purpose |

@@ -16,5 +16,13 @@
   "lock_version": 1,
   "manifest_sha256": "0fde0f766319db1cf63646ebb308b56ac65e02229ff8123cac0030dd426a5ecc",
   "schema_version": 1,
+  "sources": [
+    {
+      "id": "manifest",
+      "kind": "base",
+      "path": ".murlocs/manifest.toml",
+      "sha256": "0fde0f766319db1cf63646ebb308b56ac65e02229ff8123cac0030dd426a5ecc"
+    }
+  ],
   "tool_version": "0.1.0"
 }

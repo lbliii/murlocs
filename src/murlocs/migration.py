@@ -233,7 +233,7 @@ def adopt_manifest(root: Path, *, dry_run: bool = False) -> dict[str, Any]:
         for relative, content in outputs.items():
             _write_text_atomic(repo_path(root, relative, field="adopted map"), content)
         manifest_bytes = manifest.manifest_path.read_bytes()
-        _write_text_atomic(lock, render_lock(manifest_bytes, outputs))
+        _write_text_atomic(lock, render_lock(manifest_bytes, outputs, manifest.sources))
         _write_json_atomic(root / MIGRATION_STATE, state)
         _write_json_atomic(backup / "state.json", state)
     except BaseException:

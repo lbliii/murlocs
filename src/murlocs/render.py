@@ -162,7 +162,10 @@ def compile_manifest(manifest: Manifest) -> list[str]:
         target = repo_path(manifest.root, relative, field="scopes[].map")
         _atomic_write(target, content)
     manifest_bytes = manifest.manifest_path.read_bytes()
-    _atomic_write(manifest.root / LOCK_PATH, render_lock(manifest_bytes, outputs))
+    _atomic_write(
+        manifest.root / LOCK_PATH,
+        render_lock(manifest_bytes, outputs, manifest.sources),
+    )
     return sorted(outputs)
 
 
