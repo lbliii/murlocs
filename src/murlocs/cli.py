@@ -21,6 +21,7 @@ from murlocs.migration import (
 from murlocs.model import Manifest
 from murlocs.paths import repo_path
 from murlocs.render import compile_manifest, prepare_manifest, render_outputs
+from murlocs.rollout import ScopePlan, apply_add_scope, plan_add_scope
 from murlocs.verify import Finding, validate
 
 
@@ -340,6 +341,107 @@ def compile_command(
             for relative in written
         ),
     )
+
+
+class AddScopePayload(TypedDict):
+    ok: bool
+    scope: str
+    layer: str
+    map: str
+    owners: list[str]
+    added: list[str]
+    changed: list[str]
+    deferred: dict[str, str]
+    uncovered: list[str]
+    written: list[str]
+    dry_run: bool
+
+
+def add_scope_command(
+    path: Annotated[str, Positional("PATH")],
+    repo: Annotated[str, Option(metavar="PATH")] = ".",
+    id: Annotated[str | None, Option(metavar="ID")] = None,
+    pov: Annotated[str | None, Option(metavar="TEXT")] = None,
+    owners: Annotated[list[str] | None, Option(metavar="OWNER")] = None,
+    defer: Annotated[list[str] | None, Option(metavar="PATH=REASON")] = None,
+    ctx: Context | None = None,
+) -> AddScopePayload | FailurePayload:
+    """Introduce a scoped guidance layer for a selected directory.
+
+    Args:
+        path: Repository directory to give its own scoped map.
+        repo: Repository root containing `.murlocs/manifest.toml`.
+        id: Scope and layer id; defaults to a slug of the path.
+        pov: Point of view for the new scope.
+        owners: Guidance owners recorded on the new layer.
+        defer: Source-bearing paths intentionally left out, as `PATH=REASON`.
+        ctx: Milo host context used to honor dry-run policy.
+    """
+    try:
+        root = _root(repo)
+        deferrals = _parse_deferrals(defer or [])
+        plan, manifest = plan_add_scope(
+            root,
+            path,
+            scope_id=id,
+            point_of_view=pov,
+            owners=tuple(owners or ()),
+            deferrals=deferrals,
+        )
+        dry_run = bool(ctx is not None and ctx.dry_run)
+        written: list[str] = []
+        if not dry_run:
+            written = apply_add_scope(root, plan, manifest)
+    except MurlocsError as exc:
+        return _failure("MURLOCS_ADD_SCOPE", exc)
+
+    return CommandResult(
+        {
+            "ok": True,
+            "scope": plan.scope_id,
+            "layer": plan.layer_path,
+            "map": plan.map_path,
+            "owners": list(plan.owners),
+            "added": plan.added,
+            "changed": plan.changed,
+            "deferred": plan.deferrals,
+            "uncovered": plan.uncovered,
+            "written": written,
+            "dry_run": dry_run,
+        },
+        terminal_text=_render_add_scope(plan, dry_run),
+    )
+
+
+def _parse_deferrals(entries: list[str]) -> dict[str, str]:
+    deferrals: dict[str, str] = {}
+    for entry in entries:
+        target, sep, reason = entry.partition("=")
+        if not sep or not target.strip() or not reason.strip():
+            raise MurlocsError(f"deferral must be PATH=REASON: {entry}")
+        deferrals[target.strip()] = reason.strip()
+    return deferrals
+
+
+def _render_add_scope(plan: ScopePlan, dry_run: bool) -> str:
+    verb = "would add" if dry_run else "added"
+    lines = [
+        f"{verb} scope {plan.scope_id} → {plan.map_path}",
+        f"layer: {plan.layer_path}"
+        + (f" (owners: {', '.join(plan.owners)})" if plan.owners else ""),
+    ]
+    for relative in plan.added:
+        lines.append(f"  + {relative}")
+    for relative in plan.changed:
+        lines.append(f"  ~ {relative}")
+    for defer_path, reason in sorted(plan.deferrals.items()):
+        lines.append(f"  deferred {defer_path}: {reason}")
+    for message in plan.uncovered:
+        lines.append(f"  uncovered: {message}")
+    if dry_run:
+        lines.extend(["", "manifest registration:", plan.decl_toml.rstrip()])
+        lines.extend(["", f"layer {plan.layer_path}:", plan.layer_toml.rstrip()])
+    return "\n".join(lines)
 
 
 def _precompile_findings(manifest: Manifest) -> list[Finding]:
@@ -790,6 +892,13 @@ def build_cli(*, name: str = "murlocs") -> CLI:
         },
         terminal_renderer=_render_result,
     )(compile_command)
+    app.command(
+        "add-scope",
+        description="Introduce a scoped guidance layer for a selected directory",
+        surfaces=("cli",),
+        annotations={"destructiveHint": True, "openWorldHint": True},
+        terminal_renderer=_render_result,
+    )(add_scope_command)
     app.command(
         "import",
         description="Translate legacy guidance into a candidate manifest",

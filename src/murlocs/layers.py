@@ -59,8 +59,21 @@ class ResolvedManifest:
     overrides: tuple[Override, ...]
 
 
-def resolve_manifest(root: Path) -> ResolvedManifest:
-    """Read the root manifest and compose any declared layers into one model."""
+@dataclass(frozen=True)
+class DiskSources:
+    root_data: dict[str, Any]
+    root_source: LayerSource
+    decls: list[dict[str, Any]]
+    sources: list[LayerSource]
+    fragments: list[dict[str, Any]]
+
+
+def read_disk_sources(root: Path) -> DiskSources:
+    """Load the root manifest and every declared layer fragment from disk.
+
+    ``sources``/``fragments`` are aligned and include the root manifest at index 0.
+    The rollout workflow reuses this to preview a new layer before writing anything.
+    """
     manifest_path = root / ".murlocs" / "manifest.toml"
     try:
         raw = manifest_path.read_bytes()
@@ -71,52 +84,64 @@ def resolve_manifest(root: Path) -> ResolvedManifest:
     except tomllib.TOMLDecodeError as exc:
         raise MurlocsError(f"invalid TOML in {manifest_path}: {exc}") from exc
 
-    root_owners = _owners(root_data.get("owners", []), "manifest owners")
     root_source = LayerSource(
         id=ROOT_SOURCE_ID,
         kind="base",
         path=ROOT_SOURCE_PATH,
         sha256=sha256_bytes(raw),
-        owners=root_owners,
+        owners=_owners(root_data.get("owners", []), "manifest owners"),
     )
 
-    decls = root_data.get("layers")
-    if not decls:
-        if decls is not None and not isinstance(decls, list):
-            raise MurlocsError("manifest layers must be an array of tables")
-        scope_layers = {
-            str(scope.get("id", "")): (ROOT_SOURCE_ID,)
-            for scope in root_data.get("scopes", [])
-            if isinstance(scope, dict)
-        }
-        return ResolvedManifest(
-            data=_strip_control(root_data),
-            layered=False,
-            sources=(root_source,),
-            scope_layers=scope_layers,
-            overrides=(),
-        )
-
-    return _resolve_layers(root, root_data, root_source, decls)
-
-
-def _resolve_layers(
-    root: Path,
-    root_data: dict[str, Any],
-    root_source: LayerSource,
-    decls: Any,
-) -> ResolvedManifest:
+    decls = root_data.get("layers") or []
     if not isinstance(decls, list):
         raise MurlocsError("manifest layers must be an array of tables")
 
     sources = [root_source]
+    fragments: list[dict[str, Any]] = [root_data]
     seen_ids = {root_source.id}
-    fragments: list[tuple[LayerSource, dict[str, Any]]] = [(root_source, root_data)]
     for index, decl in enumerate(decls):
         source, data = _load_layer(root, index, decl, seen_ids)
         sources.append(source)
-        fragments.append((source, data))
+        fragments.append(data)
+    return DiskSources(
+        root_data=root_data,
+        root_source=root_source,
+        decls=[decl for decl in decls if isinstance(decl, dict)],
+        sources=sources,
+        fragments=fragments,
+    )
 
+
+def resolve_manifest(root: Path) -> ResolvedManifest:
+    """Read the root manifest and compose any declared layers into one model."""
+    disk = read_disk_sources(root)
+    if not disk.root_data.get("layers"):
+        scope_layers = {
+            str(scope.get("id", "")): (ROOT_SOURCE_ID,)
+            for scope in disk.root_data.get("scopes", [])
+            if isinstance(scope, dict)
+        }
+        return ResolvedManifest(
+            data=_strip_control(disk.root_data),
+            layered=False,
+            sources=(disk.root_source,),
+            scope_layers=scope_layers,
+            overrides=(),
+        )
+    return compose(disk.root_data, disk.sources, disk.fragments)
+
+
+def compose(
+    root_data: dict[str, Any],
+    sources: list[LayerSource],
+    fragments: list[dict[str, Any]],
+) -> ResolvedManifest:
+    """Merge already-loaded ordered fragments into one canonical manifest.
+
+    ``sources`` and ``fragments`` are aligned; ``sources[0]``/``fragments[0]`` are the
+    root manifest. This is the single composition path shared by disk resolution and
+    in-memory previews (for example, the add-scope rollout workflow).
+    """
     merged: dict[str, Any] = {
         "schema_version": root_data.get("schema_version"),
         "network": root_data.get("network"),
@@ -128,13 +153,13 @@ def _resolve_layers(
         merged["policies"] = root_data["policies"]
 
     state = _MergeState()
-    for source, data in fragments:
+    for source, data in zip(sources, fragments, strict=True):
         state.absorb(source, data)
     state.finish(merged)
 
     return ResolvedManifest(
         data=merged,
-        layered=True,
+        layered=len(sources) > 1,
         sources=tuple(sources),
         scope_layers={key: tuple(value) for key, value in state.scope_layers.items()},
         overrides=tuple(state.overrides),

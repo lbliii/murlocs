@@ -91,6 +91,7 @@ deterministically into the same canonical model. Single-file manifests keep work
 | --- | --- |
 | `murlocs init` | Create a starter manifest and protocol, then compile the first root map. |
 | `murlocs compile` | Render managed maps and update the content-addressed lockfile. |
+| `murlocs add-scope PATH` | Introduce a scoped guidance layer for a selected directory. |
 | `murlocs inventory` | Find guidance files, generators, proof debt, and ownership conflicts. |
 | `murlocs import` | Translate legacy guidance into candidate TOML without adopting maps. |
 | `murlocs diff` | Show semantic migration facts and rendered map patches. |

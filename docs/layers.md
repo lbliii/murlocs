@@ -97,6 +97,29 @@ changed layer file, or a reordered layer set, is reported as drift by `murlocs c
 the root manifest itself is unchanged. Single-file manifests continue to work unchanged; their
 lock records the one manifest source.
 
+## Progressive rollout
+
+You do not have to model the whole repository at once. Start with a root-only map, then add
+selected directories independently with `murlocs add-scope`:
+
+```bash
+murlocs init --name "My Repository"
+# Preview a scope for docs/ without writing anything.
+murlocs --dry-run add-scope docs --owners @docs
+# Add docs/ and a second directory, deferring an area that is not ready yet.
+murlocs add-scope docs --owners @docs
+murlocs add-scope fern --owners @web --defer legacy="migrating in a later phase"
+murlocs check
+```
+
+`add-scope` creates a domain layer for the requested path, registers it in the root layer
+order, declares the scoped `AGENTS.md` output, and compiles. The CLI owns path validation and
+writes: a dry run shows the proposed layer, map, manifest registration, and coverage effects; an
+apply refuses to overwrite existing unmanaged or modified generated files and leaves the manifest
+untouched if the rollout cannot proceed. Deferred source-bearing areas are recorded as reasoned
+coverage exemptions so they stay visible as rollout gaps rather than silent omissions. Nested
+paths such as `docs/api` produce the correct root-to-scope map chain.
+
 ## Ownership and provenance
 
 Each layer declaration may name guidance `owners`. Generated maps for a layered network carry a
