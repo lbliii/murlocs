@@ -1,0 +1,15 @@
+id = "import-graph"
+prompt = "Which internal app modules does src/app/service.py depend on?"
+target_path = "src/app/service.py"
+repository_revision = "fixture-1"
+correctness_threshold = 1.0
+
+[[expected_facts]]
+id = "depends-on-render"
+description = "service.py imports the render module."
+any_of = ["app.render", "render module", "render.py"]
+
+[[expected_facts]]
+id = "depends-on-store"
+description = "service.py imports the store module."
+any_of = ["app.store", "store module", "store.py"]
