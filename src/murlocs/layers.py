@@ -193,6 +193,7 @@ def _load_layer(
 
 class _MergeState:
     def __init__(self) -> None:
+        self.layer_paths: dict[str, str] = {}
         self.lists: dict[str, list[str]] = {key: [] for key in LIST_FIELDS}
         self.coverage_roots: list[str] = []
         self.source_suffixes: list[str] = []
@@ -209,6 +210,7 @@ class _MergeState:
         self.overrides: list[Override] = []
 
     def absorb(self, source: LayerSource, data: dict[str, Any]) -> None:
+        self.layer_paths[source.id] = source.path
         for key in LIST_FIELDS:
             self.lists[key].extend(_strings(data.get(key, []), key))
         coverage = data.get("coverage", {})
@@ -293,11 +295,13 @@ class _MergeState:
         self, source: LayerSource, scope_id: str, incoming: dict[str, Any]
     ) -> None:
         base = self.scopes[scope_id]
+        definer = self.scope_layers[scope_id][0]
         prior_layer = self.scope_layers[scope_id][-1]
         for immutable in ("path", "map"):
             if immutable in incoming and str(incoming[immutable]) != str(base.get(immutable)):
                 raise MurlocsError(
-                    f"scope {scope_id} may not change {immutable}: "
+                    f"scope {scope_id} may not change {immutable} "
+                    f"({self._at(definer)} -> {self._at(source.id)}): "
                     f"{base.get(immutable)} -> {incoming[immutable]}"
                 )
         if "point_of_view" in incoming and incoming["point_of_view"] != base.get(
@@ -375,6 +379,10 @@ class _MergeState:
                         list(merged.get(field_name, []))
                         + _strings(value[field_name], f"judgment {scope_id}.{field_name}")
                     )
+
+    def _at(self, layer_id: str) -> str:
+        path = self.layer_paths.get(layer_id)
+        return f"{layer_id}@{path}" if path else layer_id
 
     def finish(self, merged: dict[str, Any]) -> None:
         for key in LIST_FIELDS:

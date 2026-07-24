@@ -98,7 +98,7 @@ deterministically into the same canonical model. Single-file manifests keep work
 | `murlocs prune` | Move legacy tooling into the active migration backup. |
 | `murlocs rollback` | Restore the exact pre-adoption guidance network. |
 | `murlocs check` | Validate schema, graph, proofs, coverage, budget, ownership, and drift. |
-| `murlocs explain PATH` | Print the ordered scope and invariant chain that governs a path. |
+| `murlocs explain PATH` | Print the ordered scope, invariant, layer provenance, override, and budget trace for a path. |
 
 Milo also provides `murlocs --mcp` (or `mrr --mcp`), `murlocs --llms-txt`, structured JSON output,
 shell completions, and in-process typed dispatch. Only read-only `inventory`, `diff`, `check`, and
