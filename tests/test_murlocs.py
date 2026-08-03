@@ -45,6 +45,130 @@ def test_all_array_options_are_discovered_from_command_schemas():
     }
 
 
+def test_hook_command_registry_contract_is_stable():
+    hook = build_cli().groups["hook"]
+    commands = hook.commands
+
+    assert hook.description == "Run and conservatively manage passive Git hooks"
+    assert tuple(commands) == ("run", "install", "uninstall", "status")
+    assert {name: command.description for name, command in commands.items()} == {
+        "run": "Assess an exact Git hook view",
+        "install": "Install only into safe default Git hook slots",
+        "uninstall": "Remove only exact Murlocs-owned Git hooks",
+        "status": "Inspect default Git hook ownership",
+    }
+    assert {name: command.surfaces for name, command in commands.items()} == {
+        name: ("cli",) for name in commands
+    }
+    inspection = {
+        "readOnlyHint": True,
+        "idempotentHint": True,
+        "openWorldHint": True,
+    }
+    mutation = {
+        "destructiveHint": True,
+        "idempotentHint": True,
+        "openWorldHint": True,
+    }
+    assert {name: command.annotations for name, command in commands.items()} == {
+        "run": inspection,
+        "install": mutation,
+        "uninstall": mutation,
+        "status": inspection,
+    }
+    assert commands["run"].schema == {
+        "type": "object",
+        "properties": {
+            "event": {
+                "enum": ["pre-commit", "pre-push"],
+                "type": "string",
+                "x-milo-cli": {"kind": "positional", "metavar": "EVENT"},
+                "description": "Git hook event to assess.",
+            },
+            "repo": {
+                "type": "string",
+                "x-milo-cli": {"kind": "option", "metavar": "PATH"},
+                "description": "Exact Git worktree root.",
+                "default": ".",
+            },
+            "correlation_id": {
+                "type": "string",
+                "x-milo-cli": {"kind": "option", "metavar": "ID"},
+                "description": "Optional caller task/run id carried unchanged.",
+                "default": None,
+            },
+            "deadline_ms": {
+                "type": "integer",
+                "x-milo-cli": {"kind": "option", "metavar": "MILLISECONDS"},
+                "description": "Total local fail-closed deadline.",
+                "default": 10_000,
+            },
+            "path": {
+                "type": "array",
+                "items": {"type": "string"},
+                "x-milo-cli": {"kind": "option", "metavar": "PATH"},
+                "description": (
+                    "Optional explicit staged path; repeat without changing exact-index coverage."
+                ),
+                "default": None,
+            },
+            "remote_name": {
+                "type": "string",
+                "x-milo-cli": {"kind": "option", "metavar": "NAME"},
+                "description": "Pre-push remote name, treated only as inert metadata.",
+                "default": None,
+            },
+            "remote_url": {
+                "type": "string",
+                "x-milo-cli": {"kind": "option", "metavar": "URL"},
+                "description": "Pre-push remote URL, treated only as inert metadata.",
+                "default": None,
+            },
+        },
+        "required": ["event"],
+    }
+    event_option = {
+        "type": "array",
+        "items": {"enum": ["pre-commit", "pre-push"], "type": "string"},
+        "x-milo-cli": {"kind": "option", "metavar": "EVENT"},
+        "default": None,
+    }
+    repo_option = {
+        "type": "string",
+        "x-milo-cli": {"kind": "option", "metavar": "PATH"},
+        "description": "Exact Git worktree root.",
+        "default": ".",
+    }
+    assert commands["install"].schema == {
+        "type": "object",
+        "properties": {
+            "event": {
+                **event_option,
+                "description": (
+                    "Hook event to install; omission selects both supported events."
+                ),
+            },
+            "repo": repo_option,
+        },
+    }
+    assert commands["uninstall"].schema == {
+        "type": "object",
+        "properties": {
+            "event": {
+                **event_option,
+                "description": (
+                    "Hook event to remove; omission selects both supported events."
+                ),
+            },
+            "repo": repo_option,
+        },
+    }
+    assert commands["status"].schema == {
+        "type": "object",
+        "properties": {"repo": repo_option},
+    }
+
+
 def test_repeatable_option_help_matches_supported_terminal_syntax():
     add_scope = invoke("add-scope", "--help")
     split = invoke("split-layers", "--help")

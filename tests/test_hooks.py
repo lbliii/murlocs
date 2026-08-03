@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 import murlocs.hooks as hooks_module
-from murlocs.cli import compile_command, init_command
+from murlocs.cli import build_cli, compile_command, init_command
 from murlocs.errors import MurlocsError
 from murlocs.gitview import HookTimeout
 from murlocs.hooks import (
@@ -44,6 +44,76 @@ def repository(tmp_path: Path) -> Path:
     git(root, "add", ".")
     git(root, "commit", "--quiet", "-m", "initial")
     return root
+
+
+def invoke(*argv: str):
+    return build_cli().invoke(list(argv))
+
+
+def test_hook_cli_management_preserves_output_and_exit_behavior(tmp_path: Path) -> None:
+    root = repository(tmp_path)
+
+    installed = invoke(
+        "hook", "install", "--event", "pre-commit", "--repo", str(root)
+    )
+    status = invoke("hook", "status", "--repo", str(root))
+    removed = invoke(
+        "hook", "uninstall", "--event", "pre-commit", "--repo", str(root)
+    )
+    missing = invoke("hook", "status", "--repo", str(tmp_path / "missing"))
+
+    assert (installed.exit_code, installed.output, installed.stderr) == (
+        0,
+        "installed pre-commit\n",
+        "",
+    )
+    assert (status.exit_code, status.output, status.stderr) == (
+        0,
+        "pre-commit: installed\npre-push: absent\n",
+        "",
+    )
+    assert (removed.exit_code, removed.output, removed.stderr) == (
+        0,
+        "removed pre-commit\n",
+        "",
+    )
+    assert missing.exit_code == 1
+    assert missing.output == ""
+    assert missing.stderr.startswith("error: ")
+
+
+def test_hook_cli_run_preserves_silent_success_and_blocking_exit(tmp_path: Path) -> None:
+    root = repository(tmp_path)
+    plain = tmp_path / "plain"
+    plain.mkdir()
+    (root / "README.md").write_text("# staged\n")
+    git(root, "add", "README.md")
+
+    healthy = invoke(
+        "hook",
+        "run",
+        "pre-commit",
+        "--repo",
+        str(root),
+        "--correlation-id",
+        "test:cli",
+    )
+    invalid = invoke(
+        "hook",
+        "run",
+        "pre-commit",
+        "--repo",
+        str(plain),
+        "--correlation-id",
+        "test:invalid",
+    )
+
+    assert (healthy.exit_code, healthy.output, healthy.stderr) == (0, "\n", "")
+    assert invalid.exit_code == 1
+    assert invalid.output == ""
+    assert invalid.stderr == (
+        "fatal: not a git repository (or any of the parent directories): .git\n"
+    )
 
 
 def test_pre_commit_uses_exact_index_and_is_silent_when_healthy(tmp_path: Path) -> None:
