@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from murlocs.cli import build_cli
@@ -19,6 +20,21 @@ def root_only(tmp_path: Path) -> Path:
     (root / "legacy" / "old.py").write_text("OLD = 1\n", encoding="utf-8")
     assert invoke("init", "--repo", str(root), "--name", "Roll").exit_code == 0
     return root
+
+
+def enable_codeowners(root: Path, content: str | None) -> None:
+    manifest = root / ".murlocs" / "manifest.toml"
+    text = manifest.read_text(encoding="utf-8")
+    manifest.write_text(
+        text.replace(
+            "[policies]\nrequire_scope_invariants = false",
+            "[policies]\nrequire_scope_invariants = false\nvalidate_codeowners = true",
+        ),
+        encoding="utf-8",
+    )
+    if content is not None:
+        (root / ".github").mkdir()
+        (root / ".github" / "CODEOWNERS").write_text(content, encoding="utf-8")
 
 
 def test_dry_run_previews_and_writes_nothing(tmp_path):
@@ -46,6 +62,88 @@ def test_apply_adds_scope_and_check_passes(tmp_path):
     assert invoke("check", "--repo", str(root)).exit_code == 0
     # The root map gains provenance once the network becomes layered.
     assert "## Provenance" in (root / "AGENTS.md").read_text(encoding="utf-8")
+
+
+def test_dry_run_previews_missing_codeowners_entry_as_structured_requirement(tmp_path):
+    root = root_only(tmp_path)
+    enable_codeowners(root, "")
+
+    result = invoke(
+        "--dry-run",
+        "add-scope",
+        "docs",
+        "--repo",
+        str(root),
+        "--owners",
+        "@docs",
+        "--format",
+        "json",
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["codeowners_requirements"] == [
+        {
+            "actual_owners": [],
+            "blocking": True,
+            "entry": "/.murlocs/layers/docs.toml @docs",
+            "file": ".github/CODEOWNERS",
+            "owners": ["@docs"],
+            "path": ".murlocs/layers/docs.toml",
+            "status": "missing-entry",
+        }
+    ]
+    assert not (root / ".murlocs" / "layers" / "docs.toml").exists()
+
+
+def test_apply_reports_codeowners_resolution_and_makes_no_partial_writes(tmp_path):
+    root = root_only(tmp_path)
+    enable_codeowners(root, "")
+
+    result = invoke("add-scope", "docs", "--repo", str(root), "--owners", "@docs")
+
+    assert result.exit_code == 1
+    assert "/.murlocs/layers/docs.toml @docs" in result.stderr
+    assert "Murlocs will not edit" not in result.stderr
+    assert not (root / ".murlocs" / "layers" / "docs.toml").exists()
+    assert "[[layers]]" not in (root / ".murlocs" / "manifest.toml").read_text(
+        encoding="utf-8"
+    )
+
+
+def test_codeowners_mismatch_is_blocking_and_exact_match_applies(tmp_path):
+    root = root_only(tmp_path)
+    codeowners = root / ".github" / "CODEOWNERS"
+    enable_codeowners(root, "/.murlocs/layers/docs.toml @someone-else\n")
+
+    preview = invoke(
+        "--dry-run", "add-scope", "docs", "--repo", str(root), "--owners", "@docs"
+    )
+    assert preview.exit_code == 0
+    assert "blocking: owner-mismatch" in preview.output
+    assert "current owners: @someone-else" in preview.output
+    assert invoke(
+        "add-scope", "docs", "--repo", str(root), "--owners", "@docs"
+    ).exit_code == 1
+
+    codeowners.write_text("/.murlocs/layers/docs.toml @docs\n", encoding="utf-8")
+    applied = invoke("add-scope", "docs", "--repo", str(root), "--owners", "@docs")
+    assert applied.exit_code == 0
+    assert (root / ".murlocs" / "layers" / "docs.toml").is_file()
+
+
+def test_missing_codeowners_file_is_previewed_without_creating_it(tmp_path):
+    root = root_only(tmp_path)
+    enable_codeowners(root, None)
+
+    result = invoke(
+        "--dry-run", "add-scope", "docs", "--repo", str(root), "--owners", "@docs"
+    )
+
+    assert result.exit_code == 0
+    assert "blocking: missing-file" in result.output
+    assert ".github/CODEOWNERS" in result.output
+    assert not (root / ".github" / "CODEOWNERS").exists()
 
 
 def test_scopes_can_be_added_independently(tmp_path):

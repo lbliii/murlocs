@@ -25,7 +25,7 @@ from murlocs.eval.model import (
     RunScore,
     TaskDefinition,
 )
-from murlocs.eval.store import load_task, render_summary, save_results
+from murlocs.eval.store import SCHEMA_VERSION, load_runs, load_task, render_summary, save_results
 
 __all__ = [
     "ARMS",
@@ -37,12 +37,14 @@ __all__ = [
     "RunEvidence",
     "RunRecord",
     "RunScore",
+    "SCHEMA_VERSION",
     "TaskDefinition",
     "check_correctness",
     "compare_runs",
     "estimate_tokens",
     "guidance_bytes",
     "load_task",
+    "load_runs",
     "render_summary",
     "save_results",
     "score_run",
