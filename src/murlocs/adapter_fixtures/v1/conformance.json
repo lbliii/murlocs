@@ -1,0 +1,136 @@
+{
+  "contract": "io.murlocs.adapter-conformance",
+  "schema_version": 1,
+  "repository": {
+    "files": [
+      {
+        "path": ".murlocs/manifest.toml",
+        "content": "schema_version = 1\nnetwork = \"Adapter fixture\"\nprotocol = \".murlocs/PROTOCOL.md\"\n"
+      },
+      {"path": ".murlocs/PROTOCOL.md", "content": "# Fixture protocol\n"},
+      {"path": "src/app.py", "content": "VALUE = 1\n"},
+      {"path": ".adapter-conformance/impact-dependency", "content": "generation-1\n"}
+    ]
+  },
+  "scenarios": [
+    {
+      "id": "task-start-healthy-silent-no-prompt",
+      "request": {"contract": "io.murlocs.activation", "schema_version": 1, "event": "task-start", "correlation_id": "adapter-healthy"},
+      "control": {"outcome": "pass", "fault": null, "cache": "miss", "root_format": "posix", "mutations": []},
+      "setup": {"files": [], "remove": []},
+      "expected": {"status": "completed", "code": "MURLOCS_ACTIVATION_OK", "operation_calls": ["check"], "receipts": ["check"], "cache": "miss", "resolution_class": "pass", "silent": true, "agent_prompted": false, "event_mode": "host-enforced", "fallbacks": []}
+    },
+    {
+      "id": "task-start-exact-cache-hit",
+      "request": {"contract": "io.murlocs.activation", "schema_version": 1, "event": "task-start", "correlation_id": "adapter-cache-hit"},
+      "control": {"outcome": "pass", "fault": null, "cache": "hit", "root_format": "posix", "mutations": []},
+      "setup": {"files": [], "remove": []},
+      "expected": {"status": "completed", "code": "MURLOCS_ACTIVATION_OK", "operation_calls": [], "receipts": ["check"], "cache": "hit", "resolution_class": "pass", "silent": true, "agent_prompted": false, "event_mode": "host-enforced", "fallbacks": []}
+    },
+    {
+      "id": "task-start-host-metadata-is-inert",
+      "request": {"contract": "io.murlocs.activation", "schema_version": 1, "event": "task-start", "correlation_id": "adapter-host-metadata", "host_extension": {"vendor": "fixture", "presentation": "verbose"}},
+      "control": {"outcome": "pass", "fault": null, "cache": "miss", "root_format": "posix", "mutations": []},
+      "setup": {"files": [], "remove": []},
+      "expected": {"status": "completed", "code": "MURLOCS_ACTIVATION_OK", "operation_calls": ["check"], "receipts": ["check"], "cache": "miss", "resolution_class": "pass", "silent": true, "agent_prompted": false, "event_mode": "host-enforced", "fallbacks": []}
+    },
+    {
+      "id": "task-start-unsupported-lifecycle-version",
+      "request": {"contract": "io.murlocs.activation", "schema_version": 2, "event": "task-start", "correlation_id": "adapter-version"},
+      "control": {"outcome": null, "fault": "unsupported-version", "cache": "miss", "root_format": "posix", "mutations": []},
+      "setup": {"files": [], "remove": []},
+      "expected": {"status": "invalid", "code": "MURLOCS_ACTIVATION_INVALID", "operation_calls": [], "receipts": [], "cache": "miss", "resolution_class": null, "silent": false, "agent_prompted": false, "event_mode": "host-enforced", "fallbacks": []}
+    },
+    {
+      "id": "task-start-deterministic-repair",
+      "request": {"contract": "io.murlocs.activation", "schema_version": 1, "event": "task-start", "correlation_id": "adapter-repair"},
+      "control": {"outcome": "deterministic-repair", "fault": null, "cache": "miss", "root_format": "posix", "mutations": []},
+      "setup": {"files": [], "remove": []},
+      "expected": {"status": "completed", "code": "MURLOCS_ACTIVATION_OK", "operation_calls": ["check"], "receipts": ["check"], "cache": "miss", "resolution_class": "deterministic_repair", "silent": false, "agent_prompted": false, "event_mode": "host-enforced", "fallbacks": []}
+    },
+    {
+      "id": "task-start-absent-windows-drive",
+      "request": {"contract": "io.murlocs.activation", "schema_version": 1, "event": "task-start", "correlation_id": "adapter-absent-drive"},
+      "control": {"outcome": null, "fault": "absent", "cache": "miss", "root_format": "windows-drive", "mutations": []},
+      "setup": {"files": [], "remove": [".murlocs/manifest.toml"]},
+      "expected": {"status": "not_applicable", "code": "MURLOCS_ACTIVATION_ABSENT", "operation_calls": [], "receipts": [], "cache": "miss", "resolution_class": null, "silent": true, "agent_prompted": false, "event_mode": "host-enforced", "fallbacks": []}
+    },
+    {
+      "id": "task-start-absent-windows-unc",
+      "request": {"contract": "io.murlocs.activation", "schema_version": 1, "event": "task-start", "correlation_id": "adapter-absent-unc"},
+      "control": {"outcome": null, "fault": "absent", "cache": "miss", "root_format": "windows-unc", "mutations": []},
+      "setup": {"files": [], "remove": [".murlocs/manifest.toml"]},
+      "expected": {"status": "not_applicable", "code": "MURLOCS_ACTIVATION_ABSENT", "operation_calls": [], "receipts": [], "cache": "miss", "resolution_class": null, "silent": true, "agent_prompted": false, "event_mode": "host-enforced", "fallbacks": []}
+    },
+    {
+      "id": "prospective-impact-agent-action",
+      "request": {"contract": "io.murlocs.activation", "schema_version": 1, "event": "prospective-impact", "correlation_id": "adapter-agent", "paths": ["src/app.py"]},
+      "control": {"outcome": "agent-action", "fault": null, "cache": "miss", "root_format": "posix", "mutations": []},
+      "setup": {"files": [], "remove": []},
+      "expected": {"status": "completed", "code": "MURLOCS_ACTIVATION_OK", "operation_calls": ["impact"], "receipts": ["impact"], "cache": "miss", "resolution_class": "agent_action", "silent": false, "agent_prompted": false, "event_mode": "prompt-mediated", "fallbacks": []}
+    },
+    {
+      "id": "prospective-impact-authority-required",
+      "request": {"contract": "io.murlocs.activation", "schema_version": 1, "event": "prospective-impact", "correlation_id": "adapter-authority", "baseline": {"kind": "git-head"}},
+      "control": {"outcome": "authority-required", "fault": null, "cache": "miss", "root_format": "posix", "mutations": []},
+      "setup": {"files": [], "remove": []},
+      "expected": {"status": "completed", "code": "MURLOCS_ACTIVATION_OK", "operation_calls": ["impact"], "receipts": ["impact"], "cache": "miss", "resolution_class": "authority_required", "silent": false, "agent_prompted": false, "event_mode": "prompt-mediated", "fallbacks": []}
+    },
+    {
+      "id": "prospective-impact-dependency-race",
+      "request": {"contract": "io.murlocs.activation", "schema_version": 1, "event": "prospective-impact", "correlation_id": "adapter-dependency-race", "paths": ["src/app.py"]},
+      "control": {"outcome": "agent-action", "fault": "dependency-race", "cache": "miss", "root_format": "posix", "mutations": [{"checkpoint": "after-impact", "operation": "write", "path": ".adapter-conformance/impact-dependency", "content": "generation-2\n"}]},
+      "setup": {"files": [], "remove": []},
+      "expected": {"status": "stale", "code": "MURLOCS_ACTIVATION_STALE", "operation_calls": ["impact"], "receipts": [], "cache": "miss", "resolution_class": null, "silent": false, "agent_prompted": false, "event_mode": "prompt-mediated", "fallbacks": ["git-hook", "ci"]}
+    },
+    {
+      "id": "post-edit-healthy",
+      "request": {"contract": "io.murlocs.activation", "schema_version": 1, "event": "post-edit", "correlation_id": "adapter-post-edit", "paths": ["src/app.py"]},
+      "control": {"outcome": "pass", "fault": null, "cache": "miss", "root_format": "posix", "mutations": []},
+      "setup": {"files": [], "remove": []},
+      "expected": {"status": "completed", "code": "MURLOCS_ACTIVATION_OK", "operation_calls": ["check", "impact"], "receipts": ["check", "impact"], "cache": "miss", "resolution_class": "pass", "silent": true, "agent_prompted": false, "event_mode": "host-enforced", "fallbacks": []}
+    },
+    {
+      "id": "post-edit-stale-cache-rejected",
+      "request": {"contract": "io.murlocs.activation", "schema_version": 1, "event": "post-edit", "correlation_id": "adapter-cache-reject", "paths": ["src/app.py"]},
+      "control": {"outcome": "pass", "fault": null, "cache": "rejected", "root_format": "posix", "mutations": []},
+      "setup": {"files": [], "remove": []},
+      "expected": {"status": "completed", "code": "MURLOCS_ACTIVATION_OK", "operation_calls": ["check", "impact"], "receipts": ["check", "impact"], "cache": "rejected", "resolution_class": "pass", "silent": true, "agent_prompted": false, "event_mode": "host-enforced", "fallbacks": []}
+    },
+    {
+      "id": "post-edit-state-race",
+      "request": {"contract": "io.murlocs.activation", "schema_version": 1, "event": "post-edit", "correlation_id": "adapter-state-race", "paths": ["src/app.py"]},
+      "control": {"outcome": "pass", "fault": "state-race", "cache": "miss", "root_format": "posix", "mutations": [{"checkpoint": "after-impact", "operation": "write", "path": "src/app.py", "content": "VALUE = 2\n"}]},
+      "setup": {"files": [], "remove": []},
+      "expected": {"status": "stale", "code": "MURLOCS_ACTIVATION_STALE", "operation_calls": ["check", "impact"], "receipts": [], "cache": "miss", "resolution_class": null, "silent": false, "agent_prompted": false, "event_mode": "host-enforced", "fallbacks": ["git-hook", "ci"]}
+    },
+    {
+      "id": "pre-commit-timeout",
+      "request": {"contract": "io.murlocs.activation", "schema_version": 1, "event": "pre-commit", "correlation_id": "adapter-timeout", "paths": ["src/app.py"], "enforcement": "enforcing", "deadline_ms": 1},
+      "control": {"outcome": null, "fault": "timeout", "cache": "miss", "root_format": "posix", "mutations": []},
+      "setup": {"files": [], "remove": []},
+      "expected": {"status": "timeout", "code": "MURLOCS_ACTIVATION_TIMEOUT", "operation_calls": ["check"], "receipts": [], "cache": "miss", "resolution_class": null, "silent": false, "agent_prompted": false, "event_mode": "host-enforced", "fallbacks": []}
+    },
+    {
+      "id": "pre-completion-unavailable-fallback",
+      "request": {"contract": "io.murlocs.activation", "schema_version": 1, "event": "pre-completion", "correlation_id": "adapter-unavailable", "paths": ["src/app.py"], "enforcement": "prompt-mediated"},
+      "control": {"outcome": null, "fault": "unavailable", "cache": "forbidden", "root_format": "posix", "mutations": []},
+      "setup": {"files": [], "remove": []},
+      "expected": {"status": "unavailable", "code": "MURLOCS_ACTIVATION_UNAVAILABLE", "operation_calls": [], "receipts": [], "cache": "forbidden", "resolution_class": null, "silent": false, "agent_prompted": false, "event_mode": "host-enforced", "fallbacks": ["generated-guidance", "git-hook", "ci"]}
+    },
+    {
+      "id": "pre-completion-malformed-output",
+      "request": {"contract": "io.murlocs.activation", "schema_version": 1, "event": "pre-completion", "correlation_id": "adapter-malformed", "paths": ["src/app.py"], "enforcement": "prompt-mediated"},
+      "control": {"outcome": null, "fault": "malformed", "cache": "forbidden", "root_format": "posix", "mutations": []},
+      "setup": {"files": [], "remove": []},
+      "expected": {"status": "invalid", "code": "MURLOCS_ACTIVATION_INVALID", "operation_calls": ["check"], "receipts": [], "cache": "forbidden", "resolution_class": null, "silent": false, "agent_prompted": false, "event_mode": "host-enforced", "fallbacks": ["generated-guidance", "git-hook", "ci"]}
+    },
+    {
+      "id": "pre-completion-agent-token-injection",
+      "request": {"contract": "io.murlocs.activation", "schema_version": 1, "event": "pre-completion", "correlation_id": "adapter-agent-token", "paths": ["src/app.py"], "enforcement": "prompt-mediated", "repository": {"state_id": "agent:claimed-clean"}},
+      "control": {"outcome": null, "fault": "agent-token", "cache": "forbidden", "root_format": "posix", "mutations": []},
+      "setup": {"files": [], "remove": []},
+      "expected": {"status": "invalid", "code": "MURLOCS_ACTIVATION_INVALID", "operation_calls": [], "receipts": [], "cache": "forbidden", "resolution_class": null, "silent": false, "agent_prompted": false, "event_mode": "host-enforced", "fallbacks": ["generated-guidance", "git-hook", "ci"]}
+    }
+  ]
+}

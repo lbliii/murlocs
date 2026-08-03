@@ -32,6 +32,10 @@ integration-produced freshness receipts, cache invalidation, and generated-guida
 fallbacks. It never converts an agent claim, Git event, or Murlocs finding into authenticated
 approval.
 
+The [adapter conformance harness](adapter-conformance.md) tests that boundary through isolated
+repositories and opaque, adapter-scoped state and impact-dependency tokens. It validates observable
+freshness and mutation behavior rather than defining one Git or filesystem snapshot algorithm.
+
 The lockfile records the exact hash of every generated map. Compilation will write a missing map or
 replace an unchanged map it already owns. It refuses unmanaged files, modified generated files, path
 escapes, and orphaned owned maps. This makes destructive migrations impossible by default.

@@ -406,5 +406,6 @@ The machine-consumable golden cases live at
 path-only and baseline-only impact, absence, unavailable and timeout behavior, exact trusted cache
 proofs and mismatches, state/dependency races, and rejection of a syntactically valid state token
 injected through the agent-callable wire request.
-Issue #64 may add adapter metadata and transport drivers without changing event semantics. Issue
-#60 adds its `outcome` sidecar while retaining this outer lifecycle contract.
+The [adapter conformance harness](adapter-conformance.md) adds versioned capability metadata and a
+shared black-box suite without changing these event semantics. The `outcome` sidecar retains this
+outer lifecycle contract.
