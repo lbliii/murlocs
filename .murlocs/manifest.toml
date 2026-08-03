@@ -2,158 +2,33 @@ schema_version = 1
 network = "Murlocs"
 protocol = ".murlocs/PROTOCOL.md"
 max_active_bytes = 24576
+owners = ["@lbliii"]
 
-pillars = [
-  "Repository guidance is local, layered, portable, and reviewable.",
-  "Every strong architectural claim names how it is verified.",
-  "Agent judgment raises the model; deterministic code owns compilation and checks.",
-]
-search_policy = [
-  "Read the root map before repository discovery.",
-  "Open only the nearest scoped map for the path being investigated unless the task crosses a declared edge.",
-]
-operating_rules = [
-  "Read the applicable AGENTS.md chain before editing.",
-  "Preserve unmanaged files and modified generated files.",
-  "Run the tool with Python 3.14 or newer and keep deterministic behavior at the core.",
-]
-stop_and_ask = [
-  "A change weakens generated-file ownership protections.",
-  "A verification claim cannot be tied to checked-in evidence.",
-  "A migration would overwrite existing repository guidance.",
-]
-done_criteria = [
-  "Ruff and pytest pass.",
-  "Milo verifies CLI, schema, discovery, and MCP transport parity.",
-  "Murlocs reports no manifest, coverage, or drift errors.",
-  "User-facing behavior is reflected in README.md or docs.",
-]
+[policies]
+require_scope_invariants = false
+require_layer_owners = true
+validate_codeowners = true
 
-[coverage]
-roots = ["src", "tests"]
-source_suffixes = [".py"]
+[[layers]]
+id = "repo-base"
+kind = "base"
+path = ".murlocs/layers/base.toml"
+owners = ["@lbliii"]
 
-[coverage.exemptions]
-
-[checks.pytest]
-invoke = "pytest"
-location = "pyproject.toml"
-proof_contains = "pytest"
-description = "Run behavior and safety tests."
-
-[checks.ruff]
-invoke = "ruff check ."
-location = "pyproject.toml"
-proof_contains = "[tool.ruff]"
-description = "Run static lint checks."
-
-[checks.milo-verify]
-invoke = "milo verify src/murlocs/cli.py"
-location = "pyproject.toml"
-proof_contains = "milo-cli"
-description = "Verify typed CLI, schema, discovery, and MCP transport surfaces."
-
-[[scopes]]
-id = "root"
-path = "."
-map = "AGENTS.md"
-point_of_view = "Product boundaries, manifest semantics, documentation, and release workflow."
-owns = ["README.md", "pyproject.toml", "docs", ".murlocs", ".github/workflows"]
-guardrails = ["Keep Murlocs local-first, CI-neutral, and usable without a hosted service."]
-edges = [
-  { type = "delegates-to", to = "core", what = "The product contract is implemented by the CLI core." },
-  { type = "documented-by", to = "bootstrap-skill", what = "The skill guides agent-assisted repository discovery." },
-]
-
-[[scopes]]
+[[layers]]
 id = "core"
-path = "src/murlocs"
-map = "src/murlocs/AGENTS.md"
-point_of_view = "Deterministic parsing, rendering, ownership, verification, and CLI behavior."
-owns = ["src/murlocs"]
-guardrails = [
-  "Never execute commands registered in a repository manifest.",
-  "Resolve every manifest-controlled path inside the repository root.",
-  "Keep write commands CLI-only until agent writes have repository confinement and approval policy.",
-]
-edges = [{ type = "verified-by", to = "tests", what = "Safety and behavior are captured as tests." }]
+kind = "domain"
+path = ".murlocs/layers/core.toml"
+owners = ["@lbliii"]
 
-[[scopes]]
+[[layers]]
 id = "tests"
-path = "tests"
-map = "tests/AGENTS.md"
-point_of_view = "Behavioral contracts, destructive-operation guards, and regression coverage."
-owns = ["tests"]
-guardrails = ["Use isolated temporary repositories for filesystem behavior."]
-edges = [{ type = "verifies", to = "core", what = "Tests exercise public CLI outcomes." }]
+kind = "domain"
+path = ".murlocs/layers/tests.toml"
+owners = ["@lbliii"]
 
-[[scopes]]
+[[layers]]
 id = "bootstrap-skill"
-path = "skills/bootstrap-murlocs"
-map = "skills/bootstrap-murlocs/AGENTS.md"
-point_of_view = "Agent-assisted discovery and migration into the deterministic manifest model."
-owns = ["skills/bootstrap-murlocs"]
-guardrails = ["Do not let the skill bypass CLI ownership protections or invent enforcement proof."]
-edges = [{ type = "invokes", to = "core", what = "The skill uses the CLI after drafting the manifest." }]
-
-[judgments.core]
-advocate = ["Deterministic, loss-reporting translation for known repository guidance schemas."]
-do_not = ["Execute registered checks or silently discard unsupported migration fields."]
-
-[[invariants]]
-id = "managed-output-safety"
-scope = "core"
-statement = "Compilation refuses unmanaged and modified generated maps."
-severity = "critical"
-verification = "command"
-enforced_by = "pytest"
-
-[[invariants]]
-id = "no-command-execution"
-scope = "core"
-statement = "Validation inspects command proof but never executes registered commands."
-severity = "critical"
-verification = "manual"
-evidence_file = "docs/architecture.md"
-anchor = "does not call a model"
-
-[[invariants]]
-id = "typed-surface-parity"
-scope = "core"
-statement = "One typed Milo registry defines terminal, programmatic, MCP, and discovery surfaces."
-severity = "important"
-verification = "command"
-enforced_by = "milo-verify"
-
-[[invariants]]
-id = "legacy-migration-parity"
-scope = "core"
-statement = "Known legacy steward fields translate deterministically or fail visibly without repository writes."
-severity = "critical"
-verification = "command"
-enforced_by = "pytest"
-
-[[invariants]]
-id = "migration-rollback-safety"
-scope = "core"
-statement = "Adoption backs up exact legacy maps and rollback refuses modified adopted output."
-severity = "critical"
-verification = "command"
-enforced_by = "pytest"
-
-[[invariants]]
-id = "thin-authoring-layer"
-scope = "bootstrap-skill"
-statement = "The skill delegates deterministic compilation and verification to the CLI."
-severity = "important"
-verification = "manual"
-evidence_file = "skills/bootstrap-murlocs/SKILL.md"
-anchor = "Keep those responsibilities separate"
-
-[[invariants]]
-id = "safety-regressions-tested"
-scope = "tests"
-statement = "Generated ownership and path boundaries have regression tests."
-severity = "important"
-verification = "command"
-enforced_by = "pytest"
+kind = "domain"
+path = ".murlocs/layers/bootstrap-skill.toml"
+owners = ["@lbliii"]

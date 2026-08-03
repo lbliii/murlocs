@@ -151,3 +151,34 @@ reported before compilation writes any generated file.
 
 `murlocs explain PATH` extends provenance with the effective-value trace, accepted overrides, and
 shadowed values; see `murlocs explain --json` for the full structured trace.
+
+## Murlocs repository dogfood
+
+Murlocs authors its own guidance as an owned layered network. The root manifest contains only the
+network identity, context budget, policy switches, and ordered layer declarations. The authored
+guidance lives in these sources:
+
+| Layer | Kind | Responsibility |
+| --- | --- | --- |
+| `repo-base` | base | Global guidance, coverage, registered checks, and the root scope |
+| `core` | domain | CLI and deterministic implementation guidance |
+| `tests` | domain | Behavioral and safety-test guidance |
+| `bootstrap-skill` | domain | Agent-assisted authoring guidance |
+
+Every source currently names `@lbliii`, the repository maintainer, and has an exact entry in
+`.github/CODEOWNERS`. Both `require_layer_owners` and `validate_codeowners` are enabled. A future
+team split should change the owner in the layer declaration and its CODEOWNERS entry together.
+
+The initial conversion exposed two workflow details worth retaining:
+
+- `add-scope` is intentionally a progressive-rollout command for a new scope; it does not split an
+  existing single-file manifest. The conversion therefore required a manual, reviewed partition,
+  followed by `murlocs --dry-run compile` before the normal ownership-checked compile.
+- Moving invariants beside their domain scopes can change their irrelevant global array order even
+  when keyed invariant content and every rendered guidance section remain unchanged. Migration
+  review compared keyed semantic content and then compared rendered maps without provenance; the
+  only rendered additions were the expected provenance blocks.
+
+The root map names every source in its provenance because its network table summarizes every
+scope. Scoped maps name only their domain contributor. Representative `explain` and `impact`
+traces verify those relationships after compilation.

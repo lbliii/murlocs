@@ -22,3 +22,9 @@ Do not open `.murlocs/PROTOCOL.md` or `.murlocs/manifest.toml` unless the task i
 ## Edges
 
 - `verifies` → `core`: Tests exercise public CLI outcomes.
+
+## Provenance
+
+Edit the source layer below, then run `murlocs compile`. Do not edit this generated map.
+
+- `tests` (domain) — `.murlocs/layers/tests.toml` · owners: @lbliii

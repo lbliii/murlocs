@@ -1,0 +1,57 @@
+[[scopes]]
+id = "core"
+path = "src/murlocs"
+map = "src/murlocs/AGENTS.md"
+point_of_view = "Deterministic parsing, rendering, ownership, verification, and CLI behavior."
+owns = ["src/murlocs"]
+guardrails = [
+  "Never execute commands registered in a repository manifest.",
+  "Resolve every manifest-controlled path inside the repository root.",
+  "Keep write commands CLI-only until agent writes have repository confinement and approval policy.",
+]
+edges = [{ type = "verified-by", to = "tests", what = "Safety and behavior are captured as tests." }]
+
+[judgments.core]
+advocate = ["Deterministic, loss-reporting translation for known repository guidance schemas."]
+do_not = ["Execute registered checks or silently discard unsupported migration fields."]
+
+[[invariants]]
+id = "managed-output-safety"
+scope = "core"
+statement = "Compilation refuses unmanaged and modified generated maps."
+severity = "critical"
+verification = "command"
+enforced_by = "pytest"
+
+[[invariants]]
+id = "no-command-execution"
+scope = "core"
+statement = "Validation inspects command proof but never executes registered commands."
+severity = "critical"
+verification = "manual"
+evidence_file = "docs/architecture.md"
+anchor = "does not call a model"
+
+[[invariants]]
+id = "typed-surface-parity"
+scope = "core"
+statement = "One typed Milo registry defines terminal, programmatic, MCP, and discovery surfaces."
+severity = "important"
+verification = "command"
+enforced_by = "milo-verify"
+
+[[invariants]]
+id = "legacy-migration-parity"
+scope = "core"
+statement = "Known legacy steward fields translate deterministically or fail visibly without repository writes."
+severity = "critical"
+verification = "command"
+enforced_by = "pytest"
+
+[[invariants]]
+id = "migration-rollback-safety"
+scope = "core"
+statement = "Adoption backs up exact legacy maps and rollback refuses modified adopted output."
+severity = "critical"
+verification = "command"
+enforced_by = "pytest"

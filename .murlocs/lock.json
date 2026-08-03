@@ -1,27 +1,51 @@
 {
   "generated": {
     "AGENTS.md": {
-      "sha256": "6da7ba9fbeb7aaea4d0bf8883a09177cca874e06a5a82d71afcbc615c8e352b4"
+      "sha256": "7feb80d24643acc3ded5d6f6f28e437716a5b9a63674c236b1cb5064b7ba6bbc"
     },
     "skills/bootstrap-murlocs/AGENTS.md": {
-      "sha256": "69f6ba9129b51b73baf89da10d739957823d72d173ee9d2f69265e6199ba0def"
+      "sha256": "9de83a38841174543541174e011676bc28dd9b39099bf1e5bb4402aeb2d316ca"
     },
     "src/murlocs/AGENTS.md": {
-      "sha256": "82f6fff8c6cac32a272bf9be98c13f855b87d94b59aefc939a5ba6d592f7de2d"
+      "sha256": "68b148bdaec1f6d1797f1e9583c59f3daee8d6c46bcd091b5dc6921698c5686d"
     },
     "tests/AGENTS.md": {
-      "sha256": "cda9e6e02b2cf9c7844dcbea868301b54272c7c3b0b318969dc00396ffdd8fc6"
+      "sha256": "aadbf79013fba4bdc88052b304e5df85b4f5c3dfcd543a87cb4f3b537b400048"
     }
   },
   "lock_version": 1,
-  "manifest_sha256": "0fde0f766319db1cf63646ebb308b56ac65e02229ff8123cac0030dd426a5ecc",
+  "manifest_sha256": "783283e823a278bdfa9dfe0a88c51085c7fa2a8cc956ba5fe82bba3a3d26fb24",
   "schema_version": 1,
   "sources": [
     {
       "id": "manifest",
       "kind": "base",
       "path": ".murlocs/manifest.toml",
-      "sha256": "0fde0f766319db1cf63646ebb308b56ac65e02229ff8123cac0030dd426a5ecc"
+      "sha256": "783283e823a278bdfa9dfe0a88c51085c7fa2a8cc956ba5fe82bba3a3d26fb24"
+    },
+    {
+      "id": "repo-base",
+      "kind": "base",
+      "path": ".murlocs/layers/base.toml",
+      "sha256": "f97bea4a0cd3ffc7bb9f77580768e6753e2618f0194764a54d395c48820b5365"
+    },
+    {
+      "id": "core",
+      "kind": "domain",
+      "path": ".murlocs/layers/core.toml",
+      "sha256": "e2424eb396fe20e5f5a3f9f79248f93ff28ce0a21461b79fe7c9b2165c2b37c3"
+    },
+    {
+      "id": "tests",
+      "kind": "domain",
+      "path": ".murlocs/layers/tests.toml",
+      "sha256": "bf52a45635d9f060f2a910d2a7162c59ea8a4537521d2eae31934fb0cef909c4"
+    },
+    {
+      "id": "bootstrap-skill",
+      "kind": "domain",
+      "path": ".murlocs/layers/bootstrap-skill.toml",
+      "sha256": "2b6d42a9c17de587f2855202be57c9c14da0d68ea323918583214b94114a9f6d"
     }
   ],
   "tool_version": "0.1.0"

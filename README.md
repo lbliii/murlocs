@@ -10,7 +10,7 @@ speaks for one part of the codebase; the network explains how those parts depend
 
 A prompt can help author guidance once. Murlocs owns the repeatable infrastructure around it:
 
-- one versioned `.murlocs/manifest.toml` as the source of truth;
+- one versioned `.murlocs/manifest.toml` control plane with optional owner-focused layer sources;
 - deterministic compilation into standard, tool-agnostic `AGENTS.md` files;
 - explicit scopes, cross-scope edges, invariants, proofs, and context budgets;
 - coverage checks for source-bearing units;

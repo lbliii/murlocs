@@ -22,3 +22,9 @@ Do not open `.murlocs/PROTOCOL.md` or `.murlocs/manifest.toml` unless the task i
 ## Edges
 
 - `invokes` → `core`: The skill uses the CLI after drafting the manifest.
+
+## Provenance
+
+Edit the source layer below, then run `murlocs compile`. Do not edit this generated map.
+
+- `bootstrap-skill` (domain) — `.murlocs/layers/bootstrap-skill.toml` · owners: @lbliii
