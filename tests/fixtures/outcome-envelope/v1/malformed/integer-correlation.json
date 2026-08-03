@@ -1,0 +1,22 @@
+{
+  "contract": "io.murlocs.outcome",
+  "schema_version": 1,
+  "code": "MURLOCS_OUTCOME_PASS",
+  "status": "pass",
+  "severity": "none",
+  "blocking": false,
+  "resolution_class": "pass",
+  "source": {"operation": "check", "exit_code": 0, "murlocs_version": "0.1.0"},
+  "correlation": {
+    "correlation_id": 7,
+    "state_id": null,
+    "dependency_id": null,
+    "token_source": "none",
+    "token_scope": null
+  },
+  "findings": [],
+  "next_actions": [],
+  "change": {"repository_state_changed": false, "paths": []},
+  "silent": true,
+  "summary": "Malformed correlation."
+}

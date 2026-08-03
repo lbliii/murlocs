@@ -9,6 +9,9 @@ from typing import Any
 
 import pytest
 
+from murlocs.errors import MurlocsError
+from murlocs.outcome import parse_outcome
+
 ROOT = Path(__file__).parents[1]
 FIXTURE = ROOT / "tests/fixtures/activation-lifecycle/v1/conformance.json"
 CONTRACT_DOC = ROOT / "docs/activation-lifecycle.md"
@@ -391,17 +394,6 @@ def validate_case(data: dict[str, Any], case: dict[str, Any]) -> None:
     else:
         require(blocking is None, f"{case['id']}: unassessed blocking must be null")
 
-    outcome = response.get("outcome")
-    require(
-        outcome is None or isinstance(outcome, dict),
-        f"{case['id']}: outcome must be null, omitted, or an object",
-    )
-    require(response.get("writes") == [], f"{case['id']}: lifecycle attempted a write")
-    require(
-        not {"command", "argv", "shell"}.intersection(keys_below(response)),
-        f"{case['id']}: opaque command field",
-    )
-
     operations = response.get("operations")
     require(isinstance(operations, list), f"{case['id']}: operations must be a list")
     if status == "completed":
@@ -412,6 +404,76 @@ def validate_case(data: dict[str, Any], case: dict[str, Any]) -> None:
         )
     else:
         require(operations == [], f"{case['id']}: discarded execution retained receipts")
+
+    outcome = response.get("outcome")
+    require(
+        outcome is None or isinstance(outcome, dict),
+        f"{case['id']}: outcome must be null, omitted, or an object",
+    )
+    parsed_outcome = None
+    if isinstance(outcome, dict) and outcome.get("contract") == "io.murlocs.outcome":
+        try:
+            parsed_outcome = parse_outcome(outcome)
+        except MurlocsError as exc:
+            raise ContractViolation(f"{case['id']}: invalid outcome: {exc}") from exc
+        correlation = parsed_outcome["correlation"]
+        require(
+            correlation["correlation_id"] == response["correlation_id"],
+            f"{case['id']}: outcome correlation mismatch",
+        )
+        require(
+            correlation["state_id"] == response_repo["state_id"],
+            f"{case['id']}: outcome state mismatch",
+        )
+        require(
+            correlation["token_scope"] == response_repo["token_scope"],
+            f"{case['id']}: outcome token scope mismatch",
+        )
+        receipt_operations = [receipt["operation"] for receipt in operations]
+        source_operation = parsed_outcome["source"]["operation"]
+        provenance_operations = {
+            finding["provenance"]["operation"]
+            for finding in parsed_outcome["findings"]
+        }
+        if source_operation == "aggregate":
+            require(
+                len(receipt_operations) > 1,
+                f"{case['id']}: aggregate outcome requires multiple receipts",
+            )
+            require(
+                provenance_operations.issubset(set(receipt_operations)),
+                f"{case['id']}: aggregate provenance lacks a receipt",
+            )
+        else:
+            require(
+                source_operation in receipt_operations,
+                f"{case['id']}: outcome operation lacks a receipt",
+            )
+            require(
+                provenance_operations.issubset({source_operation}),
+                f"{case['id']}: outcome provenance mismatches its receipt",
+            )
+        require(
+            parsed_outcome["source"]["exit_code"]
+            == max(receipt["exit_code"] for receipt in operations),
+            f"{case['id']}: outcome exit does not match receipts",
+        )
+        if "impact" in receipt_operations and source_operation in {"impact", "aggregate"}:
+            require(
+                correlation["dependency_id"]
+                == host_context.get("impact_dependency_id"),
+                f"{case['id']}: outcome dependency mismatch",
+            )
+    require(response.get("writes") == [], f"{case['id']}: lifecycle attempted a write")
+    command_scan = (
+        {key: value for key, value in response.items() if key != "outcome"}
+        if parsed_outcome is not None
+        else response
+    )
+    require(
+        not {"command", "argv", "shell"}.intersection(keys_below(command_scan)),
+        f"{case['id']}: opaque command field",
+    )
 
     dependency_present = "impact_dependency_id" in host_context
     observed_dependency_present = "observed_dependency_id" in execution
@@ -885,14 +947,73 @@ def test_normative_mutation_is_rejected(name: str, mutation: Mutation):
 def test_outcome_sidecar_is_forward_compatible_and_unknown_fields_are_ignored():
     data = copy.deepcopy(load_fixture())
     healthy = by_id(data, "task-start-healthy")["response"]
-    healthy["outcome"] = {
-        "schema_version": 1,
-        "resolution_class": "pass",
-        "future_extension": {"ignored": True},
+    healthy["outcome"]["future_extension"] = {
+        "shell": "ignored metadata, never an action"
     }
     healthy["unknown_activation_extension"] = {"also": "ignored"}
     by_id(data, "prospective-impact-focused")["response"].pop("outcome")
     validate_contract_fixture(data)
+
+    unparsed = copy.deepcopy(load_fixture())
+    by_id(unparsed, "task-start-healthy")["response"]["outcome"] = {
+        "schema_version": 1,
+        "shell": "not protected by a parsed contract",
+    }
+    with pytest.raises(ContractViolation, match="opaque command field"):
+        validate_contract_fixture(unparsed)
+
+
+def test_versioned_outcomes_bind_to_lifecycle_without_overriding_blocking():
+    data = load_fixture()
+    healthy = by_id(data, "task-start-healthy")["response"]
+    impact = by_id(data, "prospective-impact-focused")["response"]
+
+    assert parse_outcome(healthy["outcome"])["resolution_class"] == "pass"
+    parsed_impact = parse_outcome(impact["outcome"])
+    aggregate = parse_outcome(by_id(data, "post-edit-healthy")["response"]["outcome"])
+    assert parsed_impact["resolution_class"] == "authority_required"
+    assert parsed_impact["status"] == "advisory"
+    assert parsed_impact["blocking"] is False
+    assert impact["repository"]["blocking"] is False
+    assert parsed_impact["correlation"]["dependency_id"]
+    assert aggregate["source"]["operation"] == "aggregate"
+
+
+def test_aggregate_outcome_requires_receipt_provenance_and_impact_dependency():
+    data = copy.deepcopy(load_fixture())
+    post_edit = by_id(data, "post-edit-healthy")
+    impact = copy.deepcopy(by_id(data, "prospective-impact-focused")["response"]["outcome"])
+    host = post_edit["request"]["host_context"]
+    impact["source"]["operation"] = "aggregate"
+    impact["correlation"].update(
+        correlation_id=post_edit["response"]["correlation_id"],
+        state_id=host["state_id"],
+        dependency_id=host["impact_dependency_id"],
+        token_scope=host["token_scope"],
+    )
+    post_edit["response"]["outcome"] = impact
+    validate_contract_fixture(data)
+
+    bad_provenance = copy.deepcopy(data)
+    by_id(bad_provenance, "post-edit-healthy")["response"]["outcome"]["findings"][0][
+        "provenance"
+    ]["operation"] = "aggregate"
+    with pytest.raises(ContractViolation, match="provenance lacks a receipt"):
+        validate_contract_fixture(bad_provenance)
+
+    bad_dependency = copy.deepcopy(data)
+    by_id(bad_dependency, "post-edit-healthy")["response"]["outcome"]["correlation"][
+        "dependency_id"
+    ] = "dependency:wrong"
+    with pytest.raises(ContractViolation, match="dependency mismatch"):
+        validate_contract_fixture(bad_dependency)
+
+    single_receipt = copy.deepcopy(load_fixture())
+    by_id(single_receipt, "prospective-impact-focused")["response"]["outcome"]["source"][
+        "operation"
+    ] = "aggregate"
+    with pytest.raises(ContractViolation, match="requires multiple receipts"):
+        validate_contract_fixture(single_receipt)
 
 
 def test_trusted_tokens_are_out_of_band_and_impact_dependencies_are_operation_local():
@@ -1002,6 +1123,7 @@ def test_impact_dependency_race_is_stale_without_receipts():
     }
     case["response"]["repository"]["blocking"] = None
     case["response"]["operations"] = []
+    case["response"]["outcome"] = None
     validate_contract_fixture(data)
 
 
