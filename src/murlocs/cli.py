@@ -37,6 +37,13 @@ from murlocs.model import Manifest
 from murlocs.paths import repo_path
 from murlocs.render import compile_manifest, prepare_manifest, render_outputs
 from murlocs.rollout import ScopePlan, apply_add_scope, plan_add_scope
+from murlocs.split import (
+    SplitPlan,
+    apply_split_layers,
+    parse_assignments,
+    parse_split_targets,
+    plan_split_layers,
+)
 from murlocs.verify import Finding, validate
 
 
@@ -771,6 +778,23 @@ class AddScopePayload(TypedDict):
     dry_run: bool
 
 
+class SplitLayersPayload(TypedDict):
+    ok: bool
+    root_manifest: str
+    layers: list[dict[str, Any]]
+    root_edits: list[str]
+    moved: dict[str, list[str]]
+    decisions: list[str]
+    semantic_changes: list[str]
+    order_only_changes: list[str]
+    rendered_changes: list[dict[str, Any]]
+    budgets: list[dict[str, Any]]
+    codeowners_requirements: list[CodeownersRequirementPayload]
+    blocking_findings: list[FindingPayload]
+    written: list[str]
+    dry_run: bool
+
+
 def add_scope_command(
     path: Annotated[str, Positional("PATH")],
     repo: Annotated[str, Option(metavar="PATH")] = ".",
@@ -837,6 +861,157 @@ def add_scope_command(
         },
         terminal_text=_render_add_scope(plan, dry_run),
     )
+
+
+def split_layers_command(
+    repo: Annotated[str, Option(metavar="PATH")] = ".",
+    scope: Annotated[list[str] | None, Option(metavar="SCOPE=LAYER,KIND[,OWNER...]")] = None,
+    root_owner: Annotated[list[str] | None, Option(metavar="OWNER")] = None,
+    check: Annotated[list[str] | None, Option(metavar="CHECK=LAYER|root")] = None,
+    coverage_root: Annotated[list[str] | None, Option(metavar="PATH=LAYER|root")] = None,
+    coverage_exemption: Annotated[list[str] | None, Option(metavar="PATH=LAYER|root")] = None,
+    apply: bool = False,
+    ctx: Context | None = None,
+) -> SplitLayersPayload | FailurePayload:
+    """Split selected scopes from one manifest into owner-focused layers.
+
+    Args:
+        repo: Repository root containing a single-file Murlocs manifest.
+        scope: Scope move as `SCOPE=LAYER,KIND[,OWNER...]`; repeat as needed.
+        root_owner: Owners for the root manifest control plane.
+        check: Explicit destination for a shared or exceptional check.
+        coverage_root: Explicit destination for a coverage root.
+        coverage_exemption: Explicit destination for a coverage exemption.
+        apply: Commit the previewed split transaction; omission is read-only.
+        ctx: Milo host context used to honor dry-run policy.
+    """
+    try:
+        root = _root(repo)
+        plan = plan_split_layers(
+            root,
+            parse_split_targets(scope or []),
+            root_owners=tuple(root_owner or ()),
+            check_assignments=parse_assignments(check or [], option="check"),
+            coverage_root_assignments=parse_assignments(
+                coverage_root or [], option="coverage-root"
+            ),
+            exemption_assignments=parse_assignments(
+                coverage_exemption or [], option="coverage-exemption"
+            ),
+        )
+        dry_run = not apply or bool(ctx is not None and ctx.dry_run)
+        written = [] if dry_run else apply_split_layers(root, plan)
+    except MurlocsError as exc:
+        return _failure("MURLOCS_SPLIT_LAYERS", exc)
+
+    return CommandResult(
+        {
+            "ok": True,
+            "root_manifest": ".murlocs/manifest.toml",
+            "layers": [
+                {
+                    "id": target.layer_id,
+                    "kind": target.kind,
+                    "path": f".murlocs/layers/{target.layer_id}.toml",
+                    "owners": list(target.owners),
+                    "scope": target.scope_id,
+                }
+                for target in plan.targets
+            ],
+            "root_edits": list(plan.root_edits),
+            "moved": {key: list(value) for key, value in plan.moved.items()},
+            "decisions": list(plan.decisions),
+            "semantic_changes": list(plan.semantic_changes),
+            "order_only_changes": list(plan.order_only_changes),
+            "rendered_changes": [
+                {
+                    "path": item.path,
+                    "status": item.status,
+                    "provenance_only": item.provenance_only,
+                    "before_bytes": item.before_bytes,
+                    "after_bytes": item.after_bytes,
+                }
+                for item in plan.rendered_changes
+            ],
+            "budgets": [
+                {
+                    "scope": item.scope,
+                    "before_bytes": item.before_bytes,
+                    "after_bytes": item.after_bytes,
+                    "delta_bytes": item.after_bytes - item.before_bytes,
+                    "max_active_bytes": item.max_active_bytes,
+                }
+                for item in plan.budgets
+            ],
+            "codeowners_requirements": [
+                _codeowners_requirement_payload(item) for item in plan.codeowners_requirements
+            ],
+            "blocking_findings": [
+                {"code": item.code, "message": item.message} for item in plan.blocking_findings
+            ],
+            "written": written,
+            "dry_run": dry_run,
+        },
+        terminal_text=_render_split_layers(plan, dry_run, written),
+    )
+
+
+def _codeowners_requirement_payload(requirement: Any) -> CodeownersRequirementPayload:
+    return {
+        "file": requirement.file,
+        "path": requirement.path,
+        "owners": list(requirement.owners),
+        "entry": requirement.entry,
+        "status": requirement.status,
+        "actual_owners": list(requirement.actual_owners),
+        "blocking": not requirement.satisfied,
+    }
+
+
+def _render_split_layers(plan: SplitPlan, dry_run: bool, written: list[str]) -> str:
+    verb = "would split" if dry_run else "split"
+    lines = [
+        f"{verb} {len(plan.targets)} scope(s) into {len(plan.layer_toml)} layer(s)",
+        "root: .murlocs/manifest.toml",
+    ]
+    for target in plan.targets:
+        owners = f" owners={','.join(target.owners)}" if target.owners else ""
+        lines.append(f"  {target.scope_id} → {target.layer_id} ({target.kind}){owners}")
+    for layer, subjects in plan.moved.items():
+        lines.append(f"  moved to {layer}: {', '.join(subjects) or '<scope only>'}")
+    lines.append(
+        "semantic changes: "
+        + (", ".join(plan.semantic_changes) if plan.semantic_changes else "none")
+    )
+    lines.append(
+        "collection-order-only changes: "
+        + (", ".join(plan.order_only_changes) if plan.order_only_changes else "none")
+    )
+    for decision in plan.decisions:
+        lines.append(f"  decision: {decision}")
+    for change in plan.rendered_changes:
+        detail = " (provenance only)" if change.provenance_only else ""
+        lines.append(
+            f"  rendered {change.path}: {change.status}{detail}; "
+            f"{change.before_bytes} → {change.after_bytes} bytes"
+        )
+    for budget in plan.budgets:
+        lines.append(
+            f"  budget {budget.scope}: {budget.before_bytes} → {budget.after_bytes} "
+            f"of {budget.max_active_bytes} bytes"
+        )
+    for requirement in plan.codeowners_requirements:
+        state = "ready" if requirement.satisfied else f"blocking: {requirement.status}"
+        lines.append(f"  CODEOWNERS ({state}): {requirement.entry}")
+    for finding in plan.blocking_findings:
+        lines.append(f"  blocking: {finding}")
+    if dry_run:
+        lines.extend(["", "root manifest:", plan.root_toml.rstrip()])
+        for path, content in plan.layer_toml.items():
+            lines.extend(["", f"layer {path}:", content.rstrip()])
+    elif written:
+        lines.extend(f"wrote {path}" for path in written)
+    return "\n".join(lines)
 
 
 def _parse_deferrals(entries: list[str]) -> dict[str, str]:
@@ -1621,6 +1796,13 @@ def build_cli(*, name: str = "murlocs") -> CLI:
         annotations={"destructiveHint": True, "openWorldHint": True},
         terminal_renderer=_render_result,
     )(add_scope_command)
+    app.command(
+        "split-layers",
+        description="Plan or apply a single-file manifest split into owned layers",
+        surfaces=("cli",),
+        annotations={"destructiveHint": True, "openWorldHint": True},
+        terminal_renderer=_render_result,
+    )(split_layers_command)
     app.command(
         "import",
         description="Translate legacy guidance into a candidate manifest",
