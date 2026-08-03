@@ -1,0 +1,93 @@
+# Passive Git hooks
+
+Murlocs can enforce its read-only lifecycle at the two Git boundaries that exist even when no
+human is actively driving the coding session:
+
+```bash
+murlocs hook install
+murlocs hook status
+```
+
+Installation is deliberately opt-in and conservative. It writes only the default `pre-commit`
+and `pre-push` slots in the repository's common Git directory, and only when every selected slot
+is absent or already contains the exact Murlocs-owned bytes. It refuses a configured
+`core.hooksPath`, a linked worktree, an existing hook or hook manager, and a modified Murlocs hook.
+It never replaces, wraps, or silently chains another manager. `murlocs hook uninstall` removes
+only byte-exact Murlocs-owned files.
+
+Select one hook by repeating `--event`:
+
+```bash
+murlocs hook install --event pre-commit
+murlocs hook uninstall --event pre-push
+```
+
+## What runs
+
+`pre-commit` materializes the exact staged index. Unstaged worktree content is invisible. It runs
+structured `check`, then structured `impact` with the staged delete/add path set. `check` findings
+block; all impact findings remain advisory routing. A healthy run is silent and exits zero.
+Managers may repeat `--path PATH` (including `--path=-dash.py`) to forward their staged filename
+order. Each value must name an actually changed index path; duplicates are accepted as inert input,
+while Murlocs still assesses the complete index delta so a filtered manager cannot hide a change.
+
+`pre-push` strictly parses Git's bounded stdin as data and materializes each outgoing commit. It
+runs a fresh pre-completion `check` and `impact` against those immutable commit views. Deletes,
+renames, spaces, Unicode, leading dashes, and host-representable newline paths remain path values,
+never shell syntax.
+
+Both hooks have a single caller-owned deadline and fail closed on timeout, missing objects,
+malformed Git responses, over-limit views, unsafe or colliding paths, and state/dependency races.
+A staged or outgoing removal of an existing Murlocs manifest is treated as an explicit authority
+boundary, not silent absence.
+
+The adapter uses raw `ls-files`, `ls-tree`, and ordered `cat-file` responses. It disables lazy
+fetching, replacement objects, optional locks, pagers, checkout filters, external diff drivers,
+and text conversion. It does not run models, use the network, execute hooks recursively, execute
+manifest-registered checks, repair guidance, or write the repository. The structured lifecycle
+response includes bounded entry/blob/Git-call counters for observability; performance policy is a
+separate concern.
+
+## Existing hook managers
+
+Keep the manager in control and add the runner explicitly. The runner consumes pre-push updates
+from standard input and preserves its exit status.
+
+Generic shell manager entries:
+
+```sh
+# pre-commit
+murlocs hook run pre-commit
+
+# pre-push (forward the manager's original stdin)
+murlocs hook run pre-push --remote-name="$1" --remote-url="$2"
+```
+
+For `pre-commit`, use a local system hook so the exact index is assessed once rather than once per
+filename:
+
+```yaml
+repos:
+  - repo: local
+    hooks:
+      - id: murlocs
+        name: Validate Murlocs staged guidance
+        entry: murlocs hook run pre-commit
+        language: system
+        pass_filenames: false
+        always_run: true
+```
+
+Manager configuration remains user-owned. Murlocs reports occupied slots and does not edit that
+configuration.
+
+## Structured receipts
+
+Use `--format json` on `murlocs hook run` to receive the version-1 activation response. The Git
+adapter owns the opaque state token and its adapter/version/session scope. Only the actual impact
+operation receives before/after dependency tokens. Operation receipts digest canonical structured
+operation bytes; stale results are discarded. The outcome sidecar carries the closed typed policy
+from `check` and advisory routing from `impact`; hooks never execute its actions.
+
+Pre-push emits an `io.murlocs.hook-batch` envelope containing one activation response per outgoing
+non-deletion update. Remote names and URLs are accepted only as inert metadata and never opened.

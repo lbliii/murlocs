@@ -142,22 +142,22 @@ jobs:
           path: murlocs-impact.json
 ```
 
-## pre-commit reference
+## pre-commit integration
 
-The hook compares staged and working-tree content with `HEAD`, prints the human report, and leaves
-the repository's own review policy to decide whether a result should block the commit:
+The built-in passive runner validates the exact staged index and keeps impact routing advisory:
 
 ```yaml
 repos:
   - repo: local
     hooks:
-      - id: murlocs-impact
-        name: Report Murlocs guidance impact
-        entry: murlocs impact --revision-range HEAD
+      - id: murlocs
+        name: Validate Murlocs staged guidance
+        entry: murlocs hook run pre-commit
         language: system
         pass_filenames: false
         always_run: true
 ```
 
-Neither integration causes Murlocs to write repository files or run the commands registered in the
-manifest.
+See [Passive Git hooks](git-hooks.md) for the opt-in installer, existing-manager snippets, exact
+Git-view boundary, lifecycle receipts, and failure behavior. Neither integration causes Murlocs to
+write repository files or run the commands registered in the manifest.

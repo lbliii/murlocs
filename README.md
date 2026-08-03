@@ -46,6 +46,8 @@ murlocs compile
 murlocs check
 murlocs explain src/my_package/feature.py
 murlocs impact --path src/my_package/feature.py
+murlocs hook install
+murlocs hook status
 murlocs curate check
 # Preview a write without changing files.
 murlocs --dry-run compile
@@ -134,6 +136,8 @@ deterministically into the same canonical model. Single-file manifests keep work
 | `murlocs check` | Validate schema, graph, proofs, coverage, budget, ownership, and drift. |
 | `murlocs explain PATH` | Print the ordered scope, invariant, layer provenance, override, and budget trace for a path. |
 | `murlocs impact` | Classify guidance review impact for repeated `--path` values and/or a Git `--revision-range`. |
+| `murlocs hook run EVENT` | Assess the exact staged index or outgoing commit view without executing repository commands. |
+| `murlocs hook install` / `uninstall` / `status` | Conservatively manage byte-owned default Git hook slots. |
 | `murlocs curate propose ID` | Create a versioned inert proposal under `.murlocs/curation/`; never edit active guidance. |
 | `murlocs curate review ID` | Report the deterministic prospective change, ownership, conflicts, affected chains, and budget delta. |
 | `murlocs curate check` | Validate every inert proposal and its current target without changing files. |
@@ -152,6 +156,10 @@ authenticated by Murlocs. Curation owner routing follows every prospectively cha
 [Adoption status and coverage](docs/adoption.md) for the lifecycle contract and
 [Changed-path impact](docs/impact.md) for the review policy, stable output, and CI and pre-commit
 examples.
+
+The opt-in [passive Git hooks](docs/git-hooks.md) make those checks available at commit and push
+boundaries without relying on an active human or agent to remember Murlocs. Healthy runs are
+silent; installation refuses existing managers and custom hook paths rather than replacing them.
 
 The optional, separate `murlocs.eval` harness measures whether scoped guidance actually helps agents
 search less while staying correct. It ingests versioned task and recorded-run files with

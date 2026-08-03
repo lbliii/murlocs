@@ -243,22 +243,38 @@ def build_check_outcome(
         for item_resolution in item_resolutions
     }
     payloads: list[OutcomeFindingPayload] = []
+    grouped: dict[str, list[Finding]] = {}
     for item in sorted(findings, key=lambda finding: (finding.code, finding.message)):
+        grouped.setdefault(item.code, []).append(item)
+    for item_code, items in grouped.items():
+        item = items[0]
         code = _check_code(item.code)
         item_resolution = _check_resolution(item.code, repairable)
+        evidence = [
+            {
+                "kind": cast(Literal["diagnostic", "reason"], "diagnostic"),
+                "reference": finding.code,
+                "detail": finding.message,
+            }
+            for finding in items[:128]
+        ]
+        if len(items) > 128:
+            evidence[-1] = {
+                "kind": "diagnostic",
+                "reference": item.code,
+                "detail": f"{len(items) - 127} additional {item.code} issue(s)",
+            }
         payloads.append(
             {
                 "code": code,
                 "status": "blocking",
                 "severity": _CHECK_SEVERITY.get(item.code, "important"),
-                "message": item.message,
-                "evidence": [
-                    {
-                        "kind": "diagnostic",
-                        "reference": item.code,
-                        "detail": item.message,
-                    }
-                ],
+                "message": (
+                    item.message
+                    if len(items) == 1
+                    else f"murlocs found {len(items)} {item_code} issue(s)"
+                ),
+                "evidence": evidence,
                 "provenance": {
                     "operation": "check",
                     "source_codes": [item.code],
