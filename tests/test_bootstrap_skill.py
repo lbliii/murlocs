@@ -45,3 +45,5 @@ def test_bootstrap_skill_packaged_metadata_matches_state_routing_workflow():
     assert 'short_description: "Safely bootstrap or migrate repo guidance"' in metadata
     assert "$bootstrap-murlocs" in metadata
     assert "classify this repository" in metadata
+    assert "checked Murlocs guidance network" in metadata
+    assert "verified guidance network" not in metadata
