@@ -19,6 +19,13 @@ Git metadata only when given an explicit revision expression and reports review 
 asserting that guidance is semantically stale. Milo derives terminal, programmatic, MCP, and
 agent-discovery surfaces from the same typed handlers.
 
+Guidance maintenance has a second, deliberately inert proposal plane. Versioned records under
+`.murlocs/curation/` may contain candidate additions, replacements, or removals, but the compiler
+never loads that directory. An owner decision and a separate transactional apply operation are
+required before a proposal changes an active manifest or layer. See
+[Governed guidance curation](curation.md) for the lifecycle, deterministic review checks, and trust
+boundary.
+
 The lockfile records the exact hash of every generated map. Compilation will write a missing map or
 replace an unchanged map it already owns. It refuses unmanaged files, modified generated files, path
 escapes, and orphaned owned maps. This makes destructive migrations impossible by default.

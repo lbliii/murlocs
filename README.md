@@ -137,8 +137,10 @@ search less while staying correct. It ingests versioned task and recorded-run fi
 the explicit `--demo` flag. See [Guidance efficiency evaluation](docs/evaluation.md); it never runs
 as part of `compile` or `check` and never invokes a model.
 
-See [Architecture](docs/architecture.md) for trust boundaries and [Roadmap](docs/roadmap.md) for
-the planned migration and ecosystem work.
+The accepted [governed curation design](docs/curation.md) defines how agents and humans can propose
+additions, replacements, and removals without allowing unapproved candidates into compiled
+guidance. See [Architecture](docs/architecture.md) for trust boundaries and
+[Roadmap](docs/roadmap.md) for planned ecosystem work.
 
 ## Status
 
