@@ -241,8 +241,9 @@ def test_greenfield_bootstrap_with_explicit_coverage(tmp_path: Path) -> None:
 
     before, status = snapshot(root)
     compile_preview = murlocs(root, "--dry-run", "compile")
-    assert "would write AGENTS.md" in compile_preview.stdout
-    assert "would write src/app/AGENTS.md" in compile_preview.stdout
+    assert "would write" not in compile_preview.stdout
+    assert "unchanged AGENTS.md" in compile_preview.stdout
+    assert "unchanged src/app/AGENTS.md" in compile_preview.stdout
     assert_unchanged(root, before, status)
 
     murlocs(root, "compile")

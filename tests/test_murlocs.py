@@ -319,6 +319,35 @@ def test_compile_dry_run_preserves_files(tmp_path):
 
     assert result.exit_code == 0
     assert "would write AGENTS.md" in result.output
+    assert "would write .murlocs/lock.json" in result.output
+    payload = json.loads(
+        invoke("--dry-run", "compile", "--repo", str(root), "--format", "json").output
+    )
+    assert payload["changed"] == [".murlocs/lock.json", "AGENTS.md"]
+    assert payload["unchanged"] == []
+    assert (root / "AGENTS.md").read_bytes() == before_map
+    assert (root / ".murlocs" / "lock.json").read_bytes() == before_lock
+
+
+def test_compile_dry_run_reports_synchronized_outputs_as_unchanged(tmp_path):
+    root = make_repo(tmp_path)
+    initialize(root)
+    before_map = (root / "AGENTS.md").read_bytes()
+    before_lock = (root / ".murlocs" / "lock.json").read_bytes()
+
+    result = invoke("--dry-run", "compile", "--repo", str(root))
+    payload = json.loads(
+        invoke("--dry-run", "compile", "--repo", str(root), "--format", "json").output
+    )
+
+    assert result.exit_code == 0
+    assert "would write" not in result.output
+    assert result.output.splitlines() == [
+        "unchanged .murlocs/lock.json",
+        "unchanged AGENTS.md",
+    ]
+    assert payload["changed"] == []
+    assert payload["unchanged"] == [".murlocs/lock.json", "AGENTS.md"]
     assert (root / "AGENTS.md").read_bytes() == before_map
     assert (root / ".murlocs" / "lock.json").read_bytes() == before_lock
 

@@ -5,7 +5,7 @@ import sys
 import tomllib
 from dataclasses import replace
 from pathlib import Path
-from typing import Annotated, Any, Literal, TypedDict
+from typing import Annotated, Any, Literal, NotRequired, TypedDict
 
 from milo import CLI, Context, Option, Positional
 
@@ -29,6 +29,7 @@ from murlocs.impact import (
     changed_paths_from_revision,
     normalize_changed_paths,
 )
+from murlocs.lockfile import LOCK_PATH, render_lock
 from murlocs.manifest import (
     PROTOCOL_TEMPLATE,
     load_manifest,
@@ -256,6 +257,8 @@ class CompilePayload(TypedDict):
     network: str
     generated: list[str]
     dry_run: bool
+    changed: NotRequired[list[str]]
+    unchanged: NotRequired[list[str]]
 
 
 class CoveragePayload(TypedDict):
@@ -902,8 +905,10 @@ def compile_command(
         if blocking:
             messages = "; ".join(str(item) for item in blocking)
             raise MurlocsError(f"manifest validation failed: {messages}")
-        if ctx is not None and ctx.dry_run:
-            written = sorted(prepare_manifest(manifest))
+        dry_run = bool(ctx is not None and ctx.dry_run)
+        if dry_run:
+            changed, unchanged = _compile_preview(manifest)
+            written = changed
         else:
             written = compile_manifest(manifest)
     except MurlocsError as exc:
@@ -914,13 +919,41 @@ def compile_command(
             "ok": True,
             "network": manifest.network,
             "generated": written,
-            "dry_run": bool(ctx is not None and ctx.dry_run),
+            "dry_run": dry_run,
+            **({"changed": changed, "unchanged": unchanged} if dry_run else {}),
         },
-        terminal_text="\n".join(
-            f"{'would write' if ctx is not None and ctx.dry_run else 'wrote'} {relative}"
-            for relative in written
-        ),
+        terminal_text=_render_compile_result(written, unchanged if dry_run else None, dry_run),
     )
+
+
+def _compile_preview(manifest: Manifest) -> tuple[list[str], list[str]]:
+    """Return the exact output paths a compile preview would change or leave intact."""
+    outputs = prepare_manifest(manifest)
+    changed = [
+        relative
+        for relative, content in outputs.items()
+        if not (manifest.root / relative).is_file()
+        or (manifest.root / relative).read_bytes() != content.encode("utf-8")
+    ]
+    expected_lock = render_lock(
+        manifest.manifest_path.read_bytes(), outputs, manifest.sources
+    ).encode("utf-8")
+    lock_path = manifest.root / LOCK_PATH
+    if not lock_path.is_file() or lock_path.read_bytes() != expected_lock:
+        changed.append(LOCK_PATH.as_posix())
+    changed = sorted(changed)
+    unchanged = sorted((set(outputs) | {LOCK_PATH.as_posix()}) - set(changed))
+    return changed, unchanged
+
+
+def _render_compile_result(
+    written: list[str], unchanged: list[str] | None, dry_run: bool
+) -> str:
+    if not dry_run:
+        return "\n".join(f"wrote {relative}" for relative in written)
+    lines = [f"would write {relative}" for relative in written]
+    lines.extend(f"unchanged {relative}" for relative in unchanged or [])
+    return "\n".join(lines)
 
 
 class CodeownersRequirementPayload(TypedDict):
