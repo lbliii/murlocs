@@ -115,9 +115,20 @@ def test_semantic_and_rendered_diff_are_machine_readable(tmp_path):
 
 def test_adopt_prune_and_rollback_restore_exact_legacy_network(tmp_path):
     root, legacy_maps = make_legacy_repo(tmp_path)
+    managed_internal_guide = root / ".murlocs" / "active" / "AGENTS.md"
+    managed_internal_guide.parent.mkdir(parents=True)
+    managed_internal_guide.write_text("# Active internal guide\n", encoding="utf-8")
     legacy_bytes = {path: (root / path).read_bytes() for path in legacy_maps}
     candidate = candidate_from_stewards(root)
     write_candidate(root, candidate, ".murlocs/manifest.toml")
+    active_instruction_paths = {
+        item["path"] for item in inventory_repository(root)["instructions"]
+    }
+    assert active_instruction_paths == {
+        *legacy_maps,
+        ".murlocs/active/AGENTS.md",
+        "CLAUDE.md",
+    }
 
     preview = adopt_manifest(root, dry_run=True)
     assert set(preview["adopted"]) == set(legacy_maps)
@@ -132,6 +143,9 @@ def test_adopt_prune_and_rollback_restore_exact_legacy_network(tmp_path):
         for path in legacy_maps
     )
     assert (root / "CLAUDE.md").read_text() == "# User-owned guide\n"
+    assert {
+        item["path"] for item in inventory_repository(root)["instructions"]
+    } == active_instruction_paths
 
     prune_preview = prune_legacy(root, dry_run=True)
     rollback_preview = rollback_migration(root, dry_run=True)
@@ -142,6 +156,9 @@ def test_adopt_prune_and_rollback_restore_exact_legacy_network(tmp_path):
     pruned = prune_legacy(root)
     assert pruned["status"] == "pruned"
     assert not (root / ".stewards").exists()
+    assert {
+        item["path"] for item in inventory_repository(root)["instructions"]
+    } == active_instruction_paths
 
     rolled_back = rollback_migration(root)
     assert rolled_back["status"] == "rolled_back"
@@ -150,6 +167,9 @@ def test_adopt_prune_and_rollback_restore_exact_legacy_network(tmp_path):
     assert {path: (root / path).read_bytes() for path in legacy_maps} == legacy_bytes
     state = json.loads((root / ".murlocs" / "migration.json").read_text())
     assert state["status"] == "rolled_back"
+    assert {
+        item["path"] for item in inventory_repository(root)["instructions"]
+    } == active_instruction_paths
 
 
 def test_adoption_refuses_modified_legacy_map(tmp_path):
