@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 
 from milo.testing import MCPClient
 
-from murlocs.cli import build_cli
+from murlocs.cli import _normalize_impact_path_options, build_cli
 
 MANIFEST = """schema_version = 1
 network = "Impact"
@@ -120,6 +121,27 @@ def by_id(report: dict, scope_id: str) -> dict:
     return next(scope for scope in report["scopes"] if scope["id"] == scope_id)
 
 
+def commit_all(root: Path, message: str) -> None:
+    subprocess.run(["git", "add", "."], cwd=root, check=True, capture_output=True)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=Test",
+            "-c",
+            "user.email=test@example.com",
+            "-c",
+            "commit.gpgsign=false",
+            "commit",
+            "-m",
+            message,
+        ],
+        cwd=root,
+        check=True,
+        capture_output=True,
+    )
+
+
 def test_root_owned_change_requires_root_review(tmp_path):
     root = tmp_path / "repo"
     build(root)
@@ -223,43 +245,9 @@ def test_revision_range_supplies_changed_paths(tmp_path):
     root = tmp_path / "repo"
     build(root)
     subprocess.run(["git", "init"], cwd=root, check=True, capture_output=True)
-    subprocess.run(["git", "add", "."], cwd=root, check=True, capture_output=True)
-    subprocess.run(
-        [
-            "git",
-            "-c",
-            "user.name=Test",
-            "-c",
-            "user.email=test@example.com",
-            "-c",
-            "commit.gpgsign=false",
-            "commit",
-            "-m",
-            "base",
-        ],
-        cwd=root,
-        check=True,
-        capture_output=True,
-    )
+    commit_all(root, "base")
     (root / "src/worker/job.py").write_text("VALUE = 2\n", encoding="utf-8")
-    subprocess.run(["git", "add", "."], cwd=root, check=True, capture_output=True)
-    subprocess.run(
-        [
-            "git",
-            "-c",
-            "user.name=Test",
-            "-c",
-            "user.email=test@example.com",
-            "-c",
-            "commit.gpgsign=false",
-            "commit",
-            "-m",
-            "change",
-        ],
-        cwd=root,
-        check=True,
-        capture_output=True,
-    )
+    commit_all(root, "change")
 
     report = structured(root, revision_range="HEAD~1..HEAD")
 
@@ -274,8 +262,144 @@ def test_human_output_preserves_review_truth_boundary(tmp_path):
     root = tmp_path / "repo"
     build(root)
 
-    result = invoke("impact", "--path", "src/api/app/service.py", "--repo", str(root))
+    result = invoke(
+        "impact",
+        "--path",
+        "README.md",
+        "--path",
+        "src/api/app/service.py",
+        "--repo",
+        str(root),
+    )
 
     assert result.exit_code == 0
+    assert "  README.md" in result.output
+    assert "  src/api/app/service.py" in result.output
     assert "[required] api" in result.output
     assert "does not claim that guidance is false" in result.output
+
+
+def test_repeated_terminal_paths_match_programmatic_and_mcp_surfaces(tmp_path):
+    root = tmp_path / "repo"
+    build(root)
+    paths = ["README.md", "src/api/app/service.py"]
+
+    result = invoke(
+        "impact",
+        "--path",
+        paths[0],
+        "--path",
+        paths[1],
+        "--repo",
+        str(root),
+        "--format",
+        "json",
+    )
+
+    assert result.exit_code == 0
+    terminal = json.loads(result.output)
+    programmatic = build_cli().call("impact", repo=str(root), path=paths)
+    mcp = structured(root, path=paths)
+    assert terminal["input"]["paths"] == paths
+    assert terminal == programmatic == mcp
+
+
+def test_repeated_terminal_paths_accept_equals_syntax_in_order(tmp_path):
+    root = tmp_path / "repo"
+    build(root)
+
+    result = invoke(
+        "impact",
+        "--path=src/worker/job.py",
+        "--path",
+        "README.md",
+        "--path=src/api/app/service.py",
+        "--repo",
+        str(root),
+        "--format",
+        "json",
+    )
+
+    assert result.exit_code == 0
+    report = json.loads(result.output)
+    assert report["input"]["paths"] == [
+        "README.md",
+        "src/api/app/service.py",
+        "src/worker/job.py",
+    ]
+
+
+def test_impact_path_normalizer_does_not_change_unrelated_commands():
+    argv = [
+        "--output-file",
+        "impact",
+        "init",
+        "--coverage-root",
+        "src",
+        "--coverage-root",
+        "tests",
+        "--name",
+        "impact",
+    ]
+
+    assert _normalize_impact_path_options(
+        argv,
+        frozenset({"init", "impact"}),
+        frozenset({"--output-file"}),
+    ) == argv
+
+
+def test_duplicate_repeated_terminal_paths_are_deduplicated(tmp_path):
+    root = tmp_path / "repo"
+    build(root)
+
+    result = invoke(
+        "impact",
+        "--path",
+        "src/api/app/service.py",
+        "--path",
+        "src/api/app/service.py",
+        "--repo",
+        str(root),
+        "--format",
+        "json",
+    )
+
+    assert result.exit_code == 0
+    report = json.loads(result.output)
+    assert report["input"]["paths"] == ["src/api/app/service.py"]
+    assert by_id(report, "api")["reasons"] == [
+        "src/api/app/service.py is within owned path src/api/app"
+    ]
+    assert report["summary"] == {"required": 1, "recommended": 1, "unaffected": 1}
+
+
+def test_repeated_terminal_paths_union_with_revision_range(tmp_path):
+    root = tmp_path / "repo"
+    build(root)
+    subprocess.run(["git", "init"], cwd=root, check=True, capture_output=True)
+    commit_all(root, "base")
+    (root / "src/worker/job.py").write_text("VALUE = 2\n", encoding="utf-8")
+    commit_all(root, "change")
+
+    result = invoke(
+        "impact",
+        "--path",
+        "README.md",
+        "--path",
+        "src/api/app/service.py",
+        "--revision-range",
+        "HEAD~1..HEAD",
+        "--repo",
+        str(root),
+        "--format",
+        "json",
+    )
+
+    assert result.exit_code == 0
+    report = json.loads(result.output)
+    assert report["input"] == {
+        "paths": ["README.md", "src/api/app/service.py", "src/worker/job.py"],
+        "revision_range": "HEAD~1..HEAD",
+    }
+    assert report["summary"] == {"required": 3, "recommended": 0, "unaffected": 0}

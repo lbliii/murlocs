@@ -37,6 +37,78 @@ from murlocs.rollout import ScopePlan, apply_add_scope, plan_add_scope
 from murlocs.verify import Finding, validate
 
 
+def _normalize_impact_path_options(
+    argv: list[str],
+    command_names: frozenset[str],
+    root_value_options: frozenset[str] = frozenset(),
+) -> list[str]:
+    """Coalesce repeated impact paths into Milo's array-option syntax."""
+    resolved = list(argv)
+    command_index: int | None = None
+    index = 0
+    while index < len(resolved):
+        token = resolved[index]
+        if token in command_names:
+            command_index = index
+            break
+        if token in root_value_options:
+            index += 2
+            continue
+        index += 1
+    if command_index is None or resolved[command_index] != "impact":
+        return resolved
+
+    before = resolved[: command_index + 1]
+    after = resolved[command_index + 1 :]
+    normalized: list[str] = []
+    paths: list[str] = []
+    insertion_index: int | None = None
+    index = 0
+    while index < len(after):
+        token = after[index]
+        if token == "--path":
+            if insertion_index is None:
+                insertion_index = len(normalized)
+            index += 1
+            while index < len(after) and not after[index].startswith("-"):
+                paths.append(after[index])
+                index += 1
+            continue
+        if token.startswith("--path="):
+            if insertion_index is None:
+                insertion_index = len(normalized)
+            paths.append(token.partition("=")[2])
+            index += 1
+            continue
+        normalized.append(token)
+        index += 1
+
+    if insertion_index is None:
+        return resolved
+    normalized[insertion_index:insertion_index] = ["--path", *paths]
+    return [*before, *normalized]
+
+
+class MurlocsCLI(CLI):
+    """Milo registry with a 0.4.3 repeatable-array compatibility shim."""
+
+    def run(self, argv: list[str] | None = None) -> Any:
+        resolved = list(sys.argv[1:] if argv is None else argv)
+        command_names = frozenset(path.split(".", 1)[0] for path, _ in self.walk_commands())
+        root_value_options = frozenset(
+            flag
+            for option in self.root_option_specs()
+            if option.action == "store"
+            for flag in option.flags
+        )
+        normalized = _normalize_impact_path_options(
+            resolved,
+            command_names,
+            root_value_options,
+        )
+        return super().run(normalized)
+
+
 class CommandResult(dict[str, Any]):
     """Structured result with terminal-only presentation and exit metadata."""
 
@@ -1209,7 +1281,7 @@ def rollback_command(
 
 def build_cli(*, name: str = "murlocs") -> CLI:
     """Build an invocation-local Milo command registry."""
-    app = CLI(
+    app = MurlocsCLI(
         name=name,
         description="Raise and verify repository-local guidance networks.",
         version=__version__,
