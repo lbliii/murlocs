@@ -47,6 +47,11 @@ verification modes:
 
 This distinction prevents documentation aspirations from silently becoming enforcement claims.
 
+Coverage has a separate explicit state. An empty `coverage.roots` list is `unconfigured`, not a
+successful scan of the repository. With declared roots, the result is `structurally_complete` only
+when no structural coverage findings remain; this still makes no claim about the semantic truth or
+usefulness of the resulting guidance.
+
 ## Legacy compatibility boundary
 
 The v0.2a compatibility layer translates the known Chirp and Kida `.stewards` manifest dialect in

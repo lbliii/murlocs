@@ -1,14 +1,21 @@
 from __future__ import annotations
 
 import sys
+import tomllib
 from pathlib import Path
 from typing import Annotated, Any, Literal, TypedDict
 
 from milo import CLI, Context, Option, Positional
 
 from murlocs import __version__
+from murlocs.adoption import adoption_status
 from murlocs.errors import MurlocsError
-from murlocs.manifest import PROTOCOL_TEMPLATE, load_manifest, render_manifest
+from murlocs.manifest import (
+    PROTOCOL_TEMPLATE,
+    load_manifest,
+    parse_manifest_data,
+    render_manifest,
+)
 from murlocs.migration import (
     adopt_manifest,
     candidate_from_stewards,
@@ -61,6 +68,16 @@ class CompilePayload(TypedDict):
     dry_run: bool
 
 
+class CoveragePayload(TypedDict):
+    state: Literal["unconfigured", "structurally_incomplete", "structurally_complete"]
+    roots: list[str]
+    evaluated: bool
+
+
+class InitPayload(CompilePayload):
+    coverage: CoveragePayload
+
+
 class FindingPayload(TypedDict):
     code: str
     message: str
@@ -77,6 +94,7 @@ class CheckPayload(TypedDict):
     ok: bool
     findings: list[FindingPayload]
     summary: SummaryPayload
+    coverage: CoveragePayload
 
 
 class InvariantPayload(TypedDict):
@@ -158,6 +176,52 @@ class InventoryPayload(TypedDict):
     legacy_stewards: LegacySummaryPayload | None
     murlocs: MurlocsStatusPayload
     ownership_conflicts: list[str]
+
+
+class StatusEvidencePayload(TypedDict):
+    id: str
+    path: str
+    detail: str
+
+
+class StatusBlockerPayload(TypedDict):
+    id: str
+    message: str
+    evidence: list[str]
+
+
+class StatusActionPayload(TypedDict):
+    id: str
+    command: str
+    writes: bool
+    review_required: bool
+    reason: str
+
+
+class AdoptionCoveragePayload(TypedDict):
+    state: Literal["configured", "unconfigured"]
+    roots: list[str]
+
+
+class StatusPayload(TypedDict):
+    ok: bool
+    root: str
+    state: Literal[
+        "uninitialized",
+        "user_owned",
+        "legacy_detected",
+        "candidate_manifest",
+        "migration_adopted",
+        "migration_pruned",
+        "managed_synchronized",
+        "managed_invalid",
+        "ambiguous",
+    ]
+    evidence: list[StatusEvidencePayload]
+    blockers: list[StatusBlockerPayload]
+    next_actions: list[StatusActionPayload]
+    coverage: AdoptionCoveragePayload
+    semantic_correctness: Literal["not_evaluated"]
 
 
 class TranslationFindingPayload(TypedDict):
@@ -251,13 +315,15 @@ def _root(path: str) -> Path:
 def init_command(
     repo: Annotated[str, Option(metavar="PATH")] = ".",
     name: str | None = None,
+    coverage_root: Annotated[list[str] | None, Option(metavar="PATH")] = None,
     ctx: Context | None = None,
-) -> CompilePayload | FailurePayload:
+) -> InitPayload | FailurePayload:
     """Create a starter manifest and compile its root guidance map.
 
     Args:
         repo: Repository root to initialize.
         name: Guidance network name; defaults to the repository directory name.
+        coverage_root: Repository-relative source root to evaluate; repeat for multiple roots.
         ctx: Milo host context used to honor dry-run policy.
     """
     try:
@@ -272,6 +338,16 @@ def init_command(
                 "migrate it into the manifest before compiling"
             )
         network = name or root.name
+        coverage_roots = _normalize_coverage_roots(root, coverage_root or [])
+        preview = parse_manifest_data(
+            root,
+            tomllib.loads(render_manifest(network, tuple(coverage_roots))),
+        )
+        preview_findings = validate(preview)
+        coverage = _coverage_payload(
+            coverage_roots,
+            [item for item in preview_findings if item.code == "coverage"],
+        )
         if ctx is not None and ctx.dry_run:
             planned = [".murlocs/manifest.toml", ".murlocs/PROTOCOL.md", "AGENTS.md"]
             return CommandResult(
@@ -280,14 +356,31 @@ def init_command(
                     "network": network,
                     "generated": planned,
                     "dry_run": True,
+                    "coverage": coverage,
                 },
-                terminal_text="\n".join(f"would write {relative}" for relative in planned),
+                terminal_text="\n".join(
+                    [
+                        *(f"would write {relative}" for relative in planned),
+                        _coverage_terminal(coverage),
+                    ]
+                ),
             )
         manifest_path.parent.mkdir(parents=True, exist_ok=True)
-        manifest_path.write_text(render_manifest(network), encoding="utf-8")
+        manifest_path.write_text(
+            render_manifest(network, tuple(coverage_roots)), encoding="utf-8"
+        )
         protocol_path.write_text(PROTOCOL_TEMPLATE, encoding="utf-8")
         manifest = load_manifest(root)
-        blocking = _precompile_findings(manifest)
+        initial_findings = validate(manifest)
+        coverage = _coverage_payload(
+            list(manifest.coverage_roots),
+            [item for item in initial_findings if item.code == "coverage"],
+        )
+        blocking = [
+            item
+            for item in initial_findings
+            if item.code not in {"coverage", "drift", "lock"}
+        ]
         if blocking:
             messages = "; ".join(str(item) for item in blocking)
             raise MurlocsError(f"starter manifest is not valid: {messages}")
@@ -301,9 +394,48 @@ def init_command(
             "network": manifest.network,
             "generated": written,
             "dry_run": False,
+            "coverage": coverage,
         },
-        terminal_text=f"initialized {manifest.network} with {len(written)} managed map(s)",
+        terminal_text="\n".join(
+            [
+                f"initialized {manifest.network} with {len(written)} managed map(s)",
+                _coverage_terminal(coverage),
+            ]
+        ),
     )
+
+
+def _normalize_coverage_roots(root: Path, entries: list[str]) -> list[str]:
+    normalized: list[str] = []
+    for entry in entries:
+        target = repo_path(root, entry, field="coverage root")
+        if not target.is_dir():
+            raise MurlocsError(f"coverage root is not a directory: {entry}")
+        relative = target.relative_to(root).as_posix()
+        if relative not in normalized:
+            normalized.append(relative)
+    return normalized
+
+
+def _coverage_payload(roots: list[str], findings: list[Finding]) -> CoveragePayload:
+    if not roots:
+        state: Literal[
+            "unconfigured", "structurally_incomplete", "structurally_complete"
+        ] = "unconfigured"
+    elif findings:
+        state = "structurally_incomplete"
+    else:
+        state = "structurally_complete"
+    return {"state": state, "roots": roots, "evaluated": bool(roots)}
+
+
+def _coverage_terminal(coverage: CoveragePayload) -> str:
+    count = len(coverage["roots"])
+    if coverage["state"] == "unconfigured":
+        return "coverage unconfigured: no source roots were evaluated"
+    if coverage["state"] == "structurally_incomplete":
+        return f"coverage incomplete: {count} declared root(s) have structural findings"
+    return f"coverage structurally complete: {count} declared root(s) have no findings"
 
 
 def compile_command(
@@ -468,9 +600,17 @@ def check_command(
         "checks": len(manifest.checks),
         "issues": len(findings),
     }
+    coverage = _coverage_payload(
+        list(manifest.coverage_roots),
+        [item for item in findings if item.code == "coverage"],
+    )
     if findings:
         terminal = "\n".join(
-            [*(str(item) for item in findings), f"murlocs found {len(findings)} issue(s)"]
+            [
+                *(str(item) for item in findings),
+                f"murlocs found {len(findings)} issue(s)",
+                _coverage_terminal(coverage),
+            ]
         )
         return CommandResult(
             {
@@ -483,6 +623,7 @@ def check_command(
                     for item in findings
                 ],
                 "summary": summary,
+                "coverage": coverage,
             },
             terminal_text=terminal,
             exit_code=1,
@@ -492,12 +633,14 @@ def check_command(
     terminal = (
         f"murlocs check passed: {summary['scopes']} scope(s), "
         f"{summary['invariants']} invariant(s), {summary['checks']} check(s)"
+        f"\n{_coverage_terminal(coverage)}"
     )
     return CommandResult(
         {
             "ok": True,
             "findings": [],
             "summary": summary,
+            "coverage": coverage,
         },
         terminal_text=terminal,
     )
@@ -704,6 +847,34 @@ def inventory_command(
         {"ok": True, **inventory},
         terminal_text="\n".join(lines),
     )
+
+
+def status_command(
+    repo: Annotated[str, Option(metavar="PATH")] = ".",
+) -> StatusPayload | FailurePayload:
+    """Report repository adoption state and evidence without making changes.
+
+    Args:
+        repo: Repository root to classify from checked-in evidence.
+    """
+    try:
+        status = adoption_status(_root(repo))
+    except (MurlocsError, OSError, ValueError) as exc:
+        return _failure("MURLOCS_STATUS", exc)
+    lines = [f"state: {status['state']}"]
+    lines.extend(
+        f"evidence {item['id']}: {item['path']} — {item['detail']}"
+        for item in status["evidence"]
+    )
+    lines.extend(
+        f"blocker {item['id']}: {item['message']}" for item in status["blockers"]
+    )
+    lines.extend(
+        f"next {item['id']}: {item['command']} — {item['reason']}"
+        for item in status["next_actions"]
+    )
+    lines.append("semantic correctness: not evaluated")
+    return CommandResult({"ok": True, **status}, terminal_text="\n".join(lines))
 
 
 def import_command(
@@ -939,6 +1110,13 @@ def build_cli(*, name: str = "murlocs") -> CLI:
         annotations=inspection,
         terminal_renderer=_render_result,
     )(inventory_command)
+    app.command(
+        "status",
+        description="Report repository adoption state and next safe actions",
+        surfaces=("cli", "mcp", "llms"),
+        annotations=inspection,
+        terminal_renderer=_render_result,
+    )(status_command)
     app.command(
         "diff",
         description="Compare legacy guidance with its candidate projection",
