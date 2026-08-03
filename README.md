@@ -49,6 +49,20 @@ four routes: greenfield initialization, recognized steward migration, review of 
 or maintenance of an existing Murlocs network. It never treats hand-authored guidance as safely
 importable or bypasses generated-file ownership checks.
 
+The starter manifest leaves source coverage unconfigured for compatibility. The init and check
+results say so explicitly: a passing check with no declared coverage roots did not evaluate source
+coverage. To opt in during initialization, repeat `--coverage-root` as needed:
+
+```bash
+murlocs init --coverage-root src --coverage-root tests
+```
+
+Initialization records exactly those roots; it does not infer them. If a declared root contains
+source-bearing units without local maps or reasoned exemptions, initialization still creates the
+starter network and reports `structurally_incomplete`. Resolve those findings with reviewed scopes
+or exemptions before the next compile. Existing manifests with `roots = []` remain valid and are
+reported as `unconfigured` rather than failed.
+
 ## Migrating a legacy steward network
 
 Migration separates inspection, candidate creation, ownership transfer, and cleanup:
@@ -98,6 +112,7 @@ deterministically into the same canonical model. Single-file manifests keep work
 | `murlocs compile` | Render managed maps and update the content-addressed lockfile. |
 | `murlocs add-scope PATH` | Introduce a scoped guidance layer for a selected directory. |
 | `murlocs inventory` | Find guidance files, generators, proof debt, and ownership conflicts. |
+| `murlocs status` | Classify repository adoption state from concrete evidence and recommend safe next actions. |
 | `murlocs import` | Translate legacy guidance into candidate TOML without adopting maps. |
 | `murlocs diff` | Show semantic migration facts and rendered map patches. |
 | `murlocs adopt` | Replace byte-current legacy maps after recoverable backup. |
@@ -107,8 +122,9 @@ deterministically into the same canonical model. Single-file manifests keep work
 | `murlocs explain PATH` | Print the ordered scope, invariant, layer provenance, override, and budget trace for a path. |
 
 Milo also provides `murlocs --mcp` (or `mrr --mcp`), `murlocs --llms-txt`, structured JSON output,
-shell completions, and in-process typed dispatch. Only read-only `inventory`, `diff`, `check`, and
-`explain` are agent-visible.
+shell completions, and in-process typed dispatch. Only read-only `status`, `inventory`, `diff`,
+`check`, and `explain` are agent-visible. See [Adoption status and coverage](docs/adoption.md) for
+the lifecycle and structured-output contracts.
 
 The optional, separate `murlocs.eval` harness measures whether scoped guidance actually helps agents
 search less while staying correct. See [Guidance efficiency evaluation](docs/evaluation.md); it never

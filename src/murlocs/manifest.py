@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -245,6 +246,7 @@ def _parse_judgment(raw: Any) -> Judgment:
     )
 
 
-def render_manifest(network: str) -> str:
+def render_manifest(network: str, coverage_roots: tuple[str, ...] = ()) -> str:
     escaped = network.replace("\\", "\\\\").replace('"', '\\"')
-    return MANIFEST_TEMPLATE.format(network=escaped)
+    roots = ", ".join(json.dumps(value) for value in coverage_roots)
+    return MANIFEST_TEMPLATE.format(network=escaped).replace("roots = []", f"roots = [{roots}]", 1)

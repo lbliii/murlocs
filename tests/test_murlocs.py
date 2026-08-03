@@ -40,6 +40,7 @@ def test_init_compile_check_and_explain(tmp_path):
     explained = invoke("explain", "src/pkg/core.py", "--repo", str(root))
 
     assert checked.exit_code == 0
+    assert "coverage unconfigured: no source roots were evaluated" in checked.output
     assert explained.exit_code == 0
     assert "Example Shoal" in (root / "AGENTS.md").read_text(encoding="utf-8")
     assert "[root] AGENTS.md" in explained.output
@@ -58,6 +59,49 @@ def test_init_dry_run_writes_nothing(tmp_path):
     result = invoke("--dry-run", "init", "--repo", str(root))
     assert result.exit_code == 0
     assert "would write .murlocs/manifest.toml" in result.output
+    assert "coverage unconfigured" in result.output
+    assert not (root / ".murlocs").exists()
+    assert not (root / "AGENTS.md").exists()
+
+
+def test_init_accepts_explicit_coverage_roots_and_reports_structural_gaps(tmp_path):
+    root = make_repo(tmp_path)
+
+    result = invoke(
+        "init",
+        "--repo",
+        str(root),
+        "--coverage-root",
+        "src",
+        "--format",
+        "json",
+    )
+
+    assert result.exit_code == 0, result.stderr
+    payload = json.loads(result.output)
+    assert payload["coverage"] == {
+        "state": "structurally_incomplete",
+        "roots": ["src"],
+        "evaluated": True,
+    }
+    assert 'roots = ["src"]' in (
+        root / ".murlocs" / "manifest.toml"
+    ).read_text(encoding="utf-8")
+    checked = invoke("check", "--repo", str(root), "--format", "json")
+    checked_payload = json.loads(checked.output)
+    assert checked_payload["ok"] is False
+    assert checked_payload["coverage"]["state"] == "structurally_incomplete"
+
+
+def test_init_rejects_invalid_coverage_root_before_writing(tmp_path):
+    root = make_repo(tmp_path)
+
+    result = invoke(
+        "init", "--repo", str(root), "--coverage-root", "missing"
+    )
+
+    assert result.exit_code == 1
+    assert "coverage root is not a directory" in result.stderr
     assert not (root / ".murlocs").exists()
     assert not (root / "AGENTS.md").exists()
 
@@ -168,7 +212,12 @@ def test_reasoned_coverage_exemption(tmp_path):
     text = text.replace("[coverage.exemptions]", '[coverage.exemptions]\n"src/pkg" = "small leaf"')
     manifest.write_text(text, encoding="utf-8")
     assert invoke("compile", "--repo", str(root)).exit_code == 0
-    assert invoke("check", "--repo", str(root)).exit_code == 0
+    checked = invoke("check", "--repo", str(root), "--format", "json")
+    assert json.loads(checked.output)["coverage"] == {
+        "state": "structurally_complete",
+        "roots": ["src"],
+        "evaluated": True,
+    }
 
 
 def test_lock_hash_matches_generated_map(tmp_path):
@@ -218,10 +267,11 @@ def test_milo_agent_surface_is_read_only_by_default():
     tools = {tool.name for tool in MCPClient(app).list_tools()}
     discovery = generate_llms_txt(app)
 
-    assert tools == {"check", "diff", "explain", "inventory"}
+    assert tools == {"check", "diff", "explain", "inventory", "status"}
     assert "**check**" in discovery
     assert "**explain**" in discovery
     assert "**inventory**" in discovery
+    assert "**status**" in discovery
     assert "**diff**" in discovery
     assert "**init**" not in discovery
     assert "**compile**" not in discovery
@@ -234,6 +284,7 @@ def test_milo_agent_surface_is_read_only_by_default():
         "idempotentHint": True,
         "openWorldHint": True,
     }
+    assert app.commands["status"].annotations == app.commands["check"].annotations
 
 
 def test_mcp_check_and_explain_return_structured_results(tmp_path):
@@ -247,6 +298,11 @@ def test_mcp_check_and_explain_return_structured_results(tmp_path):
     assert checked.is_error is False
     assert checked.structured["ok"] is True
     assert checked.structured["summary"]["issues"] == 0
+    assert checked.structured["coverage"] == {
+        "state": "unconfigured",
+        "roots": [],
+        "evaluated": False,
+    }
     assert explained.is_error is False
     assert explained.structured["path"] == "src/pkg/core.py"
     assert [scope["id"] for scope in explained.structured["scopes"]] == ["root"]
