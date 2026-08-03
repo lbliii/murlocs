@@ -61,6 +61,7 @@ origin = "issue-314"
 rationale = "The existing rule does not name the repository confinement helper."
 proposer = "@contributor"
 required_owners = ["@core-maintainers"]
+required_scopes = ["core"]
 
 [[evidence]]
 kind = "file_anchor" # file_anchor, command, issue, pull_request, evaluation, or note
@@ -97,7 +98,7 @@ Every proposal records:
 - `intent`: `add`, `replace`, or `remove`;
 - the target active source, subject kind, optional scope, and stable target key;
 - the target source hash observed when the proposal was created;
-- origin, rationale, proposer, and the required-owner snapshot;
+- origin, rationale, proposer, and required-owner and affected-scope snapshots;
 - at least one evidence item, including a kind, reference, and human-readable summary;
 - a typed payload for additions and replacements; removals identify the existing target and omit
   the payload; and
@@ -109,9 +110,41 @@ key. Because list guidance has no authored id today, its key is a digest of the 
 value. A replacement or removal must identify exactly one current subject; ambiguous targeting is
 blocking rather than resolved heuristically.
 
-`required_owners` is a snapshot for audit and review routing. Eligibility is always recalculated
-from the current target layer before acceptance and promotion, so an old proposal cannot bypass a
-later ownership change.
+`target_scope` addresses the subject and makes the caller's intended context explicit. It does not
+confine the rendered effect. In particular, `pillar`, `search_policy`, `operating_rule`,
+`stop_and_ask`, and `done_criterion` modify root-map collections, even when their active source is a
+domain layer. Since every scoped guidance chain includes the root map, those changes affect every
+chain. Checks are also root-map guidance. Judgments are scope-local and affect only the named scope
+map (plus descendant chains that consume it). Scope and invariant changes may alter both a scoped
+map and the root network summary, so review uses the prospective rendered outputs rather than the
+source layer's declared domain.
+
+`required_owners` and `required_scopes` are snapshots for audit and review routing. For a valid
+proposal, Murlocs renders
+the prospective network, identifies every changed active guidance chain, and unions the owners of
+the authored sources represented by those chains. Exact CODEOWNERS entries participate when that
+policy is enabled. A truly local judgment therefore stays focused, while a domain-layer global list
+addition routes every affected owner. Eligibility and the affected-chain calculation are
+recalculated before acceptance and promotion, so an old proposal cannot bypass later source,
+output, topology, or CODEOWNERS changes. Actor strings remain unauthenticated audit attribution;
+the required-owner list is routing evidence, not proof that every named identity approved.
+
+Active proposals recompute both snapshots before acceptance and apply. Terminal review treats the
+recorded scope ids as effect evidence, then resolves their current consumers: a recorded root
+effect reaches every current scope, while a local effect reaches the addressed scope and its
+current descendants. Global list and check subjects always retain the all-chain safety floor.
+Scope and invariant additions/removals also cannot be narrowed by deleting `root` from their
+snapshot; structurally impossible routing evidence is reported and review fails closed. When
+recorded owners that are still active would be omitted by an edited scope snapshot, terminal review
+also reports the mismatch and uses all current chains.
+
+Version-1 records created before `required_scopes` was introduced remain readable. An omitted field
+is treated as legacy evidence: list, check, scope, and invariant records route conservatively to all
+current scopes, while locally addressed subjects use their current scope chain. Terminal owner
+output is informational because no terminal record is eligible for another write. As with actor
+strings and the rest of the TOML record, snapshots are reviewable repository metadata rather than
+authenticated identities or cryptographically sealed history; Git review and CODEOWNERS remain the
+approval boundary.
 
 ## Lifecycle and operations
 
@@ -201,8 +234,8 @@ murlocs curate check
 
 `review` and `check` are read-only on terminal, programmatic, MCP, and discovery surfaces. Use
 `--format json` for stable structured output. Human and structured reports carry the same proposal,
-owner, decision, evidence, before/after, hash, conflict, affected-chain, byte-budget, and validation
-facts.
+owner, affected-scope, decision, evidence, before/after, hash, conflict, affected-chain,
+byte-budget, and validation facts.
 
 ### Version-1 subject and payload shapes
 
@@ -281,7 +314,8 @@ registered checks, a model, or `compile` implicitly.
 Human and structured review output must agree and include:
 
 - proposal id, state, intent, subject kind, target source, scope, and target key;
-- proposer, current required owners, recorded decisions, origin, rationale, and evidence;
+- proposer, current and recorded required owners and scopes, recorded decisions, origin,
+  rationale, and evidence;
 - a before/after representation and whether the operation is an addition, replacement, or removal;
 - the current and proposed source hashes and any stale-base conflict;
 - exact duplicate and key-collision findings across the effective model;

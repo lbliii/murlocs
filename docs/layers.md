@@ -68,6 +68,13 @@ point_of_view = "Documentation domain."
 owns = ["docs"]
 ```
 
+Layer placement does not change the semantics of a subject. The five list-guidance collections and
+checks render in the root map, so contributing one from a domain layer can affect every active
+root-to-target guidance chain. Judgments render only in their named scope map. Scope and invariant
+subjects are scope-addressed but can also alter the root network summary. Curation and impact use
+rendered-map/active-chain effects for routing; `target_scope` is an address, not a confinement
+boundary.
+
 ## Merge contract
 
 Layers resolve into the existing canonical `Manifest` before `compile`, `check`, `diff`,

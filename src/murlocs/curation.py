@@ -99,6 +99,7 @@ ROOT_FIELDS = {
     "rationale",
     "proposer",
     "required_owners",
+    "required_scopes",
     "evidence",
     "payload",
     "events",
@@ -157,6 +158,7 @@ class CurationRecord:
     evidence: tuple[CurationEvidence, ...]
     payload: dict[str, Any] | None
     events: tuple[CurationEvent, ...]
+    required_scopes: tuple[str, ...] = ()
 
     @property
     def state(self) -> str:
@@ -217,6 +219,13 @@ def parse_record_data(
     if not SHA256_PATTERN.fullmatch(base_hash):
         raise MurlocsError(f"{filename}.base_source_sha256 must be 64 lowercase hex characters")
     required_owners = _string_array(data, "required_owners", filename)
+    required_scopes = (
+        _string_array(data, "required_scopes", filename)
+        if "required_scopes" in data
+        else ()
+    )
+    for scope_id in required_scopes:
+        _validate_id(scope_id)
 
     evidence_raw = _array(data, "evidence", filename)
     if not evidence_raw:
@@ -285,6 +294,7 @@ def parse_record_data(
         evidence=tuple(evidence),
         payload=payload,
         events=tuple(events),
+        required_scopes=required_scopes,
     )
 
 
@@ -372,17 +382,7 @@ def review_record(root: Path, record: CurationRecord) -> dict[str, Any]:
     manifest = _manifest_from_disk(root, disk)
     source_index = _source_index(disk, record.target_source)
     source = disk.sources[source_index]
-    current_owners = _current_required_owners(manifest, source)
     findings: list[CurationFinding] = []
-    if tuple(sorted(record.required_owners)) != current_owners:
-        findings.append(
-            CurationFinding(
-                "owners_changed",
-                "recorded required owners "
-                f"{list(record.required_owners)!r} do not match current owners "
-                f"{list(current_owners)!r}",
-            )
-        )
     if record.target_scope is not None:
         scope_ids = {scope.id for scope in manifest.scopes}
         if record.target_scope not in scope_ids:
@@ -391,6 +391,10 @@ def review_record(root: Path, record: CurationRecord) -> dict[str, Any]:
                     "target_scope", f"target scope does not exist: {record.target_scope}"
                 )
             )
+        else:
+            address_error = _target_scope_address_error(record, manifest)
+            if address_error is not None:
+                findings.append(CurationFinding("target_scope", address_error))
 
     current_hash = source.sha256
     stale = current_hash != record.base_source_sha256
@@ -402,8 +406,6 @@ def review_record(root: Path, record: CurationRecord) -> dict[str, Any]:
                 f"current {current_hash}",
             )
         )
-    findings.extend(_decision_owner_findings(record, current_owners))
-
     fragments = copy.deepcopy(disk.fragments)
     before: Any = None
     after: Any = None
@@ -464,6 +466,32 @@ def review_record(root: Path, record: CurationRecord) -> dict[str, Any]:
         findings.append(CurationFinding("prospective", str(exc)))
 
     chains = _affected_chains(manifest, prospective)
+    current_scopes = tuple(sorted(str(item["scope"]) for item in chains))
+    current_owners = _affected_required_owners(
+        manifest,
+        prospective,
+        chains,
+        fallback_source=source,
+    )
+    if tuple(sorted(record.required_owners)) != current_owners:
+        findings.append(
+            CurationFinding(
+                "owners_changed",
+                "recorded required owners "
+                f"{list(record.required_owners)!r} do not match current affected-chain owners "
+                f"{list(current_owners)!r}",
+            )
+        )
+    findings.extend(_decision_owner_findings(record, current_owners))
+    if record.required_scopes and tuple(sorted(record.required_scopes)) != current_scopes:
+        findings.append(
+            CurationFinding(
+                "scopes_changed",
+                "recorded required scopes "
+                f"{list(record.required_scopes)!r} do not match current affected scopes "
+                f"{list(current_scopes)!r}",
+            )
+        )
     return {
         "ok": not any(item.blocking for item in findings),
         "proposal": {
@@ -481,6 +509,10 @@ def review_record(root: Path, record: CurationRecord) -> dict[str, Any]:
         "owners": {
             "recorded": list(record.required_owners),
             "current": list(current_owners),
+        },
+        "required_scopes": {
+            "recorded": list(record.required_scopes),
+            "current": list(current_scopes),
         },
         "decisions": [
             {
@@ -551,7 +583,6 @@ def propose_record(
             f"refusing to replace existing curation record: {relative_posix(root, path)}"
         )
     disk = read_disk_sources(root)
-    manifest = _manifest_from_disk(root, disk)
     index = _source_index(disk, target_source)
     source = disk.sources[index]
     if value is not None and payload_json is not None:
@@ -579,7 +610,10 @@ def propose_record(
         "origin": origin,
         "rationale": rationale,
         "proposer": proposer,
-        "required_owners": list(_current_required_owners(manifest, source)),
+        # The first pass derives the exact affected guidance chains. The snapshot is
+        # filled from that prospective report below; target_scope is not a boundary.
+        "required_owners": [],
+        "required_scopes": [],
         "evidence": [
             {
                 "kind": evidence_kind,
@@ -603,6 +637,12 @@ def propose_record(
     if payload is not None:
         data["payload"] = payload
     record = parse_record_data(data, expected_id=proposal_id, filename=f"{proposal_id}.toml")
+    report = review_record(root, record)
+    record = replace(
+        record,
+        required_owners=tuple(report["owners"]["current"]),
+        required_scopes=tuple(report["required_scopes"]["current"]),
+    )
     report = review_record(root, record)
     text = render_record(record)
     if not dry_run:
@@ -636,9 +676,11 @@ def render_record(record: CurationRecord) -> str:
             f"rationale = {_toml(record.rationale)}",
             f"proposer = {_toml(record.proposer)}",
             f"required_owners = {_toml(list(record.required_owners))}",
-            "",
         ]
     )
+    if record.required_scopes:
+        lines.append(f"required_scopes = {_toml(list(record.required_scopes))}")
+    lines.append("")
     for item in record.evidence:
         lines.extend(
             [
@@ -713,8 +755,8 @@ def decide_record(
     else:
         disk = read_disk_sources(root)
         manifest = _manifest_from_disk(root, disk)
-        source = disk.sources[_source_index(disk, record.target_source)]
-        current_owners = _current_required_owners(manifest, source)
+        report = review_record(root, record)
+        current_owners = tuple(report["owners"]["current"])
         guards = _preflight_guards(root, disk, manifest, ())
         tree_guards = _preflight_tree_guards(root, manifest)
         if actor not in current_owners:
@@ -722,10 +764,8 @@ def decide_record(
                 f"decision actor {actor!r} is not a current required owner; "
                 "actor values are audit attribution, not authenticated identity"
             )
-        if decision == "accepted":
-            report = review_record(root, record)
-            if not report["ok"]:
-                _raise_findings("proposal cannot be accepted", report["findings"])
+        if decision == "accepted" and not report["ok"]:
+            _raise_findings("proposal cannot be accepted", report["findings"])
 
     event = CurationEvent(
         state=decision,
@@ -1070,7 +1110,7 @@ def _active_source_plan(root: Path, record: CurationRecord, actor: str) -> dict[
     manifest = _manifest_from_disk(root, disk)
     index = _source_index(disk, record.target_source)
     source = disk.sources[index]
-    current_owners = _current_required_owners(manifest, source)
+    current_owners = tuple(report["owners"]["current"])
     if actor not in current_owners:
         raise MurlocsError(
             f"apply actor {actor!r} is not a current required owner; "
@@ -1308,19 +1348,50 @@ def _terminal_review(root: Path, record: CurationRecord) -> dict[str, Any]:
         else record.base_source_sha256
     )
     current_owners: tuple[str, ...] = ()
+    current_scopes: tuple[str, ...] = ()
     current_hash = ""
     active = False
+    findings = _terminal_routing_findings(record)
     try:
         disk = read_disk_sources(root)
         manifest = _manifest_from_disk(root, disk)
         source = disk.sources[_source_index(disk, record.target_source)]
-        current_owners = _current_required_owners(manifest, source)
+        current_scopes = _terminal_current_scope_ids(manifest, record)
+        if findings:
+            current_scopes = tuple(sorted(scope.id for scope in manifest.scopes))
+        terminal_chains = [{"scope": scope_id} for scope_id in current_scopes]
+        current_owners = _affected_required_owners(
+            manifest,
+            manifest,
+            terminal_chains,
+            fallback_source=source,
+        )
+        all_scope_ids = tuple(sorted(scope.id for scope in manifest.scopes))
+        all_owners = _affected_required_owners(
+            manifest,
+            manifest,
+            [{"scope": scope_id} for scope_id in all_scope_ids],
+            fallback_source=source,
+        )
+        omitted_active_owners = (
+            set(record.required_owners).intersection(all_owners).difference(current_owners)
+        )
+        if omitted_active_owners:
+            findings.append(
+                CurationFinding(
+                    "routing_evidence",
+                    "recorded required-scope routing omits currently active recorded owners: "
+                    + ", ".join(sorted(omitted_active_owners)),
+                )
+            )
+            current_scopes = all_scope_ids
+            current_owners = all_owners
         current_hash = source.sha256
         active = True
     except (MurlocsError, OSError, ValueError):
         pass
     return {
-        "ok": True,
+        "ok": not any(item.blocking for item in findings),
         "proposal": {
             "id": record.id,
             "state": record.state,
@@ -1336,6 +1407,10 @@ def _terminal_review(root: Path, record: CurationRecord) -> dict[str, Any]:
         "owners": {
             "recorded": list(record.required_owners),
             "current": list(current_owners),
+        },
+        "required_scopes": {
+            "recorded": list(record.required_scopes),
+            "current": list(current_scopes),
         },
         "decisions": [_event_payload(event) for event in record.events],
         "evidence": [
@@ -1355,7 +1430,7 @@ def _terminal_review(root: Path, record: CurationRecord) -> dict[str, Any]:
         "shadowing": [],
         "affected_chains": [],
         "validation_findings": [],
-        "findings": [],
+        "findings": [item.payload() for item in findings],
     }
 
 
@@ -1394,6 +1469,95 @@ def _current_required_owners(manifest: Manifest, source: LayerSource) -> tuple[s
     return tuple(sorted(owners))
 
 
+def _affected_required_owners(
+    current: Manifest,
+    proposed: Manifest | None,
+    chains: list[dict[str, Any]],
+    *,
+    fallback_source: LayerSource,
+) -> tuple[str, ...]:
+    """Return owners of every authored source represented by an affected chain.
+
+    The target source remains a fail-closed fallback when prospective composition
+    cannot produce chains.  For a valid proposal, each affected scope contributes
+    the sources represented by its generated map.  This keeps a scope-local map
+    focused, while a root-map change collects the owners of all active chains.
+    """
+    owners = set(_current_required_owners(current, fallback_source))
+    if not chains or proposed is None:
+        return tuple(sorted(owners))
+    scope_ids = {str(item["scope"]) for item in chains}
+    for manifest in (current, proposed):
+        for scope_id in scope_ids:
+            for source_id in manifest.source_ids_for_scope(scope_id):
+                source = manifest.source(source_id)
+                if source is not None:
+                    owners.update(_current_required_owners(manifest, source))
+    return tuple(sorted(owners))
+
+
+def _terminal_affected_chains(
+    manifest: Manifest, record: CurationRecord
+) -> list[dict[str, Any]]:
+    """Recover stable owner-routing scope ids for an already-applied record."""
+    if record.subject_kind in {*LIST_SUBJECT_FIELDS, "check", "scope", "invariant"}:
+        return [{"scope": scope.id} for scope in manifest.scopes]
+    addressed = _record_addressed_scope(record, manifest)
+    if addressed is None and record.subject_kind == "invariant" and record.payload is not None:
+        addressed = str(record.payload.get("scope") or "") or None
+    target = next((scope for scope in manifest.scopes if scope.id == addressed), None)
+    if target is None:
+        return []
+    return [
+        {"scope": scope.id}
+        for scope in manifest.scopes
+        if _scope_chain(manifest, scope.path) and target in _scope_chain(manifest, scope.path)
+    ]
+
+
+def _terminal_current_scope_ids(
+    manifest: Manifest, record: CurationRecord
+) -> tuple[str, ...]:
+    """Re-evaluate current consumers from persisted terminal routing evidence."""
+    if record.subject_kind in {*LIST_SUBJECT_FIELDS, "check"}:
+        return tuple(sorted(scope.id for scope in manifest.scopes))
+    if not record.required_scopes:
+        return tuple(
+            sorted(str(item["scope"]) for item in _terminal_affected_chains(manifest, record))
+        )
+    if "root" in record.required_scopes:
+        return tuple(sorted(scope.id for scope in manifest.scopes))
+    addressed = _record_addressed_scope(record, manifest)
+    target = next((scope for scope in manifest.scopes if scope.id == addressed), None)
+    if target is None:
+        current_ids = {scope.id for scope in manifest.scopes}
+        return tuple(sorted(current_ids.intersection(record.required_scopes)))
+    return tuple(
+        sorted(
+            scope.id
+            for scope in manifest.scopes
+            if target in _scope_chain(manifest, scope.path)
+        )
+    )
+
+
+def _terminal_routing_findings(record: CurationRecord) -> list[CurationFinding]:
+    """Reject impossible audit snapshots while subject semantics own safe routing."""
+    global_by_definition = record.subject_kind in {*LIST_SUBJECT_FIELDS, "check"} or (
+        record.subject_kind in {"scope", "invariant"}
+        and record.intent in {"add", "remove"}
+    )
+    if record.required_scopes and global_by_definition and "root" not in record.required_scopes:
+        return [
+            CurationFinding(
+                "routing_evidence",
+                "recorded required scopes omit root for a globally routed subject; "
+                "terminal routing remains conservatively all-scope",
+            )
+        ]
+    return []
+
+
 def _decision_owner_findings(
     record: CurationRecord, current_owners: tuple[str, ...]
 ) -> list[CurationFinding]:
@@ -1407,6 +1571,53 @@ def _decision_owner_findings(
                 )
             )
     return findings
+
+
+def _target_scope_address_error(
+    record: CurationRecord, manifest: Manifest
+) -> str | None:
+    """Validate scope-addressed subjects without treating the field as confinement."""
+    addressed: str | None = None
+    if record.subject_kind == "scope":
+        addressed = record.target_key
+    elif record.subject_kind == "judgment":
+        addressed = (record.target_key or "").partition(".")[0] or None
+    elif record.subject_kind == "invariant":
+        if record.payload is not None:
+            addressed = str(record.payload.get("scope") or "") or None
+        if addressed is None:
+            invariant = next(
+                (item for item in manifest.invariants if item.id == record.target_key), None
+            )
+            addressed = None if invariant is None else invariant.scope
+    if addressed is not None and record.target_scope != addressed:
+        return (
+            f"target_scope {record.target_scope!r} does not address the "
+            f"{record.subject_kind} subject in scope {addressed!r}; target_scope is an "
+            "addressing field, not a rendered-effect boundary"
+        )
+    return None
+
+
+def _record_addressed_scope(
+    record: CurationRecord, manifest: Manifest
+) -> str | None:
+    if record.target_scope is not None:
+        return record.target_scope
+    if record.subject_kind == "scope":
+        return record.target_key
+    if record.subject_kind == "judgment":
+        return (record.target_key or "").partition(".")[0] or None
+    if record.subject_kind == "invariant":
+        if record.payload is not None:
+            addressed = str(record.payload.get("scope") or "") or None
+            if addressed is not None:
+                return addressed
+        invariant = next(
+            (item for item in manifest.invariants if item.id == record.target_key), None
+        )
+        return None if invariant is None else invariant.scope
+    return None
 
 
 def _effective_structural_findings(
