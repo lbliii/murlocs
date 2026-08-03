@@ -114,7 +114,28 @@
           }
         ],
         "cache": {"decision": "hit", "cache_id": "cache:task-start:healthy"},
-        "outcome": null,
+        "outcome": {
+          "contract": "io.murlocs.outcome",
+          "schema_version": 1,
+          "code": "MURLOCS_OUTCOME_PASS",
+          "status": "pass",
+          "severity": "none",
+          "blocking": false,
+          "resolution_class": "pass",
+          "source": {"operation": "check", "exit_code": 0, "murlocs_version": "0.1.0"},
+          "correlation": {
+            "correlation_id": "fixture-healthy",
+            "state_id": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+            "dependency_id": null,
+            "token_source": "integration",
+            "token_scope": {"adapter_id": "fixture-adapter", "adapter_version": "1", "session_id": "session-a"}
+          },
+          "findings": [],
+          "next_actions": [],
+          "change": {"repository_state_changed": false, "paths": []},
+          "silent": true,
+          "summary": "Murlocs check passed."
+        },
         "writes": [],
         "fallback": [],
         "next_actions": [],
@@ -167,7 +188,53 @@
           }
         ],
         "cache": {"decision": "miss"},
-        "outcome": null,
+        "outcome": {
+          "contract": "io.murlocs.outcome",
+          "schema_version": 1,
+          "code": "MURLOCS_OUTCOME_AUTHORITY_REQUIRED",
+          "status": "advisory",
+          "severity": "critical",
+          "blocking": false,
+          "resolution_class": "authority_required",
+          "source": {"operation": "impact", "exit_code": 0, "murlocs_version": "0.1.0"},
+          "correlation": {
+            "correlation_id": "fixture-forecast",
+            "state_id": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+            "dependency_id": "sha256:abababababababababababababababababababababababababababababababab",
+            "token_source": "integration",
+            "token_scope": {"adapter_id": "fixture-adapter", "adapter_version": "1", "session_id": "session-a"}
+          },
+          "findings": [
+            {
+              "code": "MURLOCS_IMPACT_REVIEW_REQUIRED",
+              "status": "advisory",
+              "severity": "critical",
+              "message": "Scope app requires guidance review.",
+              "evidence": [{"kind": "reason", "reference": "app", "detail": "An owned path changed."}],
+              "provenance": {"operation": "impact", "source_codes": ["required"], "source_paths": [".murlocs/manifest.toml"]},
+              "affected": {"scopes": ["app"], "maps": ["src/AGENTS.md"], "owners": ["@app"]},
+              "resolution_class": "authority_required",
+              "action_ids": ["outcome.request-authority"]
+            }
+          ],
+          "next_actions": [
+            {
+              "id": "outcome.request-authority",
+              "operation": "request_authority",
+              "arguments": {
+                "codes": ["MURLOCS_IMPACT_REVIEW_REQUIRED"],
+                "scopes": ["app"],
+                "maps": ["src/AGENTS.md"],
+                "owners": ["@app"]
+              },
+              "effect": "request_authority",
+              "authority": "human"
+            }
+          ],
+          "change": {"repository_state_changed": false, "paths": []},
+          "silent": false,
+          "summary": "Murlocs requires authority review for one scope."
+        },
         "writes": [],
         "fallback": [],
         "next_actions": [],
@@ -225,7 +292,28 @@
           }
         ],
         "cache": {"decision": "miss"},
-        "outcome": null,
+        "outcome": {
+          "contract": "io.murlocs.outcome",
+          "schema_version": 1,
+          "code": "MURLOCS_OUTCOME_PASS",
+          "status": "pass",
+          "severity": "none",
+          "blocking": false,
+          "resolution_class": "pass",
+          "source": {"operation": "aggregate", "exit_code": 0, "murlocs_version": "0.1.0"},
+          "correlation": {
+            "correlation_id": "fixture-post-edit",
+            "state_id": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+            "dependency_id": "sha256:abababababababababababababababababababababababababababababababab",
+            "token_source": "integration",
+            "token_scope": {"adapter_id": "fixture-adapter", "adapter_version": "1", "session_id": "session-a"}
+          },
+          "findings": [],
+          "next_actions": [],
+          "change": {"repository_state_changed": false, "paths": []},
+          "silent": true,
+          "summary": "Murlocs aggregate outcome passed."
+        },
         "writes": [],
         "fallback": [],
         "next_actions": [],

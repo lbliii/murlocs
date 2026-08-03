@@ -162,8 +162,12 @@ is `null`, never a manufactured `false`. Execution codes are `MURLOCS_ACTIVATION
 `MURLOCS_ACTIVATION_ABSENT`, `MURLOCS_ACTIVATION_UNAVAILABLE`, `MURLOCS_ACTIVATION_TIMEOUT`,
 `MURLOCS_ACTIVATION_INVALID`, and `MURLOCS_ACTIVATION_STALE`. A completed response with
 `repository.blocking: false` MUST be silent-capable. Plain output MAY be empty in that case.
-The optional `outcome` sidecar never changes operation receipt, exit-code, blocking, silence, or
-freshness validation in this outer lifecycle contract.
+When present, `outcome` uses the [`io.murlocs.outcome` version 1 contract](outcome-envelope.md).
+The sidecar never changes operation receipt, exit-code, blocking, silence, or freshness validation
+in this outer lifecycle contract. Trusted state and impact-dependency tokens are bound only by the
+integration and remain opaque within its adapter/session scope. An aggregate sidecar is valid only
+for a multi-operation event whose exact required receipts were validated; finding provenance must
+name only those receipt operations, and impact dependency evidence must still match.
 
 Each next action has `operation`, object-valued `arguments`, `effect` (`read_repository` or
 `request_authority`), and `authority` (`integration`, `agent`, or `human`). Lifecycle v1 rejects

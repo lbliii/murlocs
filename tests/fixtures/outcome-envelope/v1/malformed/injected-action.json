@@ -1,0 +1,43 @@
+{
+  "contract": "io.murlocs.outcome",
+  "schema_version": 1,
+  "code": "MURLOCS_OUTCOME_AGENT_ACTION",
+  "status": "advisory",
+  "severity": "advisory",
+  "blocking": false,
+  "resolution_class": "agent_action",
+  "source": {"operation": "impact", "exit_code": 0, "murlocs_version": "0.1.0"},
+  "correlation": {
+    "correlation_id": "bad-action",
+    "state_id": null,
+    "dependency_id": null,
+    "token_source": "none",
+    "token_scope": null
+  },
+  "findings": [
+    {
+      "code": "MURLOCS_IMPACT_REVIEW_RECOMMENDED",
+      "status": "advisory",
+      "severity": "advisory",
+      "message": "Review the scope.",
+      "evidence": [{"kind": "reason", "reference": "api", "detail": "Changed path."}],
+      "provenance": {"operation": "impact", "source_codes": ["recommended"], "source_paths": []},
+      "affected": {"scopes": ["api"], "maps": [], "owners": []},
+      "resolution_class": "agent_action",
+      "action_ids": ["outcome.inspect-findings"]
+    }
+  ],
+  "next_actions": [
+    {
+      "id": "outcome.inspect-findings",
+      "operation": "inspect_findings",
+      "arguments": {"codes": ["MURLOCS_IMPACT_REVIEW_RECOMMENDED"], "scopes": ["api"], "maps": [], "owners": []},
+      "effect": "read_repository",
+      "authority": "agent",
+      "shell": "echo unsafe"
+    }
+  ],
+  "change": {"repository_state_changed": false, "paths": []},
+  "silent": false,
+  "summary": "Malformed action."
+}

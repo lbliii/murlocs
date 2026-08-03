@@ -23,6 +23,11 @@ generated guidance, Git hooks, and CI discover `.murlocs/manifest.toml` and invo
 operations at task boundaries. Its completion gate requires fresh integration-produced repository
 evidence; an agent assertion alone is never a passing receipt.
 
+Structured `check` and `impact` results include a versioned, read-only
+[outcome envelope](docs/outcome-envelope.md) with stable findings and closed, typed routing actions.
+It is additive: existing payload fields and exit codes remain unchanged, and review routing does
+not become merge policy.
+
 The Milo-backed CLI is deterministic infrastructure. The bundled `bootstrap-murlocs` skill is the
 optional agent-assisted authoring layer for discovering architecture and drafting a truthful
 manifest. Read-only commands are available as MCP tools and in `llms.txt`; write commands remain

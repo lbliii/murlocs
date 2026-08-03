@@ -101,6 +101,11 @@ The command exits nonzero only for invalid input or an unreadable manifest or Gi
 choose whether `required` or `recommended` is informational or blocking; Murlocs does not silently
 turn review routing into a merge policy.
 
+The additive [`outcome` envelope](outcome-envelope.md) expresses both statuses as advisory.
+`required` selects `authority_required` and names the affected scopes, maps, and owners;
+`recommended` selects `agent_action`. This typed routing does not alter impact's exit code or grant
+approval authority.
+
 ## GitHub Actions reference
 
 This job preserves the complete report as an artifact and writes a concise summary. A repository

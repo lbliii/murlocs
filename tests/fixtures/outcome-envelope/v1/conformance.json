@@ -1,0 +1,203 @@
+{
+  "contract": "io.murlocs.outcome",
+  "schema_version": 1,
+  "cases": [
+    {
+      "id": "pass",
+      "outcome": {
+        "contract": "io.murlocs.outcome",
+        "schema_version": 1,
+        "code": "MURLOCS_OUTCOME_PASS",
+        "status": "pass",
+        "severity": "none",
+        "blocking": false,
+        "resolution_class": "pass",
+        "source": {"operation": "check", "exit_code": 0, "murlocs_version": "0.1.0"},
+        "correlation": {
+          "correlation_id": "fixture-pass",
+          "state_id": null,
+          "dependency_id": null,
+          "token_source": "none",
+          "token_scope": null
+        },
+        "findings": [],
+        "next_actions": [],
+        "change": {"repository_state_changed": false, "paths": []},
+        "silent": true,
+        "summary": "Murlocs check passed."
+      }
+    },
+    {
+      "id": "deterministic-repair",
+      "outcome": {
+        "contract": "io.murlocs.outcome",
+        "schema_version": 1,
+        "code": "MURLOCS_OUTCOME_DETERMINISTIC_REPAIR",
+        "status": "blocking",
+        "severity": "important",
+        "blocking": true,
+        "resolution_class": "deterministic_repair",
+        "source": {"operation": "check", "exit_code": 1, "murlocs_version": "0.1.0"},
+        "correlation": {
+          "correlation_id": "fixture-repair",
+          "state_id": null,
+          "dependency_id": null,
+          "token_source": "none",
+          "token_scope": null
+        },
+        "findings": [
+          {
+            "code": "MURLOCS_CHECK_DRIFT",
+            "status": "blocking",
+            "severity": "important",
+            "message": "Generated guidance is stale.",
+            "evidence": [
+              {"kind": "diagnostic", "reference": "drift", "detail": "Generated guidance is stale."}
+            ],
+            "provenance": {
+              "operation": "check",
+              "source_codes": ["drift"],
+              "source_paths": [".murlocs/manifest.toml"]
+            },
+            "affected": {"scopes": ["root"], "maps": ["AGENTS.md"], "owners": []},
+            "resolution_class": "deterministic_repair",
+            "action_ids": ["outcome.compile-managed-guidance"]
+          }
+        ],
+        "next_actions": [
+          {
+            "id": "outcome.compile-managed-guidance",
+            "operation": "compile_managed_guidance",
+            "arguments": {
+              "codes": ["MURLOCS_CHECK_DRIFT"],
+              "scopes": ["root"],
+              "maps": ["AGENTS.md"],
+              "owners": []
+            },
+            "effect": "write_managed_guidance",
+            "authority": "integration"
+          }
+        ],
+        "change": {"repository_state_changed": false, "paths": []},
+        "silent": false,
+        "summary": "Murlocs found one safely repairable drift finding."
+      }
+    },
+    {
+      "id": "agent-action",
+      "outcome": {
+        "contract": "io.murlocs.outcome",
+        "schema_version": 1,
+        "code": "MURLOCS_OUTCOME_AGENT_ACTION",
+        "status": "advisory",
+        "severity": "advisory",
+        "blocking": false,
+        "resolution_class": "agent_action",
+        "source": {"operation": "impact", "exit_code": 0, "murlocs_version": "0.1.0"},
+        "correlation": {
+          "correlation_id": "fixture-agent",
+          "state_id": null,
+          "dependency_id": null,
+          "token_source": "none",
+          "token_scope": null
+        },
+        "findings": [
+          {
+            "code": "MURLOCS_IMPACT_REVIEW_RECOMMENDED",
+            "status": "advisory",
+            "severity": "advisory",
+            "message": "Scope api is recommended for guidance review.",
+            "evidence": [
+              {"kind": "reason", "reference": "api", "detail": "The path is inside the API scope."}
+            ],
+            "provenance": {
+              "operation": "impact",
+              "source_codes": ["recommended"],
+              "source_paths": [".murlocs/layers/api.toml"]
+            },
+            "affected": {"scopes": ["api"], "maps": ["src/api/AGENTS.md"], "owners": ["@api"]},
+            "resolution_class": "agent_action",
+            "action_ids": ["outcome.inspect-findings"]
+          }
+        ],
+        "next_actions": [
+          {
+            "id": "outcome.inspect-findings",
+            "operation": "inspect_findings",
+            "arguments": {
+              "codes": ["MURLOCS_IMPACT_REVIEW_RECOMMENDED"],
+              "scopes": ["api"],
+              "maps": ["src/api/AGENTS.md"],
+              "owners": ["@api"]
+            },
+            "effect": "read_repository",
+            "authority": "agent"
+          }
+        ],
+        "change": {"repository_state_changed": false, "paths": []},
+        "silent": false,
+        "summary": "Murlocs recommends agent review for one scope."
+      }
+    },
+    {
+      "id": "authority-required",
+      "outcome": {
+        "contract": "io.murlocs.outcome",
+        "schema_version": 1,
+        "code": "MURLOCS_OUTCOME_AUTHORITY_REQUIRED",
+        "status": "advisory",
+        "severity": "critical",
+        "blocking": false,
+        "resolution_class": "authority_required",
+        "source": {"operation": "impact", "exit_code": 0, "murlocs_version": "0.1.0"},
+        "correlation": {
+          "correlation_id": "fixture-authority",
+          "state_id": "state-7",
+          "dependency_id": "impact-4",
+          "token_source": "integration",
+          "token_scope": {
+            "adapter_id": "fixture-adapter",
+            "adapter_version": "1",
+            "session_id": "session-a"
+          }
+        },
+        "findings": [
+          {
+            "code": "MURLOCS_IMPACT_REVIEW_REQUIRED",
+            "status": "advisory",
+            "severity": "critical",
+            "message": "Scope api requires guidance review.",
+            "evidence": [
+              {"kind": "reason", "reference": "api", "detail": "The path is owned by the API scope."}
+            ],
+            "provenance": {
+              "operation": "impact",
+              "source_codes": ["required"],
+              "source_paths": [".murlocs/layers/api.toml"]
+            },
+            "affected": {"scopes": ["api"], "maps": ["src/api/AGENTS.md"], "owners": ["@api"]},
+            "resolution_class": "authority_required",
+            "action_ids": ["outcome.request-authority"]
+          }
+        ],
+        "next_actions": [
+          {
+            "id": "outcome.request-authority",
+            "operation": "request_authority",
+            "arguments": {
+              "codes": ["MURLOCS_IMPACT_REVIEW_REQUIRED"],
+              "scopes": ["api"],
+              "maps": ["src/api/AGENTS.md"],
+              "owners": ["@api"]
+            },
+            "effect": "request_authority",
+            "authority": "human"
+          }
+        ],
+        "change": {"repository_state_changed": false, "paths": []},
+        "silent": false,
+        "summary": "Murlocs requires authority review for one scope."
+      }
+    }
+  ]
+}
