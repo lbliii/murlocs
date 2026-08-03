@@ -95,8 +95,8 @@ def test_repair_refuses_semantic_and_modified_output_findings_without_writes(tmp
 
     assert modified.exit_code == 1
     assert modified_payload["ok"] is False
-    assert modified_payload["error"]["code"] == "MURLOCS_REPAIR"
-    assert modified_payload["outcome"]["resolution_class"] == "agent_action"
+    assert modified_payload["changed"] == []
+    assert modified_payload["outcome"]["resolution_class"] == "authority_required"
     assert snapshot(root) == before
 
 

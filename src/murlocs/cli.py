@@ -57,7 +57,7 @@ from murlocs.paths import repo_path
 from murlocs.render import compile_manifest, prepare_manifest, render_outputs
 from murlocs.repair import (
     RepairPlan,
-    RepairUnavailable,
+    RepairRecoveryRequired,
     apply_repair,
     plan_repair,
     recover_repair,
@@ -1013,7 +1013,9 @@ def repair_command(
         findings = validate(manifest)
         try:
             plan = plan_repair(manifest)
-        except RepairUnavailable:
+        except RepairRecoveryRequired:
+            raise
+        except MurlocsError:
             outcome = build_check_outcome(manifest, findings)
             return CommandResult(
                 _repair_payload(

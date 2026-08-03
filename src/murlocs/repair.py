@@ -49,10 +49,14 @@ class RepairUnavailable(MurlocsError):
         self.findings = findings
 
 
+class RepairRecoveryRequired(MurlocsError):
+    """A pending repair journal must be resolved before normal repair."""
+
+
 def plan_repair(manifest: Manifest) -> RepairPlan:
     """Plan only drift/lock repairs whose managed outputs pass ownership preflight."""
     if repair_transaction_pending(manifest.root):
-        raise MurlocsError(
+        raise RepairRecoveryRequired(
             "an interrupted repair requires `murlocs repair --recover` before another repair"
         )
     findings = validate(manifest)
