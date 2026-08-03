@@ -4,6 +4,7 @@ import os
 import tempfile
 from pathlib import Path
 
+from murlocs.curation_transaction import transaction_pending
 from murlocs.errors import MurlocsError
 from murlocs.lockfile import LOCK_PATH, read_lock, render_lock, sha256_bytes
 from murlocs.model import Check, Invariant, Manifest, Ownership, Scope
@@ -159,6 +160,10 @@ def _proof(invariant: Invariant, checks: dict[str, Check]) -> str:
 
 def prepare_manifest(manifest: Manifest) -> dict[str, str]:
     """Render and preflight every output without writing files."""
+    if transaction_pending(manifest.root):
+        raise MurlocsError(
+            "an interrupted curation transaction must be recovered before compilation"
+        )
     outputs = render_outputs(manifest)
     lock = read_lock(manifest.root)
     expected = set(outputs)

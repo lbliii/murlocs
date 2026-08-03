@@ -127,11 +127,17 @@ deterministically into the same canonical model. Single-file manifests keep work
 | `murlocs curate propose ID` | Create a versioned inert proposal under `.murlocs/curation/`; never edit active guidance. |
 | `murlocs curate review ID` | Report the deterministic prospective change, ownership, conflicts, affected chains, and budget delta. |
 | `murlocs curate check` | Validate every inert proposal and its current target without changing files. |
+| `murlocs curate accept ID` / `reject ID` / `withdraw ID` | Append an attributed decision without editing active guidance. |
+| `murlocs curate promote ID` | Transactionally apply an accepted addition or replacement to its exact active source. |
+| `murlocs curate supersede OLD --with NEW` | Apply an accepted replacement and link both lifecycle records. |
+| `murlocs curate prune ID` | Transactionally apply an accepted removal. |
+| `murlocs curate recover ID [--with ID]` | Explicitly preview or recover one exact interrupted apply; crash journals are never trusted automatically. |
 
 Milo also provides `murlocs --mcp` (or `mrr --mcp`), `murlocs --llms-txt`, structured JSON output,
 shell completions, and in-process typed dispatch. Only read-only `status`, `inventory`, `diff`,
-`check`, `explain`, `impact`, `curate review`, and `curate check` are agent-visible. Proposal creation
-remains CLI-only. See
+`check`, `explain`, `impact`, `curate review`, and `curate check` are agent-visible. Every curation
+write remains CLI-only and supports `--dry-run`. Actor values are audit attribution, not identities
+authenticated by Murlocs. See
 [Adoption status and coverage](docs/adoption.md) for the lifecycle contract and
 [Changed-path impact](docs/impact.md) for the review policy, stable output, and CI and pre-commit
 examples.
@@ -151,9 +157,9 @@ ordinary drift repair, and recorded evaluation, see [Primary user journeys](docs
 
 The [governed curation workflow](docs/curation.md) lets agents and humans propose additions,
 replacements, and removals without allowing unapproved candidates into compiled guidance. The
-first implementation provides inert record creation and deterministic review; owner decisions and
-promotion remain separate follow-up work. See [Architecture](docs/architecture.md) for trust
-boundaries and
+implemented lifecycle provides inert record creation, deterministic review, current-owner
+decisions, and recoverable source-plus-record apply transactions. Apply never runs a model,
+registered check, or implicit compile. See [Architecture](docs/architecture.md) for trust boundaries and
 [Roadmap](docs/roadmap.md) for planned ecosystem work.
 
 ## Status
