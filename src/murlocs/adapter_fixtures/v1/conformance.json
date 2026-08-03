@@ -112,6 +112,13 @@
       "expected": {"status": "timeout", "code": "MURLOCS_ACTIVATION_TIMEOUT", "operation_calls": ["check"], "receipts": [], "cache": "miss", "resolution_class": null, "silent": false, "agent_prompted": false, "event_mode": "host-enforced", "fallbacks": []}
     },
     {
+      "id": "pre-completion-deterministic-repair-blocks",
+      "request": {"contract":"io.murlocs.activation","schema_version":1,"event":"pre-completion","correlation_id":"adapter-repair-completion","paths":["src/app.py"],"enforcement":"enforcing"},
+      "control": {"outcome":"deterministic-repair","fault":null,"cache":"forbidden","root_format":"posix","mutations":[]},
+      "setup": {"files":[],"remove":[]},
+      "expected": {"status":"completed","code":"MURLOCS_ACTIVATION_OK","operation_calls":["check","impact"],"receipts":["check","impact"],"cache":"forbidden","resolution_class":"deterministic_repair","silent":false,"agent_prompted":false,"event_mode":"host-enforced","fallbacks":[]}
+    },
+    {
       "id": "pre-completion-unavailable-fallback",
       "request": {"contract": "io.murlocs.activation", "schema_version": 1, "event": "pre-completion", "correlation_id": "adapter-unavailable", "paths": ["src/app.py"], "enforcement": "prompt-mediated"},
       "control": {"outcome": null, "fault": "unavailable", "cache": "forbidden", "root_format": "posix", "mutations": []},

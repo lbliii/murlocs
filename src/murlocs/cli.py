@@ -29,7 +29,7 @@ from murlocs.impact import (
     changed_paths_from_revision,
     normalize_changed_paths,
 )
-from murlocs.lockfile import LOCK_PATH, render_lock
+from murlocs.lockfile import LOCK_PATH, render_lock, sha256_bytes
 from murlocs.manifest import (
     PROTOCOL_TEMPLATE,
     load_manifest,
@@ -55,6 +55,13 @@ from murlocs.outcome import (
 )
 from murlocs.paths import repo_path
 from murlocs.render import compile_manifest, prepare_manifest, render_outputs
+from murlocs.repair import (
+    RepairPlan,
+    RepairUnavailable,
+    apply_repair,
+    plan_repair,
+    recover_repair,
+)
 from murlocs.rollout import ScopePlan, apply_add_scope, plan_add_scope
 from murlocs.split import (
     SplitPlan,
@@ -259,6 +266,23 @@ class CompilePayload(TypedDict):
     dry_run: bool
     changed: NotRequired[list[str]]
     unchanged: NotRequired[list[str]]
+
+
+class RepairUpdatePayload(TypedDict):
+    path: str
+    before_sha256: str | None
+    after_sha256: str
+
+
+class RepairPayload(TypedDict):
+    ok: bool
+    dry_run: bool
+    changed: list[str]
+    updates: list[RepairUpdatePayload]
+    restage_required: bool
+    rerun_required: bool
+    recovery: str | None
+    outcome: OutcomePayload
 
 
 class CoveragePayload(TypedDict):
@@ -953,6 +977,116 @@ def _render_compile_result(
         return "\n".join(f"wrote {relative}" for relative in written)
     lines = [f"would write {relative}" for relative in written]
     lines.extend(f"unchanged {relative}" for relative in unchanged or [])
+    return "\n".join(lines)
+
+
+def repair_command(
+    repo: Annotated[str, Option(metavar="PATH")] = ".",
+    recover: bool = False,
+    ctx: Context | None = None,
+) -> RepairPayload | OutcomeFailurePayload:
+    """Apply only preflight-safe generated-guidance drift repairs.
+
+    Args:
+        repo: Repository root containing `.murlocs/manifest.toml`.
+        recover: Finalize or roll back one interrupted repair transaction.
+        ctx: Milo host context used to honor dry-run policy.
+    """
+    dry_run = bool(ctx is not None and ctx.dry_run)
+    try:
+        root = _root(repo)
+        if recover:
+            recovery, changed = recover_repair(root, dry_run=dry_run)
+            manifest = load_manifest(root)
+            outcome = build_check_outcome(manifest, validate(manifest))
+            return CommandResult(
+                _repair_payload(
+                    changed=changed,
+                    plan=None,
+                    dry_run=dry_run,
+                    outcome=outcome,
+                    recovery=recovery,
+                ),
+                terminal_text=_render_repair_result(changed, dry_run, recovery),
+            )
+        manifest = load_manifest(root)
+        findings = validate(manifest)
+        try:
+            plan = plan_repair(manifest)
+        except (RepairUnavailable, MurlocsError):
+            outcome = build_check_outcome(manifest, findings)
+            return CommandResult(
+                _repair_payload(
+                    changed=[],
+                    plan=None,
+                    dry_run=dry_run,
+                    outcome=outcome,
+                    recovery=None,
+                    ok=False,
+                ),
+                terminal_text=outcome["summary"],
+                exit_code=1,
+                terminal_stream="stderr",
+            )
+        changed = plan.paths if dry_run else apply_repair(plan)
+        outcome = build_check_outcome(manifest, findings)
+    except MurlocsError as exc:
+        return _outcome_failure("MURLOCS_REPAIR", exc, operation="check")
+    return CommandResult(
+        _repair_payload(
+            changed=changed,
+            plan=plan,
+            dry_run=dry_run,
+            outcome=outcome,
+            recovery=None,
+        ),
+        terminal_text=_render_repair_result(changed, dry_run, None),
+    )
+
+
+def _repair_payload(
+    *,
+    changed: list[str],
+    plan: RepairPlan | None,
+    dry_run: bool,
+    outcome: OutcomePayload,
+    recovery: str | None,
+    ok: bool = True,
+) -> RepairPayload:
+    updates = []
+    if plan is not None:
+        updates = [
+            {
+                "path": item.path,
+                "before_sha256": (
+                    None if item.before is None else sha256_bytes(item.before)
+                ),
+                "after_sha256": sha256_bytes(item.after),
+            }
+            for item in plan.updates
+        ]
+    revisit = bool(changed)
+    return {
+        "ok": ok,
+        "dry_run": dry_run,
+        "changed": changed,
+        "updates": updates,
+        "restage_required": revisit,
+        "rerun_required": revisit,
+        "recovery": recovery,
+        "outcome": outcome,
+    }
+
+
+def _render_repair_result(changed: list[str], dry_run: bool, recovery: str | None) -> str:
+    if recovery is not None:
+        verb = "would recover" if dry_run else "recovered"
+        lines = [f"{verb} repair transaction: {recovery}"]
+    else:
+        verb = "would repair" if dry_run else "repaired"
+        lines = [f"{verb} {path}" for path in changed] or ["generated guidance is synchronized"]
+    if changed:
+        lines.append("re-stage changed paths and re-run the gate before completion")
     return "\n".join(lines)
 
 
@@ -2270,6 +2404,17 @@ def build_cli(*, name: str = "murlocs") -> CLI:
         },
         terminal_renderer=_render_result,
     )(compile_command)
+    app.command(
+        "repair",
+        description="Repair only preflight-safe managed guidance drift",
+        surfaces=("cli",),
+        annotations={
+            "destructiveHint": True,
+            "idempotentHint": True,
+            "openWorldHint": True,
+        },
+        terminal_renderer=_render_result,
+    )(repair_command)
     app.command(
         "add-scope",
         description="Introduce a scoped guidance layer for a selected directory",

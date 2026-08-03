@@ -75,15 +75,31 @@ murlocs rollback
 ## Repair ordinary drift safely
 
 Edit the manifest or layer source, never a generated map. `check` distinguishes source drift from
-output drift. After reviewing source changes, compile; if a generated map was edited, restore its
-last managed bytes before compiling because Murlocs will not overwrite it.
+output drift. After reviewing source changes, `repair` can apply only an allowlisted, preflighted
+render of managed maps and `.murlocs/lock.json`. Its preview and apply payloads list the same
+changed paths and byte hashes. A repair leaves no semantic decision behind: findings outside
+generated drift, an unmanaged map, or a manually edited map produce the existing agent-action or
+authority-required envelope without writes.
 
 ```bash
 murlocs check --format json
-murlocs --dry-run compile
-murlocs compile
+murlocs --dry-run repair --format json
+murlocs repair --format json
+# If this is a Git workflow, re-stage the listed paths and run the relevant gate again.
 murlocs check
 ```
+
+Repairs journal multiple output changes under `.murlocs/repair/.transaction`. A completed repair
+removes the journal. If an interruption leaves it behind, inspect the deterministic recovery first
+and then either finalize the already-complete repair or roll back its exact partial writes:
+
+```bash
+murlocs --dry-run repair --recover
+murlocs repair --recover
+```
+
+Hooks remain read-only: an integration with explicit write authority may repair after a hook finds
+safe drift, but it must re-stage changed paths and obtain fresh `check` and `impact` receipts.
 
 ## Score recorded evaluation runs
 
