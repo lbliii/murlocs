@@ -465,7 +465,9 @@ def test_ordinary_layer_and_output_drift_repair(tmp_path: Path) -> None:
     )
     drift = murlocs(root, "check", expected=1)
     assert "layer changed since the last compile" in drift.stderr
-    drift_json = json.loads(murlocs(root, "check", "--format", "json").stdout)
+    drift_result = murlocs(root, "check", "--format", "json", expected=1)
+    assert drift_result.stderr == ""
+    drift_json = json.loads(drift_result.stdout)
     assert drift_json["ok"] is False
     assert any(
         item["code"] == "drift" and "layer changed" in item["message"]
@@ -485,6 +487,54 @@ def test_ordinary_layer_and_output_drift_repair(tmp_path: Path) -> None:
     generated.write_bytes(compiled_bytes)
     murlocs(root, "compile")
     assert json.loads(murlocs(root, "check", "--format", "json").stdout)["ok"] is True
+
+
+def test_packaged_structured_failures_preserve_terminal_exit_codes(tmp_path: Path) -> None:
+    root = tmp_path / "structured-failures"
+    write(root, "src/app.py", "VALUE = 1\n")
+    initialize_git(root)
+    murlocs(root, "init")
+
+    manifest = root / ".murlocs" / "manifest.toml"
+    manifest.write_text(
+        manifest.read_text(encoding="utf-8").replace(
+            "Repository guidance", "Changed guidance"
+        ),
+        encoding="utf-8",
+    )
+    drift = murlocs(root, "check", "--format", "json", expected=1)
+    assert drift.stderr == ""
+    drift_payload = json.loads(drift.stdout)
+    assert drift_payload["ok"] is False
+    assert any(item["code"] == "drift" for item in drift_payload["findings"])
+
+    curation = root / ".murlocs" / "curation"
+    curation.mkdir()
+    write(curation, "malformed.toml", "not valid toml = [\n")
+    malformed = murlocs(root, "curate", "check", "--format", "json", expected=1)
+    assert malformed.stderr == ""
+    malformed_payload = json.loads(malformed.stdout)
+    assert malformed_payload["ok"] is False
+    assert malformed_payload["findings"]
+
+    missing = murlocs(
+        root, "curate", "review", "missing-proposal", "--format", "json", expected=1
+    )
+    assert missing.stderr == ""
+    missing_payload = json.loads(missing.stdout)
+    assert missing_payload["ok"] is False
+    assert missing_payload["error"]["code"] == "MURLOCS_CURATE_REVIEW"
+
+    absent = tmp_path / "absent-repository"
+    invalid_root = run(
+        [str(MURLOCS), "compile", "--repo", str(absent), "--format", "json"],
+        cwd=tmp_path,
+        expected=1,
+    )
+    assert invalid_root.stderr == ""
+    invalid_payload = json.loads(invalid_root.stdout)
+    assert invalid_payload["ok"] is False
+    assert invalid_payload["error"]["code"] == "MURLOCS_COMPILE"
 
 
 def test_recorded_evaluation_ingestion_is_reproducible_and_read_only(tmp_path: Path) -> None:
