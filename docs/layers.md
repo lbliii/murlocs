@@ -91,6 +91,49 @@ Invalid or ambiguous composition — unknown fields, control-plane fields in a l
 escaping paths, duplicate layer ids, duplicate scopes/invariants/checks without override, or an
 override that changes an output path — fails before any generated file is written.
 
+## Splitting a single-file manifest
+
+When a repository outgrows one manifest, `split-layers` can move selected existing scopes into
+owner-focused sources without asking a model to classify or rewrite guidance. The command accepts
+only a single-file manifest. Each scope selection explicitly names its destination layer, kind,
+and owners:
+
+```bash
+# Read-only preview: multiple values follow the repeatable --scope option.
+murlocs --dry-run split-layers \
+  --scope core=core,domain,@core docs=docs,domain,@docs \
+  --root-owner @platform
+
+# Apply exactly the previewed mechanical split. Without --apply, it remains read-only.
+murlocs split-layers \
+  --scope core=core,domain,@core docs=docs,domain,@docs \
+  --root-owner @platform \
+  --apply
+```
+
+The planner moves each selected scope together with its keyed judgments and invariants. A check
+used only by invariants moving to one layer follows those invariants. Shared or unreferenced checks
+stay in the root by default; use `--check NAME=LAYER` to make a different explicit decision.
+Coverage roots and exemptions wholly inside one selected scope move with it, while broad or shared
+coverage stays in the root. `--coverage-root PATH=LAYER|root` and
+`--coverage-exemption PATH=LAYER|root` record exceptions explicitly. Source suffixes remain a
+root-level, shared interpretation rule.
+
+Dry-run writes nothing and reports:
+
+- the complete proposed root manifest and new layer files;
+- every moved keyed value and every shared-control decision retained at the root;
+- meaningful keyed semantic differences separately from collection-order-only changes;
+- rendered map changes, including changes that consist only of provenance;
+- active-context bytes before and after for every scope; and
+- exact root and layer CODEOWNERS requirements when that policy is enabled.
+
+Apply refuses any semantic change, unsafe or existing layer path, unmanaged or modified generated
+map, stale plan, invalid proof or coverage state, missing owner, or unsatisfied CODEOWNERS rule.
+All source files, generated maps, and the lockfile are staged before replacement. If any replacement
+fails, already-replaced files are restored and newly created files are removed, so a failed split
+does not leave a partially layered network.
+
 ## Ownership in the lockfile
 
 `.murlocs/lock.json` records the ordered layer set and the content hash of every source. A
@@ -181,9 +224,9 @@ team split should change the owner in the layer declaration and its CODEOWNERS e
 
 The initial conversion exposed three workflow details worth retaining:
 
-- `add-scope` is intentionally a progressive-rollout command for a new scope; it does not split an
-  existing single-file manifest. The conversion therefore required a manual, reviewed partition,
-  followed by `murlocs --dry-run compile` before the normal ownership-checked compile.
+- `add-scope` remains the progressive-rollout command for a new scope. Existing scopes now use
+  `split-layers`; the Murlocs repository conversion predates that planner and supplied the keyed and
+  provenance comparison requirements it automates.
 - Moving invariants beside their domain scopes can change their irrelevant global array order even
   when keyed invariant content and every rendered guidance section remain unchanged. Migration
   review compared keyed semantic content and then compared rendered maps without provenance; the

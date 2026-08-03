@@ -142,7 +142,7 @@ def plan_add_scope(
         overrides=resolved.overrides,
     )
 
-    codeowners_requirements = _codeowners_requirements(manifest)
+    codeowners_requirements = codeowners_requirements_for(manifest)
     blocking = [
         item
         for item in validate(manifest)
@@ -206,7 +206,10 @@ def apply_add_scope(root: Path, plan: ScopePlan, manifest: Manifest) -> list[str
     return compile_manifest(load_manifest(root))
 
 
-def _codeowners_requirements(manifest: Manifest) -> tuple[CodeownersRequirement, ...]:
+def codeowners_requirements_for(
+    manifest: Manifest,
+) -> tuple[CodeownersRequirement, ...]:
+    """Preview exact CODEOWNERS rules for every source in a proposed manifest."""
     if not manifest.validate_codeowners:
         return ()
     codeowners = find_codeowners(manifest.root)
