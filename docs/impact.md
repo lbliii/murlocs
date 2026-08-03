@@ -64,9 +64,24 @@ identify which sources changed; a missing expected generated map is drift, not a
 A source synchronized with the lock retains its global-list/check routing even when one of its
 generated maps has unrelated output-only drift. When more than one source is stale, Murlocs uses a
 Git blob matching the locked source hash, when available, to distinguish local-only edits from
-root-render changes.
+root-render changes. That lookup considers at most 64 path-touching commits across current refs,
+checks their raw blob sizes in one `git cat-file --batch-check`, then reads eligible content in one
+`git cat-file --batch` call. Historical source blobs are limited to 1 MiB each and 8 MiB for the
+complete candidate set. The three Git reads each have a 10-second timeout, disable lazy object
+fetching through both `--no-lazy-fetch` and `GIT_NO_LAZY_FETCH`, disable optional locks, ignore
+replacement objects, and do not invoke diff/textconv drivers, clean/smudge filters, or hooks. A Git
+version that does not support the global no-lazy-fetch option exits before history or object access;
+Murlocs does not retry without the option and instead uses conservative routing.
+Each candidate is one complete object expression per line. Murlocs relies on Git's documented
+ordered batch responses and requires the content response to repeat the exact ordered blob-OID and
+size sequence from the metadata response. This preserves spaces, colons, glob characters, and
+leading dashes in valid layer paths without interpreting them as batch metadata. LF, CR, and NUL
+cannot be represented safely in this newline-delimited lookup; if such a source path reaches impact
+analysis, Murlocs does not send it to Git and uses conservative routing.
 If no safe baseline exists, it fails closed for ambiguous root drift and reports that the root map
-cannot be attributed more narrowly. This is routing evidence, not a claim that one source caused an
+cannot be attributed more narrowly. Non-Git repositories, missing objects, malformed batch output,
+timeouts, over-limit blob sets, and a matching lock blob older than the 64-commit search window all
+take this conservative path. This is routing evidence, not a claim that one source caused an
 unrelated dirty map.
 
 ## Structured output
