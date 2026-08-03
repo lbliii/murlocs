@@ -169,7 +169,7 @@ Every source currently names `@lbliii`, the repository maintainer, and has an ex
 `.github/CODEOWNERS`. Both `require_layer_owners` and `validate_codeowners` are enabled. A future
 team split should change the owner in the layer declaration and its CODEOWNERS entry together.
 
-The initial conversion exposed two workflow details worth retaining:
+The initial conversion exposed three workflow details worth retaining:
 
 - `add-scope` is intentionally a progressive-rollout command for a new scope; it does not split an
   existing single-file manifest. The conversion therefore required a manual, reviewed partition,
