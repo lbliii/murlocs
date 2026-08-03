@@ -54,7 +54,7 @@ murlocs impact --path src/my_package/feature.py
 murlocs hook install
 murlocs hook status
 murlocs curate check
-# Preview a write without changing files.
+# Preview compilation without changing files. It identifies planned writes and unchanged outputs.
 murlocs --dry-run compile
 ```
 

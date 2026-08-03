@@ -4,15 +4,20 @@ from __future__ import annotations
 # ruff: noqa: E501
 import json
 import os
-import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
 
-MURLOCS = Path(shutil.which("murlocs") or Path(sys.executable).with_name("murlocs"))
-PACKAGE_PYTHON = MURLOCS.with_name("python")
+
+def active_environment_scripts() -> tuple[Path, Path]:
+    """Return the package executables adjacent to pytest's active interpreter."""
+    python = Path(sys.executable)
+    return python.with_name("murlocs"), python
+
+
+MURLOCS, PACKAGE_PYTHON = active_environment_scripts()
 JOURNEY_DOC = Path(__file__).parents[1] / "docs" / "journeys.md"
 PROJECT_SRC = Path(__file__).parents[1] / "src"
 
@@ -143,6 +148,21 @@ def test_disposable_repository_does_not_inherit_commit_signing(
     )
 
 
+def test_console_scripts_ignore_conflicting_path_entry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    unrelated_bin = tmp_path / "unrelated-bin"
+    unrelated_bin.mkdir()
+    unrelated_murlocs = write(unrelated_bin, "murlocs", "#!/bin/sh\n")
+    monkeypatch.setenv("PATH", str(unrelated_bin))
+
+    murlocs_script, package_python = active_environment_scripts()
+
+    assert murlocs_script == Path(sys.executable).with_name("murlocs")
+    assert package_python == Path(sys.executable)
+    assert murlocs_script != unrelated_murlocs
+
+
 def repository_bytes(root: Path) -> dict[str, bytes]:
     return {
         path.relative_to(root).as_posix(): path.read_bytes()
@@ -221,8 +241,9 @@ def test_greenfield_bootstrap_with_explicit_coverage(tmp_path: Path) -> None:
 
     before, status = snapshot(root)
     compile_preview = murlocs(root, "--dry-run", "compile")
-    assert "would write AGENTS.md" in compile_preview.stdout
-    assert "would write src/app/AGENTS.md" in compile_preview.stdout
+    assert "would write" not in compile_preview.stdout
+    assert "unchanged AGENTS.md" in compile_preview.stdout
+    assert "unchanged src/app/AGENTS.md" in compile_preview.stdout
     assert_unchanged(root, before, status)
 
     murlocs(root, "compile")
