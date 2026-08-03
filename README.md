@@ -127,8 +127,10 @@ shell completions, and in-process typed dispatch. Only read-only `status`, `inve
 the lifecycle and structured-output contracts.
 
 The optional, separate `murlocs.eval` harness measures whether scoped guidance actually helps agents
-search less while staying correct. See [Guidance efficiency evaluation](docs/evaluation.md); it never
-runs as part of `compile` or `check`.
+search less while staying correct. It ingests versioned task and recorded-run files with
+`python -m murlocs.eval --task TASK.toml --runs RUNS.json`; the bundled data is available only via
+the explicit `--demo` flag. See [Guidance efficiency evaluation](docs/evaluation.md); it never runs
+as part of `compile` or `check` and never invokes a model.
 
 See [Architecture](docs/architecture.md) for trust boundaries and [Roadmap](docs/roadmap.md) for
 the planned migration and ecosystem work.

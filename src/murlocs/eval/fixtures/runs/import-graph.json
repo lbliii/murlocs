@@ -1,0 +1,61 @@
+{
+  "repository_revision": "fixture-1",
+  "runs": [
+    {
+      "ade": "illustrative-ade",
+      "answer": "service.py imports app.render and app.store.",
+      "arm": "no-guidance",
+      "evidence": {
+        "executable_steps": 42,
+        "files_inspected": 9,
+        "lines_inspected": 643,
+        "tool_calls": 18,
+        "transcript": [
+          "grep -r import src/",
+          "read src/app/service.py"
+        ]
+      },
+      "guidance_revision": "none",
+      "guidance_text": "",
+      "model": "illustrative-model"
+    },
+    {
+      "ade": "illustrative-ade",
+      "answer": "It depends on app.render and app.store.",
+      "arm": "inline-dump",
+      "evidence": {
+        "executable_steps": 30,
+        "files_inspected": 4,
+        "lines_inspected": 120,
+        "tool_calls": 9,
+        "transcript": [
+          "read AGENTS.md",
+          "read src/app/service.py"
+        ]
+      },
+      "guidance_revision": "dump-1",
+      "guidance_text": "# Whole-repo guidance dump\ncontext line\ncontext line\ncontext line\ncontext line\ncontext line\ncontext line\ncontext line\ncontext line\ncontext line\ncontext line\n",
+      "model": "illustrative-model"
+    },
+    {
+      "ade": "illustrative-ade",
+      "answer": "The app.render and app.store modules.",
+      "arm": "murlocs",
+      "evidence": {
+        "executable_steps": 23,
+        "files_inspected": 2,
+        "lines_inspected": 12,
+        "tool_calls": 3,
+        "transcript": [
+          "read src/app/AGENTS.md",
+          "read src/app/service.py"
+        ]
+      },
+      "guidance_revision": "lock-abc123",
+      "guidance_text": "# app scope\nservice.py depends on render and store.\n",
+      "model": "illustrative-model"
+    }
+  ],
+  "schema_version": 1,
+  "task_id": "import-graph"
+}

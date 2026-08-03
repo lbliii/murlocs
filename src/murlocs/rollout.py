@@ -17,14 +17,35 @@ import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from murlocs.codeowners import find_codeowners, normalize_path, parse_codeowners
 from murlocs.errors import MurlocsError
-from murlocs.layers import compose, read_disk_sources
+from murlocs.layers import ROOT_SOURCE_ID, compose, read_disk_sources
 from murlocs.lockfile import sha256_text
 from murlocs.manifest import parse_manifest_data
 from murlocs.model import LayerSource, Manifest
 from murlocs.paths import relative_posix, repo_path
 from murlocs.render import compile_manifest, render_outputs
 from murlocs.verify import validate
+
+
+@dataclass(frozen=True)
+class CodeownersRequirement:
+    """One exact CODEOWNERS rule required by a proposed layered manifest."""
+
+    file: str
+    path: str
+    owners: tuple[str, ...]
+    status: str
+    actual_owners: tuple[str, ...] = ()
+
+    @property
+    def entry(self) -> str:
+        suffix = f" {' '.join(self.owners)}" if self.owners else ""
+        return f"/{self.path}{suffix}"
+
+    @property
+    def satisfied(self) -> bool:
+        return self.status == "satisfied"
 
 
 @dataclass(frozen=True)
@@ -41,6 +62,7 @@ class ScopePlan:
     added: list[str] = field(default_factory=list)
     changed: list[str] = field(default_factory=list)
     uncovered: list[str] = field(default_factory=list)
+    codeowners_requirements: tuple[CodeownersRequirement, ...] = ()
 
 
 def plan_add_scope(
@@ -120,7 +142,12 @@ def plan_add_scope(
         overrides=resolved.overrides,
     )
 
-    blocking = [item for item in validate(manifest) if item.code not in {"drift", "lock"}]
+    codeowners_requirements = _codeowners_requirements(manifest)
+    blocking = [
+        item
+        for item in validate(manifest)
+        if item.code not in {"drift", "lock"} and not _is_codeowners_finding(item)
+    ]
     coverage_blocking = [item for item in blocking if item.code != "coverage"]
     if coverage_blocking:
         messages = "; ".join(str(item) for item in coverage_blocking)
@@ -144,6 +171,7 @@ def plan_add_scope(
         added=added,
         changed=changed,
         uncovered=uncovered,
+        codeowners_requirements=codeowners_requirements,
     )
     return plan, manifest
 
@@ -153,6 +181,13 @@ def apply_add_scope(root: Path, plan: ScopePlan, manifest: Manifest) -> list[str
     layer_file = repo_path(root, plan.layer_path, field="layer path")
     if layer_file.exists():
         raise MurlocsError(f"refusing to overwrite existing layer file: {plan.layer_path}")
+    unsatisfied = [item for item in plan.codeowners_requirements if not item.satisfied]
+    if unsatisfied:
+        details = "; ".join(_render_codeowners_error(item) for item in unsatisfied)
+        raise MurlocsError(
+            "CODEOWNERS requirements are not satisfied; add or correct the exact entries "
+            f"before applying: {details}"
+        )
     # Preflight ownership on the proposed model so a half-applied rollout is impossible.
     _preflight_outputs(root, manifest)
 
@@ -169,6 +204,59 @@ def apply_add_scope(root: Path, plan: ScopePlan, manifest: Manifest) -> list[str
     from murlocs.manifest import load_manifest
 
     return compile_manifest(load_manifest(root))
+
+
+def _codeowners_requirements(manifest: Manifest) -> tuple[CodeownersRequirement, ...]:
+    if not manifest.validate_codeowners:
+        return ()
+    codeowners = find_codeowners(manifest.root)
+    relative = (
+        relative_posix(manifest.root, codeowners)
+        if codeowners is not None
+        else ".github/CODEOWNERS"
+    )
+    entries = (
+        parse_codeowners(codeowners.read_text(encoding="utf-8"))
+        if codeowners is not None
+        else {}
+    )
+    requirements: list[CodeownersRequirement] = []
+    for source in manifest.sources:
+        if source.id == ROOT_SOURCE_ID:
+            continue
+        path = normalize_path(source.path)
+        actual = entries.get(path)
+        if codeowners is None:
+            status = "missing-file"
+        elif actual is None:
+            status = "missing-entry"
+        elif set(actual) != set(source.owners):
+            status = "owner-mismatch"
+        else:
+            status = "satisfied"
+        requirements.append(
+            CodeownersRequirement(
+                file=relative,
+                path=path,
+                owners=source.owners,
+                status=status,
+                actual_owners=actual or (),
+            )
+        )
+    return tuple(requirements)
+
+
+def _is_codeowners_finding(finding: object) -> bool:
+    code = getattr(finding, "code", "")
+    message = getattr(finding, "message", "")
+    return code == "ownership" and "CODEOWNERS" in message
+
+
+def _render_codeowners_error(requirement: CodeownersRequirement) -> str:
+    if requirement.status == "owner-mismatch":
+        actual = " ".join(requirement.actual_owners) or "<none>"
+        return f"{requirement.file}: {requirement.entry} (currently: {actual})"
+    return f"{requirement.file}: {requirement.entry}"
 
 
 def _preflight_outputs(root: Path, manifest: Manifest) -> None:

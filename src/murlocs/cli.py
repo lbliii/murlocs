@@ -475,6 +475,16 @@ def compile_command(
     )
 
 
+class CodeownersRequirementPayload(TypedDict):
+    file: str
+    path: str
+    owners: list[str]
+    entry: str
+    status: str
+    actual_owners: list[str]
+    blocking: bool
+
+
 class AddScopePayload(TypedDict):
     ok: bool
     scope: str
@@ -485,6 +495,7 @@ class AddScopePayload(TypedDict):
     changed: list[str]
     deferred: dict[str, str]
     uncovered: list[str]
+    codeowners_requirements: list[CodeownersRequirementPayload]
     written: list[str]
     dry_run: bool
 
@@ -538,6 +549,18 @@ def add_scope_command(
             "changed": plan.changed,
             "deferred": plan.deferrals,
             "uncovered": plan.uncovered,
+            "codeowners_requirements": [
+                {
+                    "file": requirement.file,
+                    "path": requirement.path,
+                    "owners": list(requirement.owners),
+                    "entry": requirement.entry,
+                    "status": requirement.status,
+                    "actual_owners": list(requirement.actual_owners),
+                    "blocking": not requirement.satisfied,
+                }
+                for requirement in plan.codeowners_requirements
+            ],
             "written": written,
             "dry_run": dry_run,
         },
@@ -570,6 +593,18 @@ def _render_add_scope(plan: ScopePlan, dry_run: bool) -> str:
         lines.append(f"  deferred {defer_path}: {reason}")
     for message in plan.uncovered:
         lines.append(f"  uncovered: {message}")
+    for requirement in plan.codeowners_requirements:
+        state = "ready" if requirement.satisfied else f"blocking: {requirement.status}"
+        lines.extend(
+            [
+                f"  CODEOWNERS ({state}) {requirement.file}",
+                f"    required exact entry: {requirement.entry}",
+            ]
+        )
+        if requirement.actual_owners and not requirement.satisfied:
+            lines.append(f"    current owners: {' '.join(requirement.actual_owners)}")
+        if not requirement.satisfied:
+            lines.append("    add or correct this entry before applying; Murlocs will not edit it")
     if dry_run:
         lines.extend(["", "manifest registration:", plan.decl_toml.rstrip()])
         lines.extend(["", f"layer {plan.layer_path}:", plan.layer_toml.rstrip()])

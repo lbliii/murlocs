@@ -120,6 +120,14 @@ untouched if the rollout cannot proceed. Deferred source-bearing areas are recor
 coverage exemptions so they stay visible as rollout gaps rather than silent omissions. Nested
 paths such as `docs/api` produce the correct root-to-scope map chain.
 
+When `validate_codeowners = true`, the dry run also prints every exact CODEOWNERS rule required by
+the proposed layered manifest. `--format json` exposes these as `codeowners_requirements`, including
+the CODEOWNERS file, exact path, expected and current owners, status, and whether the requirement is
+blocking. Status is one of `missing-file`, `missing-entry`, `owner-mismatch`, or `satisfied`.
+Murlocs does not edit ownership policy: add or correct the displayed rule, review that change, and
+then rerun `add-scope`. Applying with any unsatisfied requirement fails before writing the layer,
+manifest registration, map, or lockfile.
+
 ## Ownership and provenance
 
 Each layer declaration may name guidance `owners`. Generated maps for a layered network carry a

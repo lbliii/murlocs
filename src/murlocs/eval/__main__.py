@@ -1,81 +1,46 @@
-"""Run the bundled evaluation task over illustrative recorded runs.
-
-Usage: ``python -m murlocs.eval [RESULTS_DIR]``
-
-The records here are illustrative recorded runs, not a live agent invocation: the harness
-scores recorded evidence so results stay auditable and reproducible. Point it at your own
-recorded transcripts to evaluate real runs.
-"""
+"""Score versioned recorded agent runs without invoking a live model."""
 
 from __future__ import annotations
 
-import sys
+import argparse
 from pathlib import Path
 
 from murlocs.eval.harness import compare_runs
-from murlocs.eval.model import RunEvidence, RunRecord
-from murlocs.eval.store import load_task, render_summary, save_results
+from murlocs.eval.store import load_runs, load_task, render_summary, save_results
 
 FIXTURES = Path(__file__).parent / "fixtures"
-
-# Illustrative recorded runs. Correctness is objective; the efficiency numbers mirror the
-# qualitative pattern reported in the steward experiment (scoped guidance reduces search).
-SAMPLE_RECORDS = [
-    RunRecord(
-        arm="no-guidance",
-        model="illustrative-model",
-        ade="illustrative-ade",
-        guidance_revision="none",
-        answer="service.py imports app.render and app.store.",
-        guidance_text="",
-        evidence=RunEvidence(
-            files_inspected=9,
-            lines_inspected=643,
-            tool_calls=18,
-            executable_steps=42,
-            transcript=("grep -r import src/", "read src/app/service.py"),
-        ),
-    ),
-    RunRecord(
-        arm="inline-dump",
-        model="illustrative-model",
-        ade="illustrative-ade",
-        guidance_revision="dump-1",
-        answer="It depends on app.render and app.store.",
-        guidance_text="# Whole-repo guidance dump\n" + ("context line\n" * 400),
-        evidence=RunEvidence(
-            files_inspected=4,
-            lines_inspected=120,
-            tool_calls=9,
-            executable_steps=30,
-            transcript=("read AGENTS.md", "read src/app/service.py"),
-        ),
-    ),
-    RunRecord(
-        arm="murlocs",
-        model="illustrative-model",
-        ade="illustrative-ade",
-        guidance_revision="lock-abc123",
-        answer="The app.render and app.store modules.",
-        guidance_text="# app scope\nservice.py depends on render and store.\n",
-        evidence=RunEvidence(
-            files_inspected=2,
-            lines_inspected=12,
-            tool_calls=3,
-            executable_steps=23,
-            transcript=("read src/app/AGENTS.md", "read src/app/service.py"),
-        ),
-    ),
-]
+DEMO_TASK = FIXTURES / "tasks" / "import-graph.toml"
+DEMO_RUNS = FIXTURES / "runs" / "import-graph.json"
 
 
 def main(argv: list[str] | None = None) -> int:
-    argv = list(sys.argv[1:] if argv is None else argv)
-    task = load_task(FIXTURES / "tasks" / "import-graph.toml")
-    summary = compare_runs(task, SAMPLE_RECORDS)
+    parser = argparse.ArgumentParser(
+        prog="python -m murlocs.eval",
+        description="Score recorded agent runs; this command never invokes a model.",
+    )
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument("--demo", action="store_true", help="score the bundled example records")
+    source.add_argument("--task", type=Path, help="versioned TOML task definition")
+    parser.add_argument("--runs", type=Path, help="versioned JSON recorded-run dataset")
+    parser.add_argument("--output", type=Path, help="directory for deterministic JSON results")
+    args = parser.parse_args(argv)
+    if args.demo and args.runs is not None:
+        parser.error("--runs cannot be combined with --demo")
+    if args.task is not None and args.runs is None:
+        parser.error("--runs is required with --task")
+
+    task_path = DEMO_TASK if args.demo else args.task
+    runs_path = DEMO_RUNS if args.demo else args.runs
+    assert task_path is not None and runs_path is not None
+    try:
+        task = load_task(task_path)
+        records = load_runs(runs_path, task)
+    except ValueError as exc:
+        parser.error(str(exc))
+    summary = compare_runs(task, records)
     print(render_summary(summary))
-    if argv:
-        target = save_results(Path(argv[0]), task, summary, SAMPLE_RECORDS)
+    if args.output is not None:
+        target = save_results(args.output, task, summary, records)
         print(f"\nwrote {target}")
     return 0
 

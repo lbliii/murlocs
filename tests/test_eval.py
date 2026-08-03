@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
+
+import pytest
 
 from murlocs.cli import build_cli
 from murlocs.eval import (
@@ -10,10 +13,12 @@ from murlocs.eval import (
     RunRecord,
     check_correctness,
     compare_runs,
+    load_runs,
     load_task,
     save_results,
     score_run,
 )
+from murlocs.eval.__main__ import main as eval_main
 from murlocs.eval.guidance import inline_dump_guidance, murlocs_guidance
 
 TASK_FIXTURE = (
@@ -25,6 +30,7 @@ TASK_FIXTURE = (
     / "tasks"
     / "import-graph.toml"
 )
+RUNS_FIXTURE = TASK_FIXTURE.parents[1] / "runs" / "import-graph.json"
 
 
 def invoke(*argv: str):
@@ -57,6 +63,117 @@ def test_fixture_task_is_objectively_checkable():
         "depends-on-render",
         "depends-on-store",
     }
+
+
+@pytest.mark.parametrize(
+    "task_id",
+    ["../escape", "nested/task", r"nested\task", "..", ".hidden", "trailing.", "a..b"],
+)
+def test_task_ingestion_rejects_nonportable_and_traversal_ids(tmp_path, task_id):
+    toml_id = task_id.replace("\\", "\\\\")
+    text = TASK_FIXTURE.read_text(encoding="utf-8").replace(
+        'id = "import-graph"', f'id = "{toml_id}"', 1
+    )
+    candidate = tmp_path / "task.toml"
+    candidate.write_text(text, encoding="utf-8")
+
+    with pytest.raises(ValueError, match="must be 1-128 ASCII"):
+        load_task(candidate)
+
+
+def test_save_results_revalidates_task_id_before_creating_output(tmp_path):
+    task = replace(load_task(TASK_FIXTURE), id="../escaped")
+    records = [make_record("murlocs", "app.render and app.store", steps=12)]
+    summary = compare_runs(task, records)
+    output = tmp_path / "results"
+
+    with pytest.raises(ValueError, match="task id must be 1-128 ASCII"):
+        save_results(output, task, summary, records)
+
+    assert not output.exists()
+    assert not (tmp_path / "escaped.json").exists()
+
+
+def test_versioned_recorded_runs_load_all_experiment_arms():
+    task = load_task(TASK_FIXTURE)
+    records = load_runs(RUNS_FIXTURE, task)
+    assert [record.arm for record in records] == [
+        "no-guidance",
+        "inline-dump",
+        "murlocs",
+    ]
+    assert records[-1].guidance_revision == "lock-abc123"
+    assert records[-1].evidence.transcript[-1] == "read src/app/service.py"
+
+
+def test_run_ingestion_rejects_task_and_revision_mismatches(tmp_path):
+    task = load_task(TASK_FIXTURE)
+    payload = json.loads(RUNS_FIXTURE.read_text(encoding="utf-8"))
+    payload["task_id"] = "another-task"
+    mismatched_task = tmp_path / "task-mismatch.json"
+    mismatched_task.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(ValueError, match="task_id.*does not match"):
+        load_runs(mismatched_task, task)
+
+    payload["task_id"] = task.id
+    payload["repository_revision"] = "another-revision"
+    mismatched_revision = tmp_path / "revision-mismatch.json"
+    mismatched_revision.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(ValueError, match="repository_revision.*does not match"):
+        load_runs(mismatched_revision, task)
+
+
+def test_run_ingestion_rejects_unknown_missing_and_duplicate_arms(tmp_path):
+    task = load_task(TASK_FIXTURE)
+    payload = json.loads(RUNS_FIXTURE.read_text(encoding="utf-8"))
+
+    payload["runs"][0]["arm"] = "mystery"
+    unknown = tmp_path / "unknown.json"
+    unknown.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(ValueError, match="arm must be one of"):
+        load_runs(unknown, task)
+
+    payload = json.loads(RUNS_FIXTURE.read_text(encoding="utf-8"))
+    payload["runs"] = payload["runs"][:-1]
+    missing = tmp_path / "missing.json"
+    missing.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(ValueError, match="missing recorded runs for arms: murlocs"):
+        load_runs(missing, task)
+
+    payload = json.loads(RUNS_FIXTURE.read_text(encoding="utf-8"))
+    payload["runs"][1]["arm"] = "no-guidance"
+    duplicate = tmp_path / "duplicate.json"
+    duplicate.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(ValueError, match="duplicate recorded run"):
+        load_runs(duplicate, task)
+
+
+def test_ingestion_requires_supported_schema_versions(tmp_path):
+    task = load_task(TASK_FIXTURE)
+    payload = json.loads(RUNS_FIXTURE.read_text(encoding="utf-8"))
+    payload["schema_version"] = 2
+    unsupported = tmp_path / "unsupported.json"
+    unsupported.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(ValueError, match="unsupported schema_version 2"):
+        load_runs(unsupported, task)
+
+
+def test_versioned_inputs_reject_unknown_fields(tmp_path):
+    task_text = TASK_FIXTURE.read_text(encoding="utf-8").replace(
+        "\n[[expected_facts]]", '\nfuture_field = "value"\n\n[[expected_facts]]', 1
+    )
+    task_path = tmp_path / "unknown-task.toml"
+    task_path.write_text(task_text, encoding="utf-8")
+    with pytest.raises(ValueError, match="unknown fields: future_field"):
+        load_task(task_path)
+
+    task = load_task(TASK_FIXTURE)
+    payload = json.loads(RUNS_FIXTURE.read_text(encoding="utf-8"))
+    payload["runs"][0]["future_field"] = "value"
+    runs_path = tmp_path / "unknown-runs.json"
+    runs_path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(ValueError, match="unknown fields: future_field"):
+        load_runs(runs_path, task)
 
 
 def test_correctness_requires_all_expected_facts():
@@ -111,9 +228,37 @@ def test_save_results_preserves_evidence_and_summary(tmp_path):
     summary = compare_runs(task, records)
     target = save_results(tmp_path / "results", task, summary, records)
     payload = json.loads(target.read_text(encoding="utf-8"))
+    assert payload["schema_version"] == 1
     assert payload["task"]["id"] == "import-graph"
     assert payload["summary"]["most_efficient_arm"] == "murlocs"
-    assert payload["evidence"]["murlocs"] == ["step for murlocs"]
+    assert payload["records"][0]["evidence"]["transcript"] == ["step for murlocs"]
+    assert payload["records"][0]["answer"] == "app.render and app.store"
+
+
+def test_eval_cli_ingests_files_and_writes_reproducible_results(tmp_path, capsys):
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    assert eval_main(
+        ["--task", str(TASK_FIXTURE), "--runs", str(RUNS_FIXTURE), "--output", str(first)]
+    ) == 0
+    assert "most efficient correct arm: murlocs" in capsys.readouterr().out
+    assert eval_main(
+        ["--task", str(TASK_FIXTURE), "--runs", str(RUNS_FIXTURE), "--output", str(second)]
+    ) == 0
+    capsys.readouterr()
+    assert (first / "import-graph.json").read_bytes() == (
+        second / "import-graph.json"
+    ).read_bytes()
+
+
+def test_eval_cli_requires_explicit_demo_or_inputs(capsys):
+    with pytest.raises(SystemExit) as missing:
+        eval_main([])
+    assert missing.value.code == 2
+    assert "one of the arguments --demo --task is required" in capsys.readouterr().err
+
+    assert eval_main(["--demo"]) == 0
+    assert "illustrative-model / illustrative-ade" in capsys.readouterr().out
 
 
 def test_scoped_guidance_is_smaller_than_inline_dump(tmp_path):
