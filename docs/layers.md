@@ -178,6 +178,9 @@ The initial conversion exposed two workflow details worth retaining:
   when keyed invariant content and every rendered guidance section remain unchanged. Migration
   review compared keyed semantic content and then compared rendered maps without provenance; the
   only rendered additions were the expected provenance blocks.
+- `validate_codeowners` currently checks declared layer files, not the root manifest source. This
+  repository gives the manifest an owner and an exact CODEOWNERS entry so root provenance is not
+  unowned, but that particular entry is convention rather than a validation-enforced requirement.
 
 The root map names every source in its provenance because its network table summarizes every
 scope. Scoped maps name only their domain contributor. Representative `explain` and `impact`
