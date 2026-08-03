@@ -205,10 +205,8 @@ def uninstall_hooks(root: Path, events: tuple[HookEvent, ...]) -> dict[str, Any]
     for event in selected:
         target = hooks / event
         try:
-            owned[event] = (
-                target.is_file()
-                and _owned_runner(target.read_bytes(), event) is not None
-            )
+            content = target.read_bytes()
+            owned[event] = target.is_file() and _is_owned_hook(content, event)
         except OSError:
             owned[event] = False
         if target.exists() and not owned[event]:
@@ -731,6 +729,16 @@ def _hook_bytes(event: HookEvent, runner: HookRunner) -> bytes:
     ).encode()
 
 
+def _legacy_hook_bytes(event: HookEvent) -> bytes:
+    """Return the exact v1 dispatcher emitted before runner pinning existed."""
+    command = (
+        "exec murlocs hook run pre-commit\n"
+        if event == "pre-commit"
+        else 'exec murlocs hook run pre-push --remote-name="$1" --remote-url="$2"\n'
+    )
+    return f"#!/bin/sh\n{HOOK_MARKER}\n{command}".encode()
+
+
 def _hook_state(path: Path, event: HookEvent) -> str:
     if path.is_symlink():
         return "occupied"
@@ -739,9 +747,12 @@ def _hook_state(path: Path, event: HookEvent) -> str:
     try:
         if not path.is_file():
             return "occupied"
-        runner = _owned_runner(path.read_bytes(), event)
+        content = path.read_bytes()
+        runner = _owned_runner(content, event)
         if runner is None:
-            return "modified" if _has_murlocs_marker(path.read_bytes()) else "occupied"
+            if content == _legacy_hook_bytes(event):
+                return "legacy"
+            return "modified" if _has_murlocs_marker(content) else "occupied"
         return _runner_state(runner)
     except OSError:
         return "occupied"
@@ -769,6 +780,10 @@ def _owned_runner(content: bytes, event: HookEvent) -> HookRunner | None:
 
 def _has_murlocs_marker(content: bytes) -> bool:
     return content.startswith(f"#!/bin/sh\n{HOOK_MARKER}\n".encode())
+
+
+def _is_owned_hook(content: bytes, event: HookEvent) -> bool:
+    return _owned_runner(content, event) is not None or content == _legacy_hook_bytes(event)
 
 
 def _runner_state(runner: HookRunner) -> str:
@@ -865,7 +880,7 @@ def _replace_owned_hook(path: Path, content: bytes, event: HookEvent) -> None:
         current = path.read_bytes()
     except OSError as exc:
         raise MurlocsError(f"could not inspect Git hook {path.name}: {exc}") from exc
-    if _owned_runner(current, event) is None:
+    if not _is_owned_hook(current, event):
         raise MurlocsError(f"Git hook slot changed during installation: {path.name}")
     descriptor, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
     temp_path = Path(temporary)

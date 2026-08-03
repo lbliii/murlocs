@@ -42,6 +42,11 @@ hook fail closed with one repair instruction: run `murlocs hook install` again f
 installation. `murlocs hook status` reports each default slot as `installed`, `missing runner`,
 `version mismatch` (when `--version` is detectable), `modified`, `occupied`, or `absent`.
 
+Hooks installed by Murlocs before durable runner pinning are reported as `legacy`. They remain
+byte-owned: `murlocs hook uninstall` removes their exact old bytes, while `murlocs hook install`
+replaces those same bytes with the verified dispatcher. A legacy hook is never treated as an
+unmanaged manager or stranded behind an unrepairable status.
+
 Select one hook by repeating `--event`:
 
 ```bash

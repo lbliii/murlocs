@@ -372,6 +372,27 @@ def test_status_distinguishes_modified_owned_bytes_from_occupied_slots(
     assert hook_status(root)["events"]["pre-commit"] == "occupied"
 
 
+def test_legacy_owned_hook_is_reversible_and_repairable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = repository(tmp_path)
+    runner = durable_runner(tmp_path)
+    monkeypatch.setenv("PATH", str(runner.parent) + os.pathsep + os.environ["PATH"])
+    hook = Path(git(root, "rev-parse", "--git-path", "hooks/pre-commit").decode())
+    if not hook.is_absolute():
+        hook = root / hook
+    hook.write_bytes(hooks_module._legacy_hook_bytes("pre-commit"))
+
+    assert hook_status(root)["events"]["pre-commit"] == "legacy"
+    assert uninstall_hooks(root, ("pre-commit",))["changed"] == ["pre-commit"]
+    assert not hook.exists()
+
+    hook.write_bytes(hooks_module._legacy_hook_bytes("pre-commit"))
+    repaired = install_hooks(root, ("pre-commit",))
+    assert repaired["changed"] == ["pre-commit"]
+    assert hook_status(root)["events"]["pre-commit"] == "installed"
+
+
 def test_non_git_and_partial_adoption_fail_with_actionable_errors(tmp_path: Path) -> None:
     plain = tmp_path / "plain"
     plain.mkdir()
