@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 import sys
 import tomllib
+from dataclasses import replace
 from pathlib import Path
 from typing import Annotated, Any, Literal, TypedDict
 
@@ -9,6 +11,7 @@ from milo import CLI, Context, Option, Positional
 
 from murlocs import __version__
 from murlocs.adoption import adoption_status
+from murlocs.curation import check_records, propose_record, review_proposal
 from murlocs.errors import MurlocsError
 from murlocs.impact import (
     build_impact_report,
@@ -422,6 +425,126 @@ class MigrationActionPayload(TypedDict, total=False):
     restore_legacy: bool
     lock_existed: bool
     adopted_sha256: dict[str, str]
+
+
+class CurationFindingPayload(TypedDict):
+    code: str
+    message: str
+    blocking: bool
+
+
+class CurationRecordSummaryPayload(TypedDict):
+    id: str
+    path: str
+    state: str
+
+
+class CurationCheckPayload(TypedDict):
+    ok: bool
+    records: list[CurationRecordSummaryPayload]
+    findings: list[CurationFindingPayload]
+
+
+class CurationProposalPayload(TypedDict, total=False):
+    id: str
+    state: str
+    intent: str
+    subject_kind: str
+    target_source: str
+    target_scope: str | None
+    target_key: str | None
+    proposer: str
+    origin: str
+    rationale: str
+
+
+class CurationOwnersPayload(TypedDict):
+    recorded: list[str]
+    current: list[str]
+
+
+class CurationDecisionPayload(TypedDict):
+    state: str
+    actor: str
+    at: str
+    rationale: str
+    review_ref: str | None
+
+
+class CurationEvidencePayload(TypedDict):
+    kind: str
+    reference: str
+    summary: str
+
+
+class CurationChangePayload(TypedDict):
+    operation: str
+    before: (
+        str
+        | list[str]
+        | dict[
+            str,
+            str | bool | list[str] | list[dict[str, str]] | dict[str, list[str]],
+        ]
+        | None
+    )
+    after: (
+        str
+        | list[str]
+        | dict[
+            str,
+            str | bool | list[str] | list[dict[str, str]] | dict[str, list[str]],
+        ]
+        | None
+    )
+
+
+class CurationSourcePayload(TypedDict):
+    recorded_sha256: str
+    current_sha256: str
+    proposed_sha256: str
+    stale_base: bool
+
+
+class CurationChainPayload(TypedDict):
+    scope: str
+    path: str
+    maps: list[str]
+    current_bytes: int
+    proposed_bytes: int
+    delta_bytes: int
+    max_active_bytes: int
+    over_budget: bool
+
+
+class CurationValidationPayload(TypedDict):
+    code: str
+    message: str
+
+
+class CurationReviewPayload(TypedDict):
+    ok: bool
+    proposal: CurationProposalPayload
+    owners: CurationOwnersPayload
+    decisions: list[CurationDecisionPayload]
+    evidence: list[CurationEvidencePayload]
+    change: CurationChangePayload
+    source: CurationSourcePayload
+    exact_duplicates: list[CurationFindingPayload]
+    key_collisions: list[CurationFindingPayload]
+    shadowing: list[CurationFindingPayload]
+    affected_chains: list[CurationChainPayload]
+    validation_findings: list[CurationValidationPayload]
+    findings: list[CurationFindingPayload]
+
+
+class CurationProposePayload(TypedDict):
+    ok: bool
+    id: str
+    path: str
+    dry_run: bool
+    record: str
+    review: CurationReviewPayload
 
 
 def _render_result(result: Any, _ctx: Any) -> str:
@@ -1275,6 +1398,197 @@ def rollback_command(
     return CommandResult({"ok": True, **result}, terminal_text=f"{verb} migration")
 
 
+def curate_propose_command(
+    id: Annotated[str, Positional("ID")],
+    intent: Annotated[str, Option(metavar="INTENT")],
+    subject_kind: Annotated[str, Option(metavar="KIND")],
+    target_source: Annotated[str, Option(metavar="PATH")],
+    origin: Annotated[str, Option(metavar="REF")],
+    rationale: Annotated[str, Option(metavar="TEXT")],
+    proposer: Annotated[str, Option(metavar="ACTOR")],
+    evidence_kind: Annotated[str, Option(metavar="KIND")],
+    evidence_reference: Annotated[str, Option(metavar="REF")],
+    evidence_summary: Annotated[str, Option(metavar="TEXT")],
+    at: Annotated[str, Option(metavar="TIMESTAMP")],
+    repo: Annotated[str, Option(metavar="PATH")] = ".",
+    target_scope: Annotated[str | None, Option(metavar="SCOPE")] = None,
+    target_key: Annotated[str | None, Option(metavar="KEY")] = None,
+    value: Annotated[str | None, Option(metavar="TEXT")] = None,
+    payload_json: Annotated[str | None, Option(metavar="JSON")] = None,
+    ctx: Context | None = None,
+) -> CurationProposePayload | FailurePayload:
+    """Create one inert curation proposal without editing active guidance.
+
+    Args:
+        id: Repository-unique path-safe proposal id.
+        intent: Proposed operation: add, replace, or remove.
+        subject_kind: Canonical guidance subject kind.
+        target_source: Explicitly active manifest or layer source.
+        origin: Issue, task, or observation that originated the proposal.
+        rationale: Why the guidance change is proposed.
+        proposer: Attributed proposal actor.
+        evidence_kind: Evidence type such as file_anchor, issue, or note.
+        evidence_reference: Governed reference for the evidence.
+        evidence_summary: Concise explanation of the evidence.
+        at: Caller-supplied event timestamp.
+        repo: Repository root containing the guidance network.
+        target_scope: Optional affected scope id.
+        target_key: Stable key for replacement, removal, or structured addition.
+        value: String payload for list guidance.
+        payload_json: Object payload for structured guidance.
+        ctx: Milo host context used to honor dry-run policy.
+    """
+    try:
+        result = propose_record(
+            _root(repo),
+            proposal_id=id,
+            intent=intent,
+            subject_kind=subject_kind,
+            target_source=target_source,
+            target_scope=target_scope,
+            target_key=target_key,
+            origin=origin,
+            rationale=rationale,
+            proposer=proposer,
+            evidence_kind=evidence_kind,
+            evidence_reference=evidence_reference,
+            evidence_summary=evidence_summary,
+            at=at,
+            value=value,
+            payload_json=payload_json,
+            dry_run=bool(ctx is not None and ctx.dry_run),
+        )
+    except (MurlocsError, OSError, ValueError) as exc:
+        return _failure("MURLOCS_CURATE_PROPOSE", exc)
+    verb = "would write" if result["dry_run"] else "wrote"
+    review = result["review"]
+    return CommandResult(
+        result,
+        terminal_text="\n".join(
+            [
+                f"{verb} {result['path']}",
+                f"proposal {id}: {intent} {subject_kind}",
+                f"review findings: {len(review['findings'])}",
+            ]
+        ),
+    )
+
+
+def curate_review_command(
+    id: Annotated[str, Positional("ID")],
+    repo: Annotated[str, Option(metavar="PATH")] = ".",
+) -> CurationReviewPayload | FailurePayload:
+    """Review an inert proposal and its prospective guidance model without writes.
+
+    Args:
+        id: Path-safe proposal id under `.murlocs/curation/`.
+        repo: Repository root containing the guidance network.
+    """
+    try:
+        report = review_proposal(_root(repo), id)
+    except (MurlocsError, OSError, ValueError) as exc:
+        return _failure("MURLOCS_CURATE_REVIEW", exc)
+    proposal = report["proposal"]
+    source = report["source"]
+    change = report["change"]
+    lines = [
+        f"Curation proposal {proposal['id']} [{proposal['state']}]",
+        f"  intent: {proposal['intent']} {proposal['subject_kind']}",
+        f"  target: {proposal['target_source']} key={proposal['target_key'] or '-'}",
+        f"  target scope: {proposal['target_scope'] or '-'}",
+        f"  current owners: {', '.join(report['owners']['current']) or 'unowned'}",
+        f"  recorded owners: {', '.join(report['owners']['recorded']) or 'unowned'}",
+        f"  proposer: {proposal['proposer']} · origin: {proposal['origin']}",
+        f"  rationale: {proposal['rationale']}",
+        f"  stale base: {'yes' if source['stale_base'] else 'no'}",
+        f"  recorded source: {source['recorded_sha256']}",
+        f"  current source: {source['current_sha256']}",
+        f"  proposed source: {source['proposed_sha256']}",
+        "",
+        "Before:",
+        _curation_value(change["before"]),
+        "After:",
+        _curation_value(change["after"]),
+        "",
+        "Evidence:",
+        *(
+            f"  - [{item['kind']}] {item['reference']}: {item['summary']}"
+            for item in report["evidence"]
+        ),
+        "",
+        "Decisions:",
+        *(
+            f"  - {item['state']} by {item['actor']} at {item['at']}: "
+            f"{item['rationale']}"
+            + (f" ({item['review_ref']})" if item["review_ref"] else "")
+            for item in report["decisions"]
+        ),
+        "",
+        "Affected guidance chains:",
+    ]
+    if report["affected_chains"]:
+        for chain in report["affected_chains"]:
+            delta = f"{chain['delta_bytes']:+d}"
+            lines.append(
+                f"  - {chain['scope']} [{chain['path']}] "
+                f"({' -> '.join(chain['maps'])}): "
+                f"{chain['current_bytes']} -> {chain['proposed_bytes']} bytes "
+                f"({delta}; max {chain['max_active_bytes']})"
+            )
+    else:
+        lines.append("  - none")
+    for title, key in (
+        ("Exact duplicates", "exact_duplicates"),
+        ("Key collisions", "key_collisions"),
+        ("Deterministic shadowing", "shadowing"),
+        ("Validation findings", "validation_findings"),
+        ("All findings", "findings"),
+    ):
+        lines.extend(["", f"{title}:"])
+        if report[key]:
+            lines.extend(f"  - [{item['code']}] {item['message']}" for item in report[key])
+        else:
+            lines.append("  - none")
+    return CommandResult(
+        report,
+        terminal_text="\n".join(lines),
+        exit_code=0 if report["ok"] else 1,
+        terminal_stream="stdout",
+    )
+
+
+def _curation_value(value: Any) -> str:
+    if value is None:
+        return "  (none)"
+    return "  " + json.dumps(value, ensure_ascii=False, sort_keys=True)
+
+
+def curate_check_command(
+    repo: Annotated[str, Option(metavar="PATH")] = ".",
+) -> CurationCheckPayload | FailurePayload:
+    """Validate all inert curation records without changing repository files.
+
+    Args:
+        repo: Repository root containing optional `.murlocs/curation/` records.
+    """
+    try:
+        result = check_records(_root(repo))
+    except (MurlocsError, OSError, ValueError) as exc:
+        return _failure("MURLOCS_CURATE_CHECK", exc)
+    lines = [f"checked {len(result['records'])} curation record(s)"]
+    lines.extend(f"[{item['code']}] {item['message']}" for item in result["findings"])
+    if result["ok"]:
+        lines.append("curation check passed")
+    else:
+        lines.append(f"curation check found {len(result['findings'])} issue(s)")
+    return CommandResult(
+        result,
+        terminal_text="\n".join(lines),
+        exit_code=0 if result["ok"] else 1,
+        terminal_stream="stdout" if result["ok"] else "stderr",
+    )
+
+
 def build_cli(*, name: str = "murlocs") -> CLI:
     """Build an invocation-local Milo command registry."""
     app = MurlocsCLI(
@@ -1382,6 +1696,38 @@ def build_cli(*, name: str = "murlocs") -> CLI:
         annotations=inspection,
         terminal_renderer=_render_result,
     )(impact_command)
+    curate = app.group(
+        "curate",
+        description="Create and inspect inert guidance curation proposals",
+    )
+    curate.command(
+        "propose",
+        description="Create an inert guidance proposal",
+        surfaces=("cli",),
+        terminal_renderer=_render_result,
+    )(curate_propose_command)
+    curate.command(
+        "review",
+        description="Review a proposal and its prospective guidance model",
+        surfaces=("cli", "mcp", "llms"),
+        terminal_renderer=_render_result,
+    )(curate_review_command)
+    curate.command(
+        "check",
+        description="Validate inert curation records",
+        surfaces=("cli", "mcp", "llms"),
+        terminal_renderer=_render_result,
+    )(curate_check_command)
+    # Milo 0.4 exposes annotations on grouped CommandDef objects but not on
+    # Group.command(). Preserve the same trust hints as root inspection commands.
+    curate._commands["propose"] = replace(
+        curate.get_command("propose"),
+        annotations={"destructiveHint": True, "openWorldHint": True},
+    )
+    for command_name in ("review", "check"):
+        curate._commands[command_name] = replace(
+            curate.get_command(command_name), annotations=inspection
+        )
     return app
 
 
