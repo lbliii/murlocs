@@ -18,6 +18,11 @@ A prompt can help author guidance once. Murlocs owns the repeatable infrastructu
 - path-specific explanations and changed-path review routing without starting an agent or
   executing repository commands.
 
+The [portable agent activation lifecycle](docs/activation-lifecycle.md) defines how hosts,
+generated guidance, Git hooks, and CI discover `.murlocs/manifest.toml` and invoke those read-only
+operations at task boundaries. Its completion gate requires fresh integration-produced repository
+evidence; an agent assertion alone is never a passing receipt.
+
 The Milo-backed CLI is deterministic infrastructure. The bundled `bootstrap-murlocs` skill is the
 optional agent-assisted authoring layer for discovering architecture and drafting a truthful
 manifest. Read-only commands are available as MCP tools and in `llms.txt`; write commands remain

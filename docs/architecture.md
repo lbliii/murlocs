@@ -26,6 +26,12 @@ required before a proposal changes an active manifest or layer. See
 [Governed guidance curation](curation.md) for the lifecycle, deterministic review checks, and trust
 boundary.
 
+Passive activation remains outside the compiler and curation write plane. The
+[portable agent activation lifecycle](activation-lifecycle.md) defines read-only task boundaries,
+integration-produced freshness receipts, cache invalidation, and generated-guidance/hook/CI
+fallbacks. It never converts an agent claim, Git event, or Murlocs finding into authenticated
+approval.
+
 The lockfile records the exact hash of every generated map. Compilation will write a missing map or
 replace an unchanged map it already owns. It refuses unmanaged files, modified generated files, path
 escapes, and orphaned owned maps. This makes destructive migrations impossible by default.

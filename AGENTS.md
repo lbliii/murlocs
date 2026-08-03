@@ -21,6 +21,7 @@ Do not open `.murlocs/PROTOCOL.md` or `.murlocs/manifest.toml` unless the task i
 ## Operating rules
 
 - Read the applicable AGENTS.md chain before editing.
+- Murlocs activation: if no conforming host or hook receipt exists, obtain fresh `murlocs check` and `murlocs impact` results before completion; this prompt-only fallback is not host-enforced. Contract: docs/activation-lifecycle.md.
 - Preserve unmanaged files and modified generated files.
 - Run the tool with Python 3.14 or newer and keep deterministic behavior at the core.
 

@@ -101,3 +101,22 @@ python -m murlocs.eval \
 
 See [Guidance efficiency evaluation](evaluation.md) for the version 1 schemas and collection
 methodology.
+
+## Activate Murlocs around agent work
+
+An integration first tests the exact `.murlocs/manifest.toml` presence signal. A healthy task-start
+may remain silent. Forecast intended paths before editing, reassess actual paths after editing, and
+obtain fresh `check` plus `impact` receipts after the last mutation before completion:
+
+```bash
+murlocs check --format json
+murlocs impact --path src/app/core.py --format json
+# Edit, then repeat with every actual task path.
+murlocs check --format json
+murlocs impact --path src/app/core.py --format json
+```
+
+These commands illustrate the typed read-only operations, not a shell-based adapter protocol.
+Generated guidance is the prompt-mediated fallback; Git hooks and CI can enforce the same lifecycle
+when a host has no native events. See [Portable agent activation lifecycle](activation-lifecycle.md)
+for the normative request/response, caching, timeout, and completion-evidence contract.
