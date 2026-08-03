@@ -142,7 +142,7 @@ deterministically into the same canonical model. Single-file manifests keep work
 | `murlocs explain PATH` | Print the ordered scope, invariant, layer provenance, override, and budget trace for a path. |
 | `murlocs impact` | Classify guidance review impact for repeated `--path` values and/or a Git `--revision-range`. |
 | `murlocs hook run EVENT` | Assess the exact staged index or outgoing commit view without executing repository commands. |
-| `murlocs hook install` / `uninstall` / `status` | Conservatively manage byte-owned default Git hook slots. |
+| `murlocs hook install` / `uninstall` / `status` | Conservatively manage byte-owned default Git hook slots with a verified durable runner. |
 | `murlocs curate propose ID` | Create a versioned inert proposal under `.murlocs/curation/`; never edit active guidance. |
 | `murlocs curate review ID` | Report the deterministic prospective change, ownership, conflicts, affected chains, and budget delta. |
 | `murlocs curate check` | Validate every inert proposal and its current target without changing files. |

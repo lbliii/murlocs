@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import os
+import shlex
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -16,6 +19,8 @@ from murlocs.hooks import (
     run_hook,
     uninstall_hooks,
 )
+
+HOOK_RUNNER = Path(sys.executable).with_name("murlocs")
 
 
 def git(root: Path, *args: str, input_bytes: bytes | None = None) -> bytes:
@@ -50,11 +55,34 @@ def invoke(*argv: str):
     return build_cli().invoke(list(argv))
 
 
+def durable_runner(tmp_path: Path, version: str = "0.1.0") -> Path:
+    """Create a user-level launcher that remains outside a project virtualenv."""
+    runner = tmp_path / "user-bin" / "murlocs"
+    runner.parent.mkdir(exist_ok=True)
+    runner.write_text(
+        "#!/bin/sh\n"
+        "if [ \"$1\" = \"--version\" ]; then\n"
+        f"  echo 'murlocs {version}'\n"
+        "  exit 0\n"
+        "fi\n"
+        f"exec {shlex.quote(str(sys.executable))} -m murlocs \"$@\"\n"
+    )
+    runner.chmod(0o755)
+    return runner
+
+
 def test_hook_cli_management_preserves_output_and_exit_behavior(tmp_path: Path) -> None:
     root = repository(tmp_path)
 
     installed = invoke(
-        "hook", "install", "--event", "pre-commit", "--repo", str(root)
+        "hook",
+        "install",
+        "--event",
+        "pre-commit",
+        "--repo",
+        str(root),
+        "--runner",
+        str(HOOK_RUNNER),
     )
     status = invoke("hook", "status", "--repo", str(root))
     removed = invoke(
@@ -235,7 +263,7 @@ def test_installer_is_idempotent_reversible_and_preserves_occupied_slots(
     tmp_path: Path,
 ) -> None:
     root = repository(tmp_path)
-    first = install_hooks(root, ())
+    first = install_hooks(root, (), runner=str(HOOK_RUNNER))
     second = install_hooks(root, ())
 
     assert first["changed"] == ["pre-commit", "pre-push"]
@@ -253,13 +281,13 @@ def test_installer_is_idempotent_reversible_and_preserves_occupied_slots(
     occupied = occupied / "hooks" / "pre-commit"
     occupied.write_text("#!/bin/sh\nexit 0\n")
     with pytest.raises(MurlocsError, match="refusing to replace"):
-        install_hooks(root, ("pre-commit",))
+        install_hooks(root, ("pre-commit",), runner=str(HOOK_RUNNER))
     assert occupied.read_text() == "#!/bin/sh\nexit 0\n"
 
     occupied.unlink()
     occupied.symlink_to("missing-manager-hook")
     with pytest.raises(MurlocsError, match="refusing to replace"):
-        install_hooks(root, ("pre-commit",))
+        install_hooks(root, ("pre-commit",), runner=str(HOOK_RUNNER))
     assert occupied.is_symlink()
 
 
@@ -268,7 +296,63 @@ def test_installer_refuses_custom_hook_path(tmp_path: Path) -> None:
     git(root, "config", "core.hooksPath", ".githooks")
 
     with pytest.raises(MurlocsError, match="core.hooksPath"):
-        install_hooks(root, ())
+        install_hooks(root, (), runner=str(HOOK_RUNNER))
+
+
+def test_installer_rejects_uv_run_project_virtual_environment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = repository(tmp_path)
+    virtualenv = tmp_path / "project" / ".venv"
+    runner = virtualenv / "bin" / "murlocs"
+    runner.parent.mkdir(parents=True)
+    (virtualenv / "pyvenv.cfg").write_text("home = /python\n")
+    runner.write_text("#!/bin/sh\necho 'murlocs 0.1.0'\n")
+    runner.chmod(0o755)
+    monkeypatch.setenv("PATH", str(runner.parent) + os.pathsep + os.environ["PATH"])
+
+    with pytest.raises(MurlocsError, match="project virtual environment"):
+        install_hooks(root, ("pre-commit",))
+
+    assert hook_status(root)["events"]["pre-commit"] == "absent"
+
+
+def test_user_level_runner_dispatcher_smoke_and_status_recovery(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = repository(tmp_path)
+    runner = durable_runner(tmp_path)
+    monkeypatch.setenv("PATH", str(runner.parent) + os.pathsep + os.environ["PATH"])
+
+    installed = install_hooks(root, ("pre-commit",))
+    hook = Path(git(root, "rev-parse", "--git-path", "hooks/pre-commit").decode())
+    if not hook.is_absolute():
+        hook = root / hook
+    assert installed["changed"] == ["pre-commit"]
+    assert str(runner) in hook.read_text()
+    assert hook_status(root)["events"]["pre-commit"] == "installed"
+
+    (root / "README.md").write_text("# dispatcher smoke\n")
+    git(root, "add", "README.md")
+    git(root, "commit", "--quiet", "-m", "dispatch through generated hook")
+
+    runner.unlink()
+    assert hook_status(root)["events"]["pre-commit"] == "missing runner"
+    missing = subprocess.run([str(hook)], cwd=root, capture_output=True, text=True)
+    assert missing.returncode == 1
+    assert missing.stderr == (
+        "Murlocs hook runner is missing; run 'murlocs hook install' to repair it.\n"
+    )
+    assert uninstall_hooks(root, ("pre-commit",))["changed"] == ["pre-commit"]
+
+
+def test_status_reports_detectable_runner_version_mismatch(tmp_path: Path) -> None:
+    root = repository(tmp_path)
+    runner = durable_runner(tmp_path)
+    install_hooks(root, ("pre-commit",), runner=str(runner))
+    durable_runner(tmp_path, version="0.2.0")
+
+    assert hook_status(root)["events"]["pre-commit"] == "version mismatch"
 
 
 def test_non_git_and_partial_adoption_fail_with_actionable_errors(tmp_path: Path) -> None:
