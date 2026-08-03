@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -62,6 +63,35 @@ def test_fixture_task_is_objectively_checkable():
         "depends-on-render",
         "depends-on-store",
     }
+
+
+@pytest.mark.parametrize(
+    "task_id",
+    ["../escape", "nested/task", r"nested\task", "..", ".hidden", "trailing.", "a..b"],
+)
+def test_task_ingestion_rejects_nonportable_and_traversal_ids(tmp_path, task_id):
+    toml_id = task_id.replace("\\", "\\\\")
+    text = TASK_FIXTURE.read_text(encoding="utf-8").replace(
+        'id = "import-graph"', f'id = "{toml_id}"', 1
+    )
+    candidate = tmp_path / "task.toml"
+    candidate.write_text(text, encoding="utf-8")
+
+    with pytest.raises(ValueError, match="must be 1-128 ASCII"):
+        load_task(candidate)
+
+
+def test_save_results_revalidates_task_id_before_creating_output(tmp_path):
+    task = replace(load_task(TASK_FIXTURE), id="../escaped")
+    records = [make_record("murlocs", "app.render and app.store", steps=12)]
+    summary = compare_runs(task, records)
+    output = tmp_path / "results"
+
+    with pytest.raises(ValueError, match="task id must be 1-128 ASCII"):
+        save_results(output, task, summary, records)
+
+    assert not output.exists()
+    assert not (tmp_path / "escaped.json").exists()
 
 
 def test_versioned_recorded_runs_load_all_experiment_arms():
@@ -126,6 +156,24 @@ def test_ingestion_requires_supported_schema_versions(tmp_path):
     unsupported.write_text(json.dumps(payload), encoding="utf-8")
     with pytest.raises(ValueError, match="unsupported schema_version 2"):
         load_runs(unsupported, task)
+
+
+def test_versioned_inputs_reject_unknown_fields(tmp_path):
+    task_text = TASK_FIXTURE.read_text(encoding="utf-8").replace(
+        "\n[[expected_facts]]", '\nfuture_field = "value"\n\n[[expected_facts]]', 1
+    )
+    task_path = tmp_path / "unknown-task.toml"
+    task_path.write_text(task_text, encoding="utf-8")
+    with pytest.raises(ValueError, match="unknown fields: future_field"):
+        load_task(task_path)
+
+    task = load_task(TASK_FIXTURE)
+    payload = json.loads(RUNS_FIXTURE.read_text(encoding="utf-8"))
+    payload["runs"][0]["future_field"] = "value"
+    runs_path = tmp_path / "unknown-runs.json"
+    runs_path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(ValueError, match="unknown fields: future_field"):
+        load_runs(runs_path, task)
 
 
 def test_correctness_requires_all_expected_facts():

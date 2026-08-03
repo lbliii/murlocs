@@ -54,7 +54,9 @@ does not write a result.
 
 Task definitions are TOML. They pin the prompt and repository revision and define objective facts
 that the answer must contain. Fact alternatives are matched case-insensitively; the threshold is a
-fraction from `0` through `1`.
+fraction from `0` through `1`. A task id is also its result filename, so version 1 restricts it to
+1–128 ASCII letters, digits, dots, underscores, or hyphens; it must begin and end with a letter or
+digit and cannot contain `..`.
 
 ```toml
 schema_version = 1
@@ -102,7 +104,8 @@ dump's content revision, or the Murlocs lock/content revision as appropriate.
 
 The abbreviated example shows one record; a valid file contains all three arms. Duplicate or
 unknown arms, missing fields, unsupported schema versions, negative counts, and task or revision
-mismatches fail with an actionable error before any output is written.
+mismatches fail with an actionable error before any output is written. Unknown fields are rejected
+so schema evolution remains explicit through `schema_version`.
 
 ## Pilot workflow
 

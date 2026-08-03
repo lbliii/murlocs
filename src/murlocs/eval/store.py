@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import tomllib
 from dataclasses import asdict
 from pathlib import Path
@@ -18,6 +19,8 @@ from murlocs.eval.model import (
 )
 
 SCHEMA_VERSION = 1
+MAX_TASK_ID_LENGTH = 128
+TASK_ID_PATTERN = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?")
 
 
 def load_task(path: Path) -> TaskDefinition:
@@ -27,12 +30,26 @@ def load_task(path: Path) -> TaskDefinition:
     except (OSError, tomllib.TOMLDecodeError) as exc:
         raise ValueError(f"cannot read task file {path}: {exc}") from exc
     _schema_version(data, path)
+    _reject_unknown(
+        data,
+        {
+            "schema_version",
+            "id",
+            "prompt",
+            "target_path",
+            "repository_revision",
+            "correctness_threshold",
+            "expected_facts",
+        },
+        str(path),
+    )
     raw_facts = _list(data, "expected_facts", path)
     facts: list[ExpectedFact] = []
     fact_ids: set[str] = set()
     for index, raw_fact in enumerate(raw_facts):
         context = f"{path}: expected_facts[{index}]"
         fact = _mapping(raw_fact, context)
+        _reject_unknown(fact, {"id", "description", "any_of"}, context)
         fact_id = _nonempty_string(fact, "id", context)
         if fact_id in fact_ids:
             raise ValueError(f"{context}: duplicate expected fact id {fact_id!r}")
@@ -54,7 +71,7 @@ def load_task(path: Path) -> TaskDefinition:
     if not 0 <= threshold <= 1:
         raise ValueError(f"{path}: correctness_threshold must be between 0 and 1")
     return TaskDefinition(
-        id=_nonempty_string(data, "id", str(path)),
+        id=_task_id(_nonempty_string(data, "id", str(path)), f"{path}: id"),
         prompt=_nonempty_string(data, "prompt", str(path)),
         target_path=_nonempty_string(data, "target_path", str(path)),
         repository_revision=_nonempty_string(data, "repository_revision", str(path)),
@@ -71,6 +88,11 @@ def load_runs(path: Path, task: TaskDefinition) -> list[RunRecord]:
         raise ValueError(f"cannot read recorded-run file {path}: {exc}") from exc
     payload = _mapping(data, str(path))
     _schema_version(payload, path)
+    _reject_unknown(
+        payload,
+        {"schema_version", "task_id", "repository_revision", "runs"},
+        str(path),
+    )
     task_id = _nonempty_string(payload, "task_id", str(path))
     if task_id != task.id:
         raise ValueError(f"{path}: task_id {task_id!r} does not match task {task.id!r}")
@@ -87,6 +109,19 @@ def load_runs(path: Path, task: TaskDefinition) -> list[RunRecord]:
     for index, raw_run in enumerate(raw_runs):
         context = f"{path}: runs[{index}]"
         run = _mapping(raw_run, context)
+        _reject_unknown(
+            run,
+            {
+                "arm",
+                "model",
+                "ade",
+                "guidance_revision",
+                "answer",
+                "guidance_text",
+                "evidence",
+            },
+            context,
+        )
         arm = _nonempty_string(run, "arm", context)
         if arm not in ARMS:
             raise ValueError(
@@ -96,6 +131,17 @@ def load_runs(path: Path, task: TaskDefinition) -> list[RunRecord]:
             raise ValueError(f"{context}: duplicate recorded run for arm {arm!r}")
         seen_arms.add(arm)
         evidence = _mapping(run.get("evidence"), f"{context}.evidence")
+        _reject_unknown(
+            evidence,
+            {
+                "files_inspected",
+                "lines_inspected",
+                "tool_calls",
+                "executable_steps",
+                "transcript",
+            },
+            f"{context}.evidence",
+        )
         transcript = tuple(
             _string(value, f"{context}.evidence.transcript[{step}]")
             for step, value in enumerate(_list(evidence, "transcript", context))
@@ -130,6 +176,7 @@ def save_results(
     records: list[RunRecord],
 ) -> Path:
     """Write the comparison summary and raw evidence deterministically as JSON."""
+    _task_id(task.id, "task id")
     directory.mkdir(parents=True, exist_ok=True)
     payload = {
         "schema_version": SCHEMA_VERSION,
@@ -150,6 +197,26 @@ def _schema_version(data: dict[str, Any], path: Path) -> None:
         raise ValueError(
             f"{path}: unsupported schema_version {version!r}; expected {SCHEMA_VERSION}"
         )
+
+
+def _task_id(value: str, context: str) -> str:
+    if (
+        len(value) > MAX_TASK_ID_LENGTH
+        or ".." in value
+        or TASK_ID_PATTERN.fullmatch(value) is None
+    ):
+        raise ValueError(
+            f"{context} must be 1-{MAX_TASK_ID_LENGTH} ASCII letters, digits, dots, "
+            "underscores, or hyphens; it must start and end with a letter or digit and "
+            "must not contain '..'"
+        )
+    return value
+
+
+def _reject_unknown(data: dict[str, Any], allowed: set[str], context: str) -> None:
+    unknown = sorted(set(data) - allowed)
+    if unknown:
+        raise ValueError(f"{context}: unknown fields: {', '.join(unknown)}")
 
 
 def _mapping(value: Any, context: str) -> dict[str, Any]:
