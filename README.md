@@ -142,6 +142,10 @@ search less while staying correct. It ingests versioned task and recorded-run fi
 the explicit `--demo` flag. See [Guidance efficiency evaluation](docs/evaluation.md); it never runs
 as part of `compile` or `check` and never invokes a model.
 
+The [synthetic 91-map scale pilot](docs/pilots/scale-network.md) records deterministic compilation,
+ownership and failure behavior, focused review fan-out, measured runtime and memory, and a
+correctness-gated scripted evaluation without copying guidance from a private repository.
+
 For release-level recipes spanning bootstrap, progressive rollout, migration and rollback,
 ordinary drift repair, and recorded evaluation, see [Primary user journeys](docs/journeys.md).
 

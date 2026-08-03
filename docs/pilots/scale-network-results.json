@@ -1,0 +1,207 @@
+{
+  "environment": {
+    "implementation": "CPython",
+    "machine": "arm64",
+    "platform": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+    "python": "3.14.3"
+  },
+  "evaluation": {
+    "all_arms_correct": true,
+    "method": "Deterministic scripted walkthrough; these records validate ingestion and the correctness-first comparison, not live-model quality.",
+    "most_efficient_correct_arm": "murlocs",
+    "result_sha256": "6fdc5106b50bbc97dd9c49c12005a79f18ed791e6dd3772b68e126871baf8203",
+    "runs_sha256": "29ac2c377b514a6f2a13986a8a7f97a47f73850119962cddd3d7558667c6eca8",
+    "scores": [
+      {
+        "ade": "scale-pilot-walkthrough-v1",
+        "arm": "no-guidance",
+        "correctness": {
+          "fraction": 1.0,
+          "matched": [
+            "owner",
+            "invariant"
+          ],
+          "missing": [],
+          "passed": true
+        },
+        "efficiency": {
+          "active_guidance_bytes": 0,
+          "estimated_prompt_tokens": 0,
+          "executable_steps": 12,
+          "files_inspected": 12,
+          "lines_inspected": 680,
+          "tool_calls": 12
+        },
+        "guidance_revision": "none",
+        "model": "deterministic-scripted-fixture-v1"
+      },
+      {
+        "ade": "scale-pilot-walkthrough-v1",
+        "arm": "inline-dump",
+        "correctness": {
+          "fraction": 1.0,
+          "matched": [
+            "owner",
+            "invariant"
+          ],
+          "missing": [],
+          "passed": true
+        },
+        "efficiency": {
+          "active_guidance_bytes": 77993,
+          "estimated_prompt_tokens": 19499,
+          "executable_steps": 4,
+          "files_inspected": 1,
+          "lines_inspected": 2474,
+          "tool_calls": 4
+        },
+        "guidance_revision": "ddc293d6492f9e07fdb9b05fa0c6f0184249d6ecfba01c2c57124940b9bb0ac0",
+        "model": "deterministic-scripted-fixture-v1"
+      },
+      {
+        "ade": "scale-pilot-walkthrough-v1",
+        "arm": "murlocs",
+        "correctness": {
+          "fraction": 1.0,
+          "matched": [
+            "owner",
+            "invariant"
+          ],
+          "missing": [],
+          "passed": true
+        },
+        "efficiency": {
+          "active_guidance_bytes": 13856,
+          "estimated_prompt_tokens": 3464,
+          "executable_steps": 3,
+          "files_inspected": 2,
+          "lines_inspected": 306,
+          "tool_calls": 3
+        },
+        "guidance_revision": "ce9a041afade50de74592018f5f970a1bbe82cd8dd366d680685edbcd8ac7d31",
+        "model": "deterministic-scripted-fixture-v1"
+      }
+    ],
+    "task_id": "scale-network-guidance",
+    "task_sha256": "e95960ff16f383db845ebc348692968a269d309648352060a81faa8cff5dd42d"
+  },
+  "failure_probes": {
+    "budget_violation": {
+      "detected": true,
+      "finding_codes": [
+        "budget",
+        "drift"
+      ]
+    },
+    "generated_drift": {
+      "detected": true,
+      "finding_codes": [
+        "drift"
+      ]
+    },
+    "ownership_mismatch": {
+      "detected": true,
+      "finding_codes": [
+        "ownership"
+      ]
+    },
+    "unsafe_override": {
+      "detected": true,
+      "error": "scope domain-08-http may not change path (domain-08@.murlocs/layers/domain-08.toml -> architecture-overlay@.murlocs/layers/architecture-overlay.toml): src/domain-08/platform/runtime/adapters/http -> src/domain-08/unsafe-move"
+    }
+  },
+  "fixture": {
+    "active_budget_bytes": 24576,
+    "byte_deterministic_recompile": true,
+    "declared_layer_count": 10,
+    "domain_count": 9,
+    "generated_snapshot_sha256": "673bd438f5300be40569128bd8fa19016522d08806680d77ccd5d8469c5dd53e",
+    "generator": "benchmarks/scale_network.py",
+    "kind": "synthetic",
+    "map_count": 91,
+    "maximum_active_chain_bytes": 13846,
+    "maximum_active_chain_scope": "domain-08-http",
+    "maximum_active_to_total_ratio": 0.1779,
+    "maximum_scope_depth": 6,
+    "owner_count": 6,
+    "owners": [
+      "@architecture",
+      "@team-alpha",
+      "@team-beta",
+      "@team-delta",
+      "@team-epsilon",
+      "@team-gamma"
+    ],
+    "total_generated_bytes": 77813
+  },
+  "governance": {
+    "accepted_override_count": 1,
+    "codeowners_validation_passed": true,
+    "control_plane_review_fan_out": {
+      "recommended": 0,
+      "required": 91,
+      "unaffected": 0
+    },
+    "focused_review_fan_out": {
+      "recommended": 1,
+      "required": 5,
+      "unaffected": 85
+    },
+    "target_layers": [
+      {
+        "id": "domain-08",
+        "kind": "domain",
+        "owners": [
+          "@team-delta"
+        ],
+        "path": ".murlocs/layers/domain-08.toml"
+      },
+      {
+        "id": "architecture-overlay",
+        "kind": "overlay",
+        "owners": [
+          "@architecture"
+        ],
+        "path": ".murlocs/layers/architecture-overlay.toml"
+      }
+    ],
+    "target_scope": "domain-08-http"
+  },
+  "limits": [
+    "Synthetic structure exercises Murlocs mechanics, not private-repository semantics.",
+    "Runtime and peak-memory figures are observations from one machine, not thresholds.",
+    "The evaluation records are deterministic scripted walkthroughs, not live-model runs.",
+    "The fixture validates 91 maps; it does not establish behavior at larger scales."
+  ],
+  "measurements": {
+    "check": {
+      "max_ms": 657.528,
+      "median_ms": 509.724,
+      "min_ms": 493.452,
+      "peak_memory_bytes": 442737,
+      "samples": 5
+    },
+    "compile": {
+      "max_ms": 631.122,
+      "median_ms": 615.28,
+      "min_ms": 546.029,
+      "peak_memory_bytes": 442836,
+      "samples": 5
+    },
+    "explain": {
+      "max_ms": 12.077,
+      "median_ms": 9.357,
+      "min_ms": 9.236,
+      "peak_memory_bytes": 306332,
+      "samples": 5
+    },
+    "impact": {
+      "max_ms": 31.107,
+      "median_ms": 30.181,
+      "min_ms": 29.905,
+      "peak_memory_bytes": 323967,
+      "samples": 5
+    }
+  },
+  "schema_version": 1
+}

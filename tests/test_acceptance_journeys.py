@@ -109,11 +109,29 @@ def initialize_git(root: Path) -> None:
     git(root, "init", "--quiet")
     git(root, "config", "user.name", "Murlocs Acceptance")
     git(root, "config", "user.email", "acceptance@example.invalid")
+    git(root, "config", "commit.gpgsign", "false")
 
 
 def commit_all(root: Path, message: str) -> None:
     git(root, "add", ".")
     git(root, "commit", "--quiet", "-m", message)
+
+
+def test_disposable_repository_does_not_inherit_commit_signing(
+    tmp_path: Path, monkeypatch
+) -> None:
+    inherited = write(tmp_path, "global.gitconfig", "[commit]\n\tgpgsign = true\n")
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(inherited))
+    root = tmp_path / "repository"
+
+    initialize_git(root)
+    write(root, "README.md", "# Test repository\n")
+    commit_all(root, "unsigned fixture commit")
+
+    assert git(root, "config", "--local", "--get", "commit.gpgsign") == "false"
+    assert git(root, "log", "-1", "--format=%an <%ae>") == (
+        "Murlocs Acceptance <acceptance@example.invalid>"
+    )
 
 
 def repository_bytes(root: Path) -> dict[str, bytes]:
