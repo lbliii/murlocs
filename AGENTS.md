@@ -72,3 +72,13 @@ Do not open `.murlocs/PROTOCOL.md` or `.murlocs/manifest.toml` unless the task i
 ## Review protocol
 
 See [`.murlocs/PROTOCOL.md`](.murlocs/PROTOCOL.md) for cross-scope and critical changes.
+
+## Provenance
+
+Edit the source layer below, then run `murlocs compile`. Do not edit this generated map.
+
+- `manifest` (base) — `.murlocs/manifest.toml` · owners: @lbliii
+- `repo-base` (base) — `.murlocs/layers/base.toml` · owners: @lbliii
+- `core` (domain) — `.murlocs/layers/core.toml` · owners: @lbliii
+- `tests` (domain) — `.murlocs/layers/tests.toml` · owners: @lbliii
+- `bootstrap-skill` (domain) — `.murlocs/layers/bootstrap-skill.toml` · owners: @lbliii

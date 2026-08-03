@@ -1,0 +1,61 @@
+pillars = [
+  "Repository guidance is local, layered, portable, and reviewable.",
+  "Every strong architectural claim names how it is verified.",
+  "Agent judgment raises the model; deterministic code owns compilation and checks.",
+]
+search_policy = [
+  "Read the root map before repository discovery.",
+  "Open only the nearest scoped map for the path being investigated unless the task crosses a declared edge.",
+]
+operating_rules = [
+  "Read the applicable AGENTS.md chain before editing.",
+  "Preserve unmanaged files and modified generated files.",
+  "Run the tool with Python 3.14 or newer and keep deterministic behavior at the core.",
+]
+stop_and_ask = [
+  "A change weakens generated-file ownership protections.",
+  "A verification claim cannot be tied to checked-in evidence.",
+  "A migration would overwrite existing repository guidance.",
+]
+done_criteria = [
+  "Ruff and pytest pass.",
+  "Milo verifies CLI, schema, discovery, and MCP transport parity.",
+  "Murlocs reports no manifest, coverage, or drift errors.",
+  "User-facing behavior is reflected in README.md or docs.",
+]
+
+[coverage]
+roots = ["src", "tests"]
+source_suffixes = [".py"]
+
+[coverage.exemptions]
+
+[checks.pytest]
+invoke = "pytest"
+location = "pyproject.toml"
+proof_contains = "pytest"
+description = "Run behavior and safety tests."
+
+[checks.ruff]
+invoke = "ruff check ."
+location = "pyproject.toml"
+proof_contains = "[tool.ruff]"
+description = "Run static lint checks."
+
+[checks.milo-verify]
+invoke = "milo verify src/murlocs/cli.py"
+location = "pyproject.toml"
+proof_contains = "milo-cli"
+description = "Verify typed CLI, schema, discovery, and MCP transport surfaces."
+
+[[scopes]]
+id = "root"
+path = "."
+map = "AGENTS.md"
+point_of_view = "Product boundaries, manifest semantics, documentation, and release workflow."
+owns = ["README.md", "pyproject.toml", "docs", ".murlocs", ".github/workflows"]
+guardrails = ["Keep Murlocs local-first, CI-neutral, and usable without a hosted service."]
+edges = [
+  { type = "delegates-to", to = "core", what = "The product contract is implemented by the CLI core." },
+  { type = "documented-by", to = "bootstrap-skill", what = "The skill guides agent-assisted repository discovery." },
+]

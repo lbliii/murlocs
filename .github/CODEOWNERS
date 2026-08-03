@@ -1,0 +1,6 @@
+# Murlocs guidance sources are reviewed by the repository maintainer.
+/.murlocs/manifest.toml @lbliii
+/.murlocs/layers/base.toml @lbliii
+/.murlocs/layers/core.toml @lbliii
+/.murlocs/layers/tests.toml @lbliii
+/.murlocs/layers/bootstrap-skill.toml @lbliii

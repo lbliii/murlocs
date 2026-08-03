@@ -1,0 +1,17 @@
+[[scopes]]
+id = "bootstrap-skill"
+path = "skills/bootstrap-murlocs"
+map = "skills/bootstrap-murlocs/AGENTS.md"
+point_of_view = "Agent-assisted discovery and migration into the deterministic manifest model."
+owns = ["skills/bootstrap-murlocs"]
+guardrails = ["Do not let the skill bypass CLI ownership protections or invent enforcement proof."]
+edges = [{ type = "invokes", to = "core", what = "The skill uses the CLI after drafting the manifest." }]
+
+[[invariants]]
+id = "thin-authoring-layer"
+scope = "bootstrap-skill"
+statement = "The skill delegates deterministic compilation and verification to the CLI."
+severity = "important"
+verification = "manual"
+evidence_file = "skills/bootstrap-murlocs/SKILL.md"
+anchor = "Keep those responsibilities separate"

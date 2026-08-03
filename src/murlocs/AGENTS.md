@@ -36,3 +36,9 @@ Do not open `.murlocs/PROTOCOL.md` or `.murlocs/manifest.toml` unless the task i
 ## Do not
 
 - Execute registered checks or silently discard unsupported migration fields.
+
+## Provenance
+
+Edit the source layer below, then run `murlocs compile`. Do not edit this generated map.
+
+- `core` (domain) — `.murlocs/layers/core.toml` · owners: @lbliii

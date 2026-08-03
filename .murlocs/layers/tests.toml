@@ -1,0 +1,16 @@
+[[scopes]]
+id = "tests"
+path = "tests"
+map = "tests/AGENTS.md"
+point_of_view = "Behavioral contracts, destructive-operation guards, and regression coverage."
+owns = ["tests"]
+guardrails = ["Use isolated temporary repositories for filesystem behavior."]
+edges = [{ type = "verifies", to = "core", what = "Tests exercise public CLI outcomes." }]
+
+[[invariants]]
+id = "safety-regressions-tested"
+scope = "tests"
+statement = "Generated ownership and path boundaries have regression tests."
+severity = "important"
+verification = "command"
+enforced_by = "pytest"
