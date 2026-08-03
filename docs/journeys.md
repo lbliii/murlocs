@@ -12,9 +12,9 @@ structurally complete. Previewing initialization and compilation must not change
 status.
 
 ```bash
-murlocs --dry-run init --coverage-root src
-murlocs init --coverage-root src
-murlocs add-scope src/app --owners @app
+murlocs --dry-run init --coverage-root src --coverage-root tests
+murlocs init --coverage-root src --coverage-root tests
+murlocs add-scope src/app --owners @app --owners @platform
 murlocs --dry-run compile
 murlocs compile
 murlocs check --format json
@@ -29,11 +29,18 @@ and semantic truth.
 `init` establishes the root scope. Add a domain and then a nested domain, assigning owners and
 recording any intentionally deferred source area. With CODEOWNERS validation enabled, the preview
 reports the exact entry an owner must approve; apply fails without partial writes until it exists.
+For a single owner, the short form remains
+`murlocs --dry-run add-scope src/app --owners @app`; repeat each option when there are several
+owners or deferrals.
 
 ```bash
-murlocs --dry-run add-scope src/app --owners @app --defer 'legacy=migrating later'
+murlocs --dry-run add-scope src/app \
+  --owners @app --owners @platform \
+  --defer 'legacy=migrating later' --defer 'examples=adopting later'
 # Review and add: /.murlocs/layers/src-app.toml @app
-murlocs add-scope src/app --owners @app --defer 'legacy=migrating later'
+murlocs add-scope src/app \
+  --owners @app --owners @platform \
+  --defer 'legacy=migrating later' --defer 'examples=adopting later'
 murlocs --dry-run add-scope src/app/api --owners @api
 # Review and add: /.murlocs/layers/src-app-api.toml @api
 murlocs add-scope src/app/api --owners @api

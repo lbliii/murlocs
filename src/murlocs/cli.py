@@ -56,79 +56,176 @@ from murlocs.split import (
 from murlocs.verify import Finding, validate
 
 
-def _normalize_impact_path_options(
+def _normalize_repeatable_options(
     argv: list[str],
-    command_names: frozenset[str],
-    root_value_options: frozenset[str] = frozenset(),
-) -> list[str]:
-    """Coalesce repeated impact paths into Milo's array-option syntax."""
-    resolved = list(argv)
-    command_index: int | None = None
-    index = 0
-    while index < len(resolved):
-        token = resolved[index]
-        if token in command_names:
-            command_index = index
-            break
-        if token in root_value_options:
-            index += 2
-            continue
-        index += 1
-    if command_index is None or resolved[command_index] != "impact":
-        return resolved
+    *,
+    command_index: int,
+    option_flags: dict[str, str],
+) -> tuple[list[str], dict[str, str]]:
+    """Coalesce repeated array flags into Milo's single-occurrence syntax.
 
-    before = resolved[: command_index + 1]
-    after = resolved[command_index + 1 :]
-    normalized: list[str] = []
-    paths: list[str] = []
-    insertion_index: int | None = None
+    Milo 0.4 models array options with ``nargs``. Argparse consequently accepts
+    several values after one flag but replaces an earlier value when the flag is
+    repeated. Terminal users naturally repeat options, so retain all occurrences
+    before handing the arguments to Milo. Inline values beginning with a dash
+    need opaque placeholders while argparse runs; the returned mapping restores
+    their exact spelling before handler dispatch. The option map is derived from
+    the selected command's schema rather than maintained per command.
+    """
+    before = argv[: command_index + 1]
+    after = argv[command_index + 1 :]
+    normalized: list[str | tuple[str, str]] = []
+    values: dict[str, list[str]] = {}
     index = 0
     while index < len(after):
         token = after[index]
-        if token == "--path":
-            if insertion_index is None:
-                insertion_index = len(normalized)
-            index += 1
-            while index < len(after) and not after[index].startswith("-"):
-                paths.append(after[index])
+        canonical = option_flags.get(token)
+        inline_value: str | None = None
+        if canonical is None and token.startswith("--") and "=" in token:
+            flag, _, inline_value = token.partition("=")
+            canonical = option_flags.get(flag)
+        if canonical is not None:
+            if canonical not in values:
+                values[canonical] = []
+                normalized.append(("repeatable", canonical))
+            if inline_value is not None:
+                if not inline_value:
+                    raise _EmptyRepeatableOption(canonical)
+                values[canonical].append(inline_value)
                 index += 1
-            continue
-        if token.startswith("--path="):
-            if insertion_index is None:
-                insertion_index = len(normalized)
-            paths.append(token.partition("=")[2])
+                continue
             index += 1
+            value_start = index
+            while index < len(after) and not after[index].startswith("-"):
+                values[canonical].append(after[index])
+                index += 1
+            if index == value_start:
+                raise _EmptyRepeatableOption(canonical)
             continue
         normalized.append(token)
         index += 1
 
-    if insertion_index is None:
-        return resolved
-    normalized[insertion_index:insertion_index] = ["--path", *paths]
-    return [*before, *normalized]
+    expanded: list[str] = []
+    protected: dict[str, str] = {}
+    occupied = set(argv)
+    placeholder_index = 0
+    for token in normalized:
+        if isinstance(token, tuple):
+            canonical = token[1]
+            expanded.append(canonical)
+            for value in values[canonical]:
+                if value.startswith("-"):
+                    placeholder = f"\x1fmurlocs-repeatable-{placeholder_index}\x1f"
+                    while placeholder in occupied:
+                        placeholder_index += 1
+                        placeholder = f"\x1fmurlocs-repeatable-{placeholder_index}\x1f"
+                    placeholder_index += 1
+                    occupied.add(placeholder)
+                    protected[placeholder] = value
+                    expanded.append(placeholder)
+                else:
+                    expanded.append(value)
+        else:
+            expanded.append(token)
+    return [*before, *expanded], protected
+
+
+class _EmptyRepeatableOption(ValueError):
+    def __init__(self, flag: str) -> None:
+        super().__init__(flag)
+        self.flag = flag
 
 
 class MurlocsCLI(CLI):
-    """Milo registry with a 0.4.3 repeatable-array compatibility shim."""
+    """Milo registry with a 0.4.x repeatable-array compatibility shim."""
 
     def run(self, argv: list[str] | None = None) -> Any:
         resolved = list(sys.argv[1:] if argv is None else argv)
-        command_names = frozenset(path.split(".", 1)[0] for path, _ in self.walk_commands())
-        root_value_options = frozenset(
-            flag
-            for option in self.root_option_specs()
-            if option.action == "store"
-            for flag in option.flags
-        )
-        normalized = _normalize_impact_path_options(
-            resolved,
-            command_names,
-            root_value_options,
-        )
-        result = super().run(normalized)
-        if isinstance(result, CommandResult) and result.exit_code:
-            raise SystemExit(result.exit_code)
-        return result
+        navigation = self._build_navigation_parser()
+        navigation_args, _ = navigation.parse_known_args(resolved)
+        selected = self._selected_command_path(navigation_args)
+        if selected is None:
+            return super().run(resolved)
+        groups, command = selected
+        command_index = _command_index(resolved, groups, command, self.root_option_specs())
+        option_flags = _repeatable_option_flags(command.schema)
+        try:
+            normalized, protected = (
+                _normalize_repeatable_options(
+                    resolved,
+                    command_index=command_index,
+                    option_flags=option_flags,
+                )
+                if command_index is not None and option_flags
+                else (resolved, {})
+            )
+        except _EmptyRepeatableOption as exc:
+            parser = self._build_selected_parser(groups, command)
+            self._parser = parser
+            parser.error(f"argument {exc.flag}: expected at least one argument")
+        self._repeatable_value_tokens = protected
+        try:
+            result = super().run(normalized)
+            if isinstance(result, CommandResult) and result.exit_code:
+                raise SystemExit(result.exit_code)
+            return result
+        finally:
+            self._repeatable_value_tokens = {}
+
+    def _build_run_kwargs(
+        self, args: Any, ctx: Context, command: Any
+    ) -> dict[str, Any]:
+        """Restore protected dash-leading values after Milo validates the namespace."""
+        kwargs = super()._build_run_kwargs(args, ctx, command)
+        protected = getattr(self, "_repeatable_value_tokens", {})
+        for name, value in kwargs.items():
+            if isinstance(value, list):
+                kwargs[name] = [protected.get(item, item) for item in value]
+        return kwargs
+
+
+def _command_index(
+    argv: list[str], groups: tuple[Any, ...], command: Any, root_options: list[Any]
+) -> int | None:
+    """Locate the selected leaf command without mistaking a root option value for it."""
+    value_flags = {
+        flag
+        for option in root_options
+        if option.action == "store"
+        for flag in option.flags
+    }
+    path = [*groups, command]
+    index = 0
+    for position, item in enumerate(path):
+        accepted = {item.name, *item.aliases}
+        while index < len(argv):
+            token = argv[index]
+            flag = token.partition("=")[0]
+            if position == 0 and flag in value_flags:
+                index += 1 if "=" in token else 2
+                continue
+            if token in accepted:
+                if position == len(path) - 1:
+                    return index
+                index += 1
+                break
+            index += 1
+        else:
+            return None
+    return None
+
+
+def _repeatable_option_flags(schema: dict[str, Any]) -> dict[str, str]:
+    """Map every option spelling for a JSON-array parameter to its canonical flag."""
+    flags: dict[str, str] = {}
+    for name, parameter in schema.get("properties", {}).items():
+        presentation = parameter.get("x-milo-cli", {})
+        if parameter.get("type") != "array" or presentation.get("kind") == "positional":
+            continue
+        canonical = f"--{name.replace('_', '-')}"
+        for flag in (canonical, *presentation.get("aliases", ())):
+            flags[flag] = canonical
+    return flags
 
 
 class CommandResult(dict[str, Any]):
@@ -855,8 +952,8 @@ def add_scope_command(
         repo: Repository root containing `.murlocs/manifest.toml`.
         id: Scope and layer id; defaults to a slug of the path.
         pov: Point of view for the new scope.
-        owners: Guidance owners recorded on the new layer.
-        defer: Source-bearing paths intentionally left out, as `PATH=REASON`.
+        owners: Guidance owner recorded on the new layer; repeat for multiple owners.
+        defer: Source-bearing path intentionally left out as `PATH=REASON`; repeat as needed.
         ctx: Milo host context used to honor dry-run policy.
     """
     try:
@@ -922,10 +1019,10 @@ def split_layers_command(
     Args:
         repo: Repository root containing a single-file Murlocs manifest.
         scope: Scope move as `SCOPE=LAYER,KIND[,OWNER...]`; repeat as needed.
-        root_owner: Owners for the root manifest control plane.
-        check: Explicit destination for a shared or exceptional check.
-        coverage_root: Explicit destination for a coverage root.
-        coverage_exemption: Explicit destination for a coverage exemption.
+        root_owner: Owner for the root manifest control plane; repeat as needed.
+        check: Explicit destination for a shared or exceptional check; repeat as needed.
+        coverage_root: Explicit destination for a coverage root; repeat as needed.
+        coverage_exemption: Explicit destination for a coverage exemption; repeat as needed.
         apply: Commit the previewed split transaction; omission is read-only.
         ctx: Milo host context used to honor dry-run policy.
     """
@@ -1064,7 +1161,10 @@ def _parse_deferrals(entries: list[str]) -> dict[str, str]:
         target, sep, reason = entry.partition("=")
         if not sep or not target.strip() or not reason.strip():
             raise MurlocsError(f"deferral must be PATH=REASON: {entry}")
-        deferrals[target.strip()] = reason.strip()
+        key = target.strip()
+        if key in deferrals:
+            raise MurlocsError(f"duplicate deferral for path: {key}")
+        deferrals[key] = reason.strip()
     return deferrals
 
 

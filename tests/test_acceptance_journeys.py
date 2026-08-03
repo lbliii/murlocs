@@ -14,6 +14,7 @@ import pytest
 MURLOCS = Path(shutil.which("murlocs") or Path(sys.executable).with_name("murlocs"))
 PACKAGE_PYTHON = MURLOCS.with_name("python")
 JOURNEY_DOC = Path(__file__).parents[1] / "docs" / "journeys.md"
+PROJECT_SRC = Path(__file__).parents[1] / "src"
 
 LEGACY_MANIFEST = """\
 network = "Example"
@@ -83,7 +84,15 @@ def run(
     result = subprocess.run(
         argv,
         cwd=cwd,
-        env={**os.environ, "NO_COLOR": "1"},
+        env={
+            **os.environ,
+            "NO_COLOR": "1",
+            "PYTHONPATH": os.pathsep.join(
+                value
+                for value in (str(PROJECT_SRC), os.environ.get("PYTHONPATH"))
+                if value
+            ),
+        },
         text=True,
         capture_output=True,
         check=False,
@@ -230,6 +239,76 @@ def test_greenfield_bootstrap_with_explicit_coverage(tmp_path: Path) -> None:
         murlocs(root, "explain", "src/app/core.py", "--format", "json").stdout
     )
     assert [scope["id"] for scope in explained_json["scopes"]] == ["root", "src-app"]
+
+
+def test_packaged_parser_preserves_repeated_bootstrap_and_rollout_values(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "repeatable-options"
+    write(root, "src/app.py", "VALUE = 1\n")
+    write(root, "tests/test_app.py", "def test_app(): pass\n")
+    write(root, "docs/guide.md", "# Guide\n")
+    write(root, "legacy/old.py", "OLD = 1\n")
+    write(root, "examples/demo.py", "DEMO = 1\n")
+
+    initialized = murlocs(
+        root,
+        "--dry-run",
+        "init",
+        "--coverage-root",
+        "src",
+        "--coverage-root",
+        "tests",
+        "--format",
+        "json",
+    )
+    assert json.loads(initialized.stdout)["coverage"]["roots"] == ["src", "tests"]
+
+    inline_empty = murlocs(
+        root,
+        "--dry-run",
+        "init",
+        "--coverage-root=",
+        "--format",
+        "json",
+        expected=2,
+    )
+    assert "argument --coverage-root: expected at least one argument" in inline_empty.stderr
+
+    murlocs(root, "init")
+    rollout = murlocs(
+        root,
+        "--dry-run",
+        "add-scope",
+        "docs",
+        "--owners",
+        "@docs",
+        "--owners",
+        "@reviewers",
+        "--defer",
+        "legacy=migrating later",
+        "--defer",
+        "examples=adopting later",
+        "--format",
+        "json",
+    )
+    payload = json.loads(rollout.stdout)
+    assert payload["owners"] == ["@docs", "@reviewers"]
+    assert payload["deferred"] == {
+        "examples": "adopting later",
+        "legacy": "migrating later",
+    }
+    assert not (root / ".murlocs" / "layers").exists()
+
+
+def test_packaged_parser_preserves_inline_dash_path(tmp_path: Path) -> None:
+    root = tmp_path / "dash-path"
+    write(root, "-dash.py", "VALUE = 1\n")
+    murlocs(root, "init")
+
+    impacted = murlocs(root, "impact", "--path=-dash.py", "--format", "json")
+
+    assert json.loads(impacted.stdout)["input"]["paths"] == ["-dash.py"]
 
 
 def test_progressive_owned_rollout_with_deferral_and_codeowners(tmp_path: Path) -> None:

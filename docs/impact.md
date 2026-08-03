@@ -14,6 +14,9 @@ murlocs impact --revision-range origin/main...HEAD
 murlocs impact --revision-range origin/main...HEAD --format json
 ```
 
+Repeat `--path PATH` once per changed path. If a repository-relative path begins with `-`, use
+the inline spelling `--path=-dash.py` so it cannot be mistaken for another terminal option.
+
 The revision argument is passed as one revision expression to read-only `git diff --name-only`.
 It can therefore also be `HEAD` when comparing the index and working tree with the current commit.
 When explicit and Git-derived paths are both supplied, Murlocs reports their union.
