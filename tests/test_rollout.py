@@ -27,6 +27,9 @@ def enable_codeowners(root: Path, content: str | None) -> None:
     text = manifest.read_text(encoding="utf-8")
     manifest.write_text(
         text.replace(
+            "max_active_bytes = 24576",
+            'max_active_bytes = 24576\nowners = ["@platform"]',
+        ).replace(
             "[policies]\nrequire_scope_invariants = false",
             "[policies]\nrequire_scope_invariants = false\nvalidate_codeowners = true",
         ),
@@ -86,12 +89,21 @@ def test_dry_run_previews_missing_codeowners_entry_as_structured_requirement(tmp
         {
             "actual_owners": [],
             "blocking": True,
+            "entry": "/.murlocs/manifest.toml @platform",
+            "file": ".github/CODEOWNERS",
+            "owners": ["@platform"],
+            "path": ".murlocs/manifest.toml",
+            "status": "missing-entry",
+        },
+        {
+            "actual_owners": [],
+            "blocking": True,
             "entry": "/.murlocs/layers/docs.toml @docs",
             "file": ".github/CODEOWNERS",
             "owners": ["@docs"],
             "path": ".murlocs/layers/docs.toml",
             "status": "missing-entry",
-        }
+        },
     ]
     assert not (root / ".murlocs" / "layers" / "docs.toml").exists()
 
@@ -114,7 +126,11 @@ def test_apply_reports_codeowners_resolution_and_makes_no_partial_writes(tmp_pat
 def test_codeowners_mismatch_is_blocking_and_exact_match_applies(tmp_path):
     root = root_only(tmp_path)
     codeowners = root / ".github" / "CODEOWNERS"
-    enable_codeowners(root, "/.murlocs/layers/docs.toml @someone-else\n")
+    enable_codeowners(
+        root,
+        "/.murlocs/manifest.toml @platform\n"
+        "/.murlocs/layers/docs.toml @someone-else\n",
+    )
 
     preview = invoke(
         "--dry-run", "add-scope", "docs", "--repo", str(root), "--owners", "@docs"
@@ -126,7 +142,11 @@ def test_codeowners_mismatch_is_blocking_and_exact_match_applies(tmp_path):
         "add-scope", "docs", "--repo", str(root), "--owners", "@docs"
     ).exit_code == 1
 
-    codeowners.write_text("/.murlocs/layers/docs.toml @docs\n", encoding="utf-8")
+    codeowners.write_text(
+        "/.murlocs/manifest.toml @platform\n"
+        "/.murlocs/layers/docs.toml @docs\n",
+        encoding="utf-8",
+    )
     applied = invoke("add-scope", "docs", "--repo", str(root), "--owners", "@docs")
     assert applied.exit_code == 0
     assert (root / ".murlocs" / "layers" / "docs.toml").is_file()

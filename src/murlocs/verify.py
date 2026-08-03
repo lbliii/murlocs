@@ -3,13 +3,11 @@ from __future__ import annotations
 import shlex
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 from murlocs.codeowners import find_codeowners, normalize_path, parse_codeowners
 from murlocs.errors import MurlocsError
-from murlocs.layers import ROOT_SOURCE_ID
 from murlocs.lockfile import Lock, read_lock, sha256_bytes, sha256_text
-from murlocs.model import Manifest
+from murlocs.model import LayerSource, Manifest
 from murlocs.paths import relative_posix, repo_path
 from murlocs.render import render_outputs
 
@@ -117,25 +115,24 @@ def validate(manifest: Manifest) -> list[Finding]:
 
 
 def _ownership_findings(manifest: Manifest) -> list[Finding]:
-    """Enforce layer-owner and opt-in CODEOWNERS policies for layered manifests."""
+    """Enforce source-owner and opt-in CODEOWNERS policies for layered manifests."""
     if not manifest.layered:
         return []
     findings: list[Finding] = []
-    declared_layers = [
-        source for source in manifest.sources if source.id != ROOT_SOURCE_ID
-    ]
     if manifest.require_layer_owners:
-        for source in declared_layers:
+        for source in manifest.sources:
             if not source.owners:
                 findings.append(
-                    Finding("ownership", f"layer {source.id} declares no owner")
+                    Finding("ownership", f"{_source_label(source)} declares no owner")
                 )
     if manifest.validate_codeowners:
-        findings.extend(_codeowners_findings(manifest, declared_layers))
+        findings.extend(_codeowners_findings(manifest, manifest.sources))
     return findings
 
 
-def _codeowners_findings(manifest: Manifest, declared_layers: list[Any]) -> list[Finding]:
+def _codeowners_findings(
+    manifest: Manifest, sources: tuple[LayerSource, ...]
+) -> list[Finding]:
     codeowners = find_codeowners(manifest.root)
     if codeowners is None:
         return [
@@ -146,13 +143,15 @@ def _codeowners_findings(manifest: Manifest, declared_layers: list[Any]) -> list
         ]
     entries = parse_codeowners(codeowners.read_text(encoding="utf-8"))
     findings: list[Finding] = []
-    for source in declared_layers:
+    for source in sources:
+        label = _source_label(source)
         path = normalize_path(source.path)
         if path not in entries:
             findings.append(
                 Finding(
                     "ownership",
-                    f"layer {source.id} has no exact CODEOWNERS entry: {source.path}",
+                    f"{label} has no exact CODEOWNERS entry: {source.path} "
+                    f"(expected owners: {sorted(source.owners)})",
                 )
             )
             continue
@@ -160,11 +159,15 @@ def _codeowners_findings(manifest: Manifest, declared_layers: list[Any]) -> list
             findings.append(
                 Finding(
                     "ownership",
-                    f"layer {source.id} owners do not match CODEOWNERS: "
-                    f"manifest={sorted(source.owners)} codeowners={sorted(entries[path])}",
+                    f"{label} owners do not match CODEOWNERS: "
+                    f"expected={sorted(source.owners)} actual={sorted(entries[path])}",
                 )
             )
     return findings
+
+
+def _source_label(source: LayerSource) -> str:
+    return "root manifest" if source.id == "manifest" else f"layer {source.id}"
 
 
 def _duplicates(values: list[str], label: str, findings: list[Finding]) -> None:

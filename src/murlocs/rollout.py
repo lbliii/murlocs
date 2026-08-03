@@ -19,7 +19,7 @@ from pathlib import Path
 
 from murlocs.codeowners import find_codeowners, normalize_path, parse_codeowners
 from murlocs.errors import MurlocsError
-from murlocs.layers import ROOT_SOURCE_ID, compose, read_disk_sources
+from murlocs.layers import compose, read_disk_sources
 from murlocs.lockfile import sha256_text
 from murlocs.manifest import parse_manifest_data
 from murlocs.model import LayerSource, Manifest
@@ -222,8 +222,6 @@ def _codeowners_requirements(manifest: Manifest) -> tuple[CodeownersRequirement,
     )
     requirements: list[CodeownersRequirement] = []
     for source in manifest.sources:
-        if source.id == ROOT_SOURCE_ID:
-            continue
         path = normalize_path(source.path)
         actual = entries.get(path)
         if codeowners is None:

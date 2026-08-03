@@ -30,6 +30,7 @@ def build(
     root: Path,
     *,
     policies: str = "",
+    root_owners: str = 'owners = ["@control"]',
     base_owners: str = 'owners = ["@platform"]',
     docs_owners: str = 'owners = ["@docs"]',
     codeowners: str | None = None,
@@ -52,6 +53,7 @@ def build(
         'network = "Owned"\n'
         'protocol = ".murlocs/PROTOCOL.md"\n'
         "max_active_bytes = 24576\n"
+        f"{root_owners}\n"
         'pillars = ["P."]\n'
         'search_policy = ["S."]\n'
         'operating_rules = ["O."]\n'
@@ -80,6 +82,8 @@ def test_generated_map_names_contributing_layers_and_owners(tmp_path):
     assert "`.murlocs/layers/docs.toml`" in docs_map
     assert "owners: @docs" in docs_map
     root_map = (root / "AGENTS.md").read_text(encoding="utf-8")
+    assert "`.murlocs/manifest.toml`" in root_map
+    assert "owners: @control" in root_map
     assert "`.murlocs/layers/base.toml`" in root_map
     assert "owners: @platform" in root_map
 
@@ -90,6 +94,14 @@ def test_require_layer_owners_flags_missing_owner(tmp_path):
     result = invoke("check", "--repo", str(root))
     assert result.exit_code == 1
     assert "layer docs declares no owner" in result.stderr
+
+
+def test_require_layer_owners_flags_missing_root_manifest_owner(tmp_path):
+    root = tmp_path / "repo"
+    build(root, policies="require_layer_owners = true", root_owners="")
+    result = invoke("check", "--repo", str(root))
+    assert result.exit_code == 1
+    assert "root manifest declares no owner" in result.stderr
 
 
 def test_require_layer_owners_passes_when_declared(tmp_path):
@@ -104,12 +116,31 @@ def test_codeowners_validation_detects_missing_entry(tmp_path):
     build(
         root,
         policies="validate_codeowners = true",
-        codeowners="/.murlocs/layers/base.toml @platform\n",
+        codeowners=(
+            "/.murlocs/manifest.toml @control\n"
+            "/.murlocs/layers/base.toml @platform\n"
+        ),
     )
     result = invoke("check", "--repo", str(root))
     assert result.exit_code == 1
     assert "no exact CODEOWNERS entry" in result.stderr
     assert "docs.toml" in result.stderr
+
+
+def test_codeowners_validation_detects_missing_root_manifest_entry(tmp_path):
+    root = tmp_path / "repo"
+    build(
+        root,
+        policies="validate_codeowners = true",
+        codeowners=(
+            "/.murlocs/layers/base.toml @platform\n"
+            "/.murlocs/layers/docs.toml @docs\n"
+        ),
+    )
+    result = invoke("check", "--repo", str(root))
+    assert result.exit_code == 1
+    assert "root manifest has no exact CODEOWNERS entry" in result.stderr
+    assert "expected owners: ['@control']" in result.stderr
 
 
 def test_codeowners_validation_detects_owner_mismatch(tmp_path):
@@ -118,6 +149,7 @@ def test_codeowners_validation_detects_owner_mismatch(tmp_path):
         root,
         policies="validate_codeowners = true",
         codeowners=(
+            "/.murlocs/manifest.toml @control\n"
             "/.murlocs/layers/base.toml @platform\n"
             "/.murlocs/layers/docs.toml @someone-else\n"
         ),
@@ -127,12 +159,30 @@ def test_codeowners_validation_detects_owner_mismatch(tmp_path):
     assert "owners do not match CODEOWNERS" in result.stderr
 
 
+def test_codeowners_validation_detects_root_manifest_owner_mismatch(tmp_path):
+    root = tmp_path / "repo"
+    build(
+        root,
+        policies="validate_codeowners = true",
+        codeowners=(
+            "/.murlocs/manifest.toml @someone-else\n"
+            "/.murlocs/layers/base.toml @platform\n"
+            "/.murlocs/layers/docs.toml @docs\n"
+        ),
+    )
+    result = invoke("check", "--repo", str(root))
+    assert result.exit_code == 1
+    assert "root manifest owners do not match CODEOWNERS" in result.stderr
+    assert "expected=['@control'] actual=['@someone-else']" in result.stderr
+
+
 def test_codeowners_validation_passes_on_exact_match(tmp_path):
     root = tmp_path / "repo"
     build(
         root,
         policies="validate_codeowners = true",
         codeowners=(
+            "/.murlocs/manifest.toml @control\n"
             "/.murlocs/layers/base.toml @platform\n"
             "/.murlocs/layers/docs.toml @docs\n"
         ),
@@ -152,6 +202,31 @@ def test_codeowners_opt_in_without_file_is_reported(tmp_path):
 def test_repo_without_codeowners_is_normal_when_not_opted_in(tmp_path):
     root = tmp_path / "repo"
     build(root)
+    assert invoke("compile", "--repo", str(root)).exit_code == 0
+    assert invoke("check", "--repo", str(root)).exit_code == 0
+
+
+def test_policy_disabled_layered_repo_does_not_require_root_ownership(tmp_path):
+    root = tmp_path / "repo"
+    build(root, root_owners="", base_owners="", docs_owners="")
+    assert invoke("compile", "--repo", str(root)).exit_code == 0
+    assert invoke("check", "--repo", str(root)).exit_code == 0
+
+
+def test_single_file_manifest_ignores_layer_ownership_policies(tmp_path):
+    root = tmp_path / "repo"
+    (root / "src").mkdir(parents=True)
+    assert invoke("init", "--repo", str(root), "--name", "Single").exit_code == 0
+    manifest = root / ".murlocs" / "manifest.toml"
+    manifest.write_text(
+        manifest.read_text(encoding="utf-8").replace(
+            "require_scope_invariants = false",
+            "require_scope_invariants = false\n"
+            "require_layer_owners = true\n"
+            "validate_codeowners = true",
+        ),
+        encoding="utf-8",
+    )
     assert invoke("compile", "--repo", str(root)).exit_code == 0
     assert invoke("check", "--repo", str(root)).exit_code == 0
 

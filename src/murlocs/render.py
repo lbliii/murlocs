@@ -86,10 +86,7 @@ def _provenance(lines: list[str], manifest: Manifest, scope: Scope) -> None:
     """Name the ordered source layers and owners that contributed to this map."""
     if not manifest.layered:
         return
-    if scope.id == "root":
-        layer_ids: tuple[str, ...] = tuple(source.id for source in manifest.sources)
-    else:
-        layer_ids = manifest.scope_layers.get(scope.id, ())
+    layer_ids = manifest.source_ids_for_scope(scope.id)
     contributing = [manifest.source(layer_id) for layer_id in layer_ids]
     contributing = [source for source in contributing if source is not None]
     if not contributing:
