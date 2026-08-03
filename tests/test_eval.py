@@ -255,7 +255,10 @@ def test_eval_cli_requires_explicit_demo_or_inputs(capsys):
     with pytest.raises(SystemExit) as missing:
         eval_main([])
     assert missing.value.code == 2
-    assert "one of the arguments --demo --task is required" in capsys.readouterr().err
+    assert (
+        "one of the arguments --demo --task --longitudinal is required"
+        in capsys.readouterr().err
+    )
 
     assert eval_main(["--demo"]) == 0
     assert "illustrative-model / illustrative-ade" in capsys.readouterr().out

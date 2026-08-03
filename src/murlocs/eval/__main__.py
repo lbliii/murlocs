@@ -6,6 +6,12 @@ import argparse
 from pathlib import Path
 
 from murlocs.eval.harness import compare_runs
+from murlocs.eval.longitudinal import (
+    analyze_longitudinal,
+    load_longitudinal,
+    render_longitudinal_summary,
+    save_longitudinal_results,
+)
 from murlocs.eval.store import load_runs, load_task, render_summary, save_results
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -21,13 +27,32 @@ def main(argv: list[str] | None = None) -> int:
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--demo", action="store_true", help="score the bundled example records")
     source.add_argument("--task", type=Path, help="versioned TOML task definition")
+    source.add_argument(
+        "--longitudinal",
+        type=Path,
+        help="versioned curation-to-recorded-run link manifest",
+    )
     parser.add_argument("--runs", type=Path, help="versioned JSON recorded-run dataset")
     parser.add_argument("--output", type=Path, help="directory for deterministic JSON results")
     args = parser.parse_args(argv)
     if args.demo and args.runs is not None:
         parser.error("--runs cannot be combined with --demo")
+    if args.longitudinal is not None and args.runs is not None:
+        parser.error("--runs cannot be combined with --longitudinal")
     if args.task is not None and args.runs is None:
         parser.error("--runs is required with --task")
+
+    if args.longitudinal is not None:
+        try:
+            dataset = load_longitudinal(args.longitudinal)
+            result = analyze_longitudinal(dataset)
+        except ValueError as exc:
+            parser.error(str(exc))
+        print(render_longitudinal_summary(result))
+        if args.output is not None:
+            target = save_longitudinal_results(args.output, result)
+            print(f"\nwrote {target}")
+        return 0
 
     task_path = DEMO_TASK if args.demo else args.task
     runs_path = DEMO_RUNS if args.demo else args.runs
