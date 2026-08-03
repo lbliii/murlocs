@@ -6,6 +6,7 @@ import os
 import shutil
 import subprocess
 import sys
+import sysconfig
 from pathlib import Path
 
 import pytest
@@ -58,8 +59,34 @@ def test_clean_installed_wheel_commits_through_generated_dispatcher(tmp_path: Pa
     )
     scripts = tool_environment / "bin"
     tool_python = scripts / "python"
+    tool_purelib = Path(
+        run(
+            [
+                str(tool_python),
+                "-c",
+                "import sysconfig; print(sysconfig.get_paths()['purelib'])",
+            ],
+            cwd=tmp_path,
+            env=environment,
+        ).stdout.strip()
+    )
+    dependency_purelib = Path(sysconfig.get_paths()["purelib"])
+    # Keep dependency resolution offline while the tool environment's earlier
+    # site-packages entry proves Murlocs itself is imported from the wheel.
+    (tool_purelib / "murlocs-smoke-dependencies.pth").write_text(
+        f"{dependency_purelib}\n", encoding="utf-8"
+    )
     run(
-        [uv, "pip", "install", "--python", str(tool_python), "--offline", str(wheel)],
+        [
+            uv,
+            "pip",
+            "install",
+            "--python",
+            str(tool_python),
+            "--offline",
+            "--no-deps",
+            str(wheel),
+        ],
         cwd=tmp_path,
         env=environment,
     )
