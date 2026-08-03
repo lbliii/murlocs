@@ -15,6 +15,38 @@ is absent or already contains the exact Murlocs-owned bytes. It refuses a config
 It never replaces, wraps, or silently chains another manager. `murlocs hook uninstall` removes
 only byte-exact Murlocs-owned files.
 
+## Durable runners
+
+The generated dispatcher pins one verified, absolute `murlocs` executable rather than resolving
+`murlocs` from a later Git process's `PATH`. Installation verifies that executable reports the
+same Murlocs version before it writes any hook. This makes a normal user-level tool install or a
+packaged console script deterministic:
+
+```bash
+python -m pip install --user murlocs
+murlocs hook install
+```
+
+By default, installation refuses a direct runner from a project virtual environment, including
+`uv run murlocs hook install`; those environments are frequently recreated or removed. If an
+organization deliberately owns a particular executable path for the hook lifetime, it may state
+that contract explicitly:
+
+```bash
+murlocs hook install --runner /absolute/path/to/murlocs
+```
+
+The explicit path is still verified at install time and is recorded verbatim. No virtual
+environment path is inferred or silently retained. A missing or moved pinned runner makes the
+hook fail closed with one repair instruction: run `murlocs hook install` again from the durable
+installation. `murlocs hook status` reports each default slot as `installed`, `missing runner`,
+`version mismatch` (when `--version` is detectable), `modified`, `occupied`, or `absent`.
+
+Hooks installed by Murlocs before durable runner pinning are reported as `legacy`. They remain
+byte-owned: `murlocs hook uninstall` removes their exact old bytes, while `murlocs hook install`
+replaces those same bytes with the verified dispatcher. A legacy hook is never treated as an
+unmanaged manager or stranded behind an unrepairable status.
+
 Select one hook by repeating `--event`:
 
 ```bash
@@ -79,7 +111,9 @@ repos:
 ```
 
 Manager configuration remains user-owned. Murlocs reports occupied slots and does not edit that
-configuration.
+configuration. Manager snippets deliberately retain the manager's own runner resolution policy;
+install a durable user-level Murlocs tool (or use an explicitly owned absolute path) before adding
+one to that configuration.
 
 ## Structured receipts
 

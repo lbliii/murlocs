@@ -6,6 +6,8 @@ import hashlib
 import json
 import os
 import re
+import shlex
+import shutil
 import stat
 import subprocess
 import sys
@@ -15,6 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
+from murlocs import __version__
 from murlocs.errors import MurlocsError
 from murlocs.gitview import (
     MAX_PRE_PUSH_BYTES,
@@ -46,6 +49,7 @@ HOOK_SCHEMA_VERSION = 1
 HOOK_ADAPTER_ID = "murlocs-git-hook"
 HOOK_ADAPTER_VERSION = "1"
 HOOK_MARKER = "# Managed by Murlocs hook integration v1."
+_RUNNER_PREFIX = "# Murlocs runner: "
 _REF = re.compile(rb"(?:refs/[!-~]+|HEAD)")
 
 
@@ -62,6 +66,14 @@ class PushUpdate:
     local_oid: str
     remote_ref: str
     remote_oid: str
+
+
+@dataclass(frozen=True)
+class HookRunner:
+    """A verified executable retained by a byte-owned dispatcher."""
+
+    path: Path
+    version: str
 
 
 def run_hook(
@@ -135,24 +147,46 @@ def parse_pre_push(raw: bytes, object_format: str) -> tuple[PushUpdate, ...]:
     return tuple(updates)
 
 
-def install_hooks(root: Path, events: tuple[HookEvent, ...]) -> dict[str, Any]:
+def install_hooks(
+    root: Path,
+    events: tuple[HookEvent, ...],
+    *,
+    runner: str | None = None,
+) -> dict[str, Any]:
     """Install only into absent or exactly Murlocs-owned default hook slots."""
     context, hooks = _installation_context(root)
     selected = _normalized_events(events)
     states = {event: _hook_state(hooks / event, event) for event in selected}
-    conflicts = [event for event, state_name in states.items() if state_name == "occupied"]
+    conflicts = [
+        event
+        for event, state_name in states.items()
+        if state_name in {"modified", "occupied"}
+    ]
     if conflicts:
         raise MurlocsError(
             "refusing to replace existing Git hook(s): " + ", ".join(conflicts)
         )
+    # A byte-owned dispatcher may be left untouched even if its runner has moved;
+    # this preserves idempotency and lets status describe the repair needed.
+    if all(states[event] == "installed" for event in selected) and runner is None:
+        return {
+            "ok": True,
+            "git_dir": str(context.git_dir),
+            "events": list(selected),
+            "changed": [],
+        }
+    resolved_runner = _resolve_runner(runner)
     hooks.mkdir(parents=True, exist_ok=True)
     changed: list[str] = []
     for event in selected:
         target = hooks / event
-        expected = _hook_bytes(event)
+        expected = _hook_bytes(event, resolved_runner)
         if target.exists() and target.read_bytes() == expected:
             continue
-        _atomic_hook_write(target, expected)
+        if target.exists():
+            _replace_owned_hook(target, expected, event)
+        else:
+            _atomic_hook_write(target, expected)
         changed.append(event)
     return {
         "ok": True,
@@ -166,9 +200,17 @@ def uninstall_hooks(root: Path, events: tuple[HookEvent, ...]) -> dict[str, Any]
     """Remove exact Murlocs-owned hook bytes and preserve every other file."""
     context, hooks = _installation_context(root)
     selected = _normalized_events(events)
-    conflicts = [
-        event for event in selected if _hook_state(hooks / event, event) == "occupied"
-    ]
+    conflicts = []
+    owned: dict[HookEvent, bool] = {}
+    for event in selected:
+        target = hooks / event
+        try:
+            content = target.read_bytes()
+            owned[event] = target.is_file() and _is_owned_hook(content, event)
+        except OSError:
+            owned[event] = False
+        if target.exists() and not owned[event]:
+            conflicts.append(event)
     if conflicts:
         raise MurlocsError(
             "refusing to remove modified Git hook(s): " + ", ".join(conflicts)
@@ -176,7 +218,7 @@ def uninstall_hooks(root: Path, events: tuple[HookEvent, ...]) -> dict[str, Any]
     changed: list[str] = []
     for event in selected:
         target = hooks / event
-        if _hook_state(target, event) == "installed":
+        if owned[event]:
             target.unlink()
             changed.append(event)
     return {
@@ -663,7 +705,32 @@ def _installation_context(root: Path) -> tuple[GitContext, Path]:
     return context, hooks
 
 
-def _hook_bytes(event: HookEvent) -> bytes:
+def _hook_bytes(event: HookEvent, runner: HookRunner) -> bytes:
+    quoted_runner = shlex.quote(str(runner.path))
+    command = (
+        f'exec {quoted_runner} hook run pre-commit\n'
+        if event == "pre-commit"
+        else f'exec {quoted_runner} hook run pre-push --remote-name="$1" --remote-url="$2"\n'
+    )
+    metadata = json.dumps(
+        {"path": str(runner.path), "version": runner.version},
+        separators=(",", ":"),
+        ensure_ascii=True,
+    )
+    return (
+        "#!/bin/sh\n"
+        f"{HOOK_MARKER}\n"
+        f"{_RUNNER_PREFIX}{metadata}\n"
+        f"if [ ! -x {quoted_runner} ]; then\n"
+        "  echo \"Murlocs hook runner is missing; run 'murlocs hook install' to repair it.\" >&2\n"
+        "  exit 1\n"
+        "fi\n"
+        f"{command}"
+    ).encode()
+
+
+def _legacy_hook_bytes(event: HookEvent) -> bytes:
+    """Return the exact v1 dispatcher emitted before runner pinning existed."""
     command = (
         "exec murlocs hook run pre-commit\n"
         if event == "pre-commit"
@@ -678,10 +745,113 @@ def _hook_state(path: Path, event: HookEvent) -> str:
     if not path.exists():
         return "absent"
     try:
-        exact = path.is_file() and path.read_bytes() == _hook_bytes(event)
-        return "installed" if exact else "occupied"
+        if not path.is_file():
+            return "occupied"
+        content = path.read_bytes()
+        runner = _owned_runner(content, event)
+        if runner is None:
+            if content == _legacy_hook_bytes(event):
+                return "legacy"
+            return "modified" if _has_murlocs_marker(content) else "occupied"
+        return _runner_state(runner)
     except OSError:
         return "occupied"
+
+
+def _owned_runner(content: bytes, event: HookEvent) -> HookRunner | None:
+    """Return runner metadata only when every managed byte is still exact."""
+    try:
+        lines = content.decode("utf-8").splitlines()
+        if len(lines) < 3 or lines[0] != "#!/bin/sh" or lines[1] != HOOK_MARKER:
+            return None
+        if not lines[2].startswith(_RUNNER_PREFIX):
+            return None
+        data = json.loads(lines[2][len(_RUNNER_PREFIX) :])
+        if set(data) != {"path", "version"}:
+            return None
+        path, version = data["path"], data["version"]
+        if not isinstance(path, str) or not isinstance(version, str):
+            return None
+        runner = HookRunner(Path(path), version)
+        return runner if content == _hook_bytes(event, runner) else None
+    except (UnicodeDecodeError, TypeError, ValueError, json.JSONDecodeError):
+        return None
+
+
+def _has_murlocs_marker(content: bytes) -> bool:
+    return content.startswith(f"#!/bin/sh\n{HOOK_MARKER}\n".encode())
+
+
+def _is_owned_hook(content: bytes, event: HookEvent) -> bool:
+    return _owned_runner(content, event) is not None or content == _legacy_hook_bytes(event)
+
+
+def _runner_state(runner: HookRunner) -> str:
+    if not runner.path.is_file() or not os.access(runner.path, os.X_OK):
+        return "missing runner"
+    reported = _runner_version(runner.path)
+    if reported is not None and reported != runner.version:
+        return "version mismatch"
+    return "installed"
+
+
+def _resolve_runner(explicit_runner: str | None) -> HookRunner:
+    """Resolve a stable command now, so the later Git process has no PATH guess."""
+    if explicit_runner is None:
+        candidate = shutil.which("murlocs")
+        if candidate is None:
+            raise MurlocsError(
+                "could not resolve a durable Murlocs runner; install Murlocs as a user-level tool "
+                "or pass --runner /absolute/path/to/murlocs"
+            )
+        path = Path(candidate).absolute()
+        if _is_virtual_environment_runner(path):
+            raise MurlocsError(
+                "refusing to install a runner from a project virtual environment; install Murlocs "
+                "as a user-level tool or pass --runner /absolute/path/to/murlocs with an explicit "
+                "durability contract"
+            )
+    else:
+        path = Path(explicit_runner)
+        if not path.is_absolute():
+            raise MurlocsError("hook runner must be an absolute executable path")
+    if "\n" in str(path) or "\r" in str(path):
+        raise MurlocsError("hook runner path must not contain a newline")
+    if not path.is_file() or not os.access(path, os.X_OK):
+        raise MurlocsError("hook runner is not an executable file")
+    reported = _runner_version(path)
+    if reported != __version__:
+        actual = reported or "an unknown version"
+        raise MurlocsError(
+            f"hook runner must report Murlocs {__version__}, but {path} reports {actual}"
+        )
+    return HookRunner(path, reported)
+
+
+def _is_virtual_environment_runner(path: Path) -> bool:
+    """Treat direct venv executables as ephemeral unless the caller opts in explicitly."""
+    try:
+        parents = (path.parent, *path.parents)
+        return any(parent.joinpath("pyvenv.cfg").is_file() for parent in parents)
+    except OSError:
+        return True
+
+
+def _runner_version(path: Path) -> str | None:
+    try:
+        completed = subprocess.run(
+            [str(path), "--version"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if completed.returncode != 0:
+        return None
+    match = re.search(r"\b(\d+(?:\.\d+)+(?:[-+][0-9A-Za-z.-]+)?)\b", completed.stdout)
+    return match.group(1) if match else None
 
 
 def _atomic_hook_write(path: Path, content: bytes) -> None:
@@ -699,6 +869,30 @@ def _atomic_hook_write(path: Path, content: bytes) -> None:
             raise MurlocsError(f"Git hook slot changed during installation: {path.name}") from exc
         except OSError as exc:
             raise MurlocsError(f"could not install Git hook {path.name}: {exc}") from exc
+    finally:
+        if temp_path.exists():
+            temp_path.unlink()
+
+
+def _replace_owned_hook(path: Path, content: bytes, event: HookEvent) -> None:
+    """Atomically refresh a hook only after recognizing its exact owned bytes."""
+    try:
+        current = path.read_bytes()
+    except OSError as exc:
+        raise MurlocsError(f"could not inspect Git hook {path.name}: {exc}") from exc
+    if not _is_owned_hook(current, event):
+        raise MurlocsError(f"Git hook slot changed during installation: {path.name}")
+    descriptor, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    temp_path = Path(temporary)
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        temp_path.chmod(stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
+        os.replace(temp_path, path)
+    except OSError as exc:
+        raise MurlocsError(f"could not repair Git hook {path.name}: {exc}") from exc
     finally:
         if temp_path.exists():
             temp_path.unlink()

@@ -63,15 +63,17 @@ def hook_install_command(
         Option(metavar="EVENT"),
     ] = None,
     repo: Annotated[str, Option(metavar="PATH")] = ".",
+    runner: Annotated[str | None, Option(metavar="PATH")] = None,
 ) -> dict[str, Any]:
     """Conservatively install Murlocs-owned default Git hooks.
 
     Args:
         event: Hook event to install; omission selects both supported events.
         repo: Exact Git worktree root.
+        runner: Explicit durable Murlocs executable to pin in the generated dispatcher.
     """
     try:
-        result = install_hooks(Path(repo), tuple(event or ()))
+        result = install_hooks(Path(repo), tuple(event or ()), runner=runner)
     except MurlocsError as exc:
         return CommandResult(
             {"ok": False, "error": {"code": "MURLOCS_HOOK_INSTALL", "message": str(exc)}},

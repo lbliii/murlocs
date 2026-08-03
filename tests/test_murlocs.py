@@ -139,6 +139,12 @@ def test_hook_command_registry_contract_is_stable():
         "description": "Exact Git worktree root.",
         "default": ".",
     }
+    runner_option = {
+        "type": "string",
+        "x-milo-cli": {"kind": "option", "metavar": "PATH"},
+        "description": "Explicit durable Murlocs executable to pin in the generated dispatcher.",
+        "default": None,
+    }
     assert commands["install"].schema == {
         "type": "object",
         "properties": {
@@ -149,6 +155,7 @@ def test_hook_command_registry_contract_is_stable():
                 ),
             },
             "repo": repo_option,
+            "runner": runner_option,
         },
     }
     assert commands["uninstall"].schema == {
