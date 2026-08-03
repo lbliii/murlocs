@@ -1,6 +1,6 @@
 # Governed guidance curation
 
-Status: accepted design for the first curation implementation.
+Status: implemented repository-local curation lifecycle.
 
 Murlocs needs to help maintainers resist stale, repetitive, and append-only guidance without
 turning the compiler into a self-editing agent. This document defines a repository-local proposal
@@ -120,9 +120,10 @@ Valid transitions are:
 
 ```text
 proposed --> accepted --> promoted --> superseded
-    |            |           |
-    |            |           +--> pruned
-    |            +--> rejected (acceptance revoked before promotion)
+    |            |
+    |            +--> promoted (add or replace)
+    |            +--> pruned (remove)
+    |            +--> rejected (acceptance revoked before apply)
     +--> rejected
     +--> withdrawn
 ```
@@ -130,7 +131,7 @@ proposed --> accepted --> promoted --> superseded
 Terminal records remain in `.murlocs/curation/`. Moving old terminal records to a repository-local
 archive may be added later, but deleting them is never part of promotion or pruning.
 
-The planned command vocabulary is intentionally explicit:
+The command vocabulary is intentionally explicit:
 
 - `murlocs curate propose` creates an inert record and never edits an active source.
 - `murlocs curate review ID` is read-only and prints the current target, proposed result, evidence,
@@ -144,12 +145,13 @@ The planned command vocabulary is intentionally explicit:
   transaction.
 - `murlocs curate supersede OLD --with NEW` links a promoted record to the accepted replacement
   that supersedes it; it applies the replacement and records both sides in one transaction.
+- `murlocs curate recover ID` explicitly previews or rolls back an interrupted one-record apply;
+  use `--with NEW` for the two records in an interrupted supersession.
 
-The first implementation includes `propose`, read-only `review`, and read-only `check`. Decision
-events and active-source transactions remain deferred to the later implementation slice. This is a
-capability boundary, not an invitation to hand-edit an `accepted` event and treat it as authority:
-review validates checked-in histories, but no command in this slice accepts, authenticates,
-promotes, prunes, or supersedes guidance.
+All mutating commands are CLI-only. `review` and `check` remain available on read-only agent
+surfaces; accepting or applying a proposal therefore always requires an explicit local CLI action.
+Hand-editing an event does not authenticate it: Murlocs validates lifecycle shape and current-owner
+attribution, while repository review and CODEOWNERS provide actual identity and approval controls.
 
 ### Creating and reviewing a proposal
 
@@ -173,6 +175,27 @@ murlocs --dry-run curate propose core-path-rule \
   --value "Resolve manifest-controlled paths with repo_path."
 
 murlocs curate review core-path-rule
+murlocs --dry-run curate accept core-path-rule \
+  --actor @core-maintainer \
+  --at 2026-08-04T15:00:00Z \
+  --rationale "Reviewed against current source and ownership." \
+  --review-ref pull-request-42
+murlocs curate accept core-path-rule \
+  --actor @core-maintainer \
+  --at 2026-08-04T15:00:00Z \
+  --rationale "Reviewed against current source and ownership." \
+  --review-ref pull-request-42
+murlocs --dry-run curate promote core-path-rule \
+  --actor @core-maintainer \
+  --at 2026-08-04T16:00:00Z \
+  --rationale "Apply the accepted source change." \
+  --review-ref pull-request-42
+murlocs curate promote core-path-rule \
+  --actor @core-maintainer \
+  --at 2026-08-04T16:00:00Z \
+  --rationale "Apply the accepted source change." \
+  --review-ref pull-request-42
+murlocs compile
 murlocs curate check
 ```
 
@@ -218,15 +241,40 @@ They refuse to write if:
 - any generated output is unmanaged or modified; or
 - the operation would escape the repository boundary.
 
-On success, the CLI atomically replaces the active source and curation record. Compilation remains
-a separate explicit operation in the first implementation. This keeps promotion review focused on
+On success, the CLI replaces the active source and lifecycle record as one recoverable transaction.
+It stages exact before and after images in `.murlocs/curation/.transaction`, then rechecks the
+source, records, generated maps, lock, proof files, every supported CODEOWNERS location, and coverage
+topology immediately before the first replacement. An ordinary in-process failure rolls back only
+from the trusted in-memory plan that created the transaction.
+
+Compilation remains a separate explicit operation. This keeps promotion review focused on
 the source-of-truth change and retains existing generated-file preflight behavior. A future
 `--compile` convenience may compose the two transactions only if it provides equivalent rollback
 and ownership guarantees.
 
-If a transaction is interrupted, neither the active source nor lifecycle record may present a
-successful state alone. Implementation should use the same repository-confined staging and atomic
-replacement approach as other Murlocs writes, with regression tests for every failure boundary.
+Dry-run builds the same plan and unified patches without creating or recovering a transaction. A
+journal left by a process crash is untrusted repository input: no later proposal, decision, apply,
+check, or compile operation uses its images to write files automatically. Both `murlocs check` and
+`murlocs curate check` report it without changing it, and compilation is blocked so a temporarily
+mixed source-and-record state cannot become generated guidance.
+
+Recovery authority comes only from an explicit `murlocs curate recover ID` invocation. Recovery
+requires the journal to name exactly one currently active source plus the selected proposal record,
+or exactly two selected records for supersession. It rejects duplicate targets, path escapes,
+symlinks, unknown schema fields or versions, unexpected bytes, and every other target shape.
+Journal before/after images are never used as writable recovery content, even when their hashes and
+target paths are internally consistent. Cleanup without source writes is allowed only when the
+current record lifecycle and source digest independently prove the transaction fully applied or
+unapplied. A partially applied addition can be rolled back only by deterministically removing that
+accepted record's exact subject from the current source and proving the reconstruction equals
+`base_source_sha256`. Partial replacements, removals, and supersessions that cannot be reconstructed
+from current lifecycle semantics fail closed for manual remediation.
+
+`murlocs --dry-run curate recover ID` shows any semantically derived rollback patch first. The apply
+form rechecks the journal identity and current source bytes before writing; a fully applied or
+unapplied transaction only has its journal removed. Repository content alone can therefore block
+for inspection but cannot authorize an attacker-supplied before image. Curation never invokes
+registered checks, a model, or `compile` implicitly.
 
 ## Deterministic review report
 
@@ -295,9 +343,10 @@ proposal, but it never authorizes automatic deletion.
 
 Curation records are checked-in decision evidence, not runtime instructions. Rejection and
 withdrawal keep the original proposal and rationale. Promotion, supersession, and pruning keep the
-before digest, after digest when applicable, source revision, decision attribution, and review
-reference. Records must not embed full private transcripts or secrets; evidence references should
-point to appropriately governed artifacts.
+canonical before and after subject digests, exact source digests before and after apply, decision
+attribution, related proposal id when applicable, and review reference. Records must not embed full
+private transcripts or secrets; evidence references should point to appropriately governed
+artifacts.
 
 Git history is useful corroborating evidence but is not the only representation of the lifecycle:
 the record must explain the decision when viewed in a checkout. Retention cleanup, if introduced,

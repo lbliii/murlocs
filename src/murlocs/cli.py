@@ -11,7 +11,16 @@ from milo import CLI, Context, Option, Positional
 
 from murlocs import __version__
 from murlocs.adoption import adoption_status
-from murlocs.curation import check_records, propose_record, review_proposal
+from murlocs.curation import (
+    apply_record,
+    check_records,
+    decide_record,
+    propose_record,
+    recover_record_transaction,
+    review_proposal,
+    supersede_record,
+)
+from murlocs.curation_transaction import transaction_pending
 from murlocs.errors import MurlocsError
 from murlocs.impact import (
     build_impact_report,
@@ -476,6 +485,11 @@ class CurationDecisionPayload(TypedDict):
     at: str
     rationale: str
     review_ref: str | None
+    before_sha256: str | None
+    after_sha256: str | None
+    source_before_sha256: str | None
+    source_after_sha256: str | None
+    related_proposal_id: str | None
 
 
 class CurationEvidencePayload(TypedDict):
@@ -511,6 +525,7 @@ class CurationSourcePayload(TypedDict):
     current_sha256: str
     proposed_sha256: str
     stale_base: bool
+    active: bool
 
 
 class CurationChainPayload(TypedDict):
@@ -552,6 +567,32 @@ class CurationProposePayload(TypedDict):
     dry_run: bool
     record: str
     review: CurationReviewPayload
+
+
+class CurationPatchPayload(TypedDict):
+    path: str
+    diff: str
+
+
+class CurationActionPayload(TypedDict):
+    ok: bool
+    operation: str
+    proposal_ids: list[str]
+    actor: str
+    identity_assurance: str
+    dry_run: bool
+    patches: list[CurationPatchPayload]
+    events: list[CurationDecisionPayload]
+
+
+class CurationRecoveryPayload(TypedDict):
+    ok: bool
+    operation: str
+    proposal_ids: list[str]
+    source: str
+    status: str
+    dry_run: bool
+    patches: list[CurationPatchPayload]
 
 
 def _render_result(result: Any, _ctx: Any) -> str:
@@ -1072,6 +1113,13 @@ def check_command(
     try:
         manifest = load_manifest(_root(repo))
         findings = validate(manifest)
+        if transaction_pending(manifest.root):
+            findings.append(
+                Finding(
+                    "curation_transaction",
+                    "an interrupted curation transaction requires recovery before compile",
+                )
+            )
     except MurlocsError as exc:
         return _failure("MURLOCS_CHECK", exc)
 
@@ -1649,6 +1697,255 @@ def curate_propose_command(
     )
 
 
+def _curation_action_result(result: dict[str, Any]) -> CommandResult:
+    verb = "would apply" if result["dry_run"] else "applied"
+    paths = ", ".join(item["path"] for item in result["patches"])
+    return CommandResult(
+        result,
+        terminal_text="\n".join(
+            [
+                f"{verb} curation {result['operation']}: {paths}",
+                f"actor attribution: {result['actor']} (not authenticated by Murlocs)",
+            ]
+        ),
+    )
+
+
+def _decision_command(
+    decision: str,
+    id: str,
+    actor: str,
+    at: str,
+    rationale: str,
+    repo: str,
+    review_ref: str | None,
+    ctx: Context | None,
+) -> CurationActionPayload | FailurePayload:
+    try:
+        result = decide_record(
+            _root(repo),
+            id,
+            decision=decision,
+            actor=actor,
+            at=at,
+            rationale=rationale,
+            review_ref=review_ref,
+            dry_run=bool(ctx is not None and ctx.dry_run),
+        )
+    except (MurlocsError, OSError, ValueError) as exc:
+        return _failure("MURLOCS_CURATE_" + decision.upper(), exc)
+    return _curation_action_result(result)
+
+
+def curate_accept_command(
+    id: Annotated[str, Positional("ID")],
+    actor: Annotated[str, Option(metavar="ACTOR")],
+    at: Annotated[str, Option(metavar="TIMESTAMP")],
+    rationale: Annotated[str, Option(metavar="TEXT")],
+    repo: Annotated[str, Option(metavar="PATH")] = ".",
+    review_ref: Annotated[str | None, Option(metavar="REF")] = None,
+    ctx: Context | None = None,
+) -> CurationActionPayload | FailurePayload:
+    """Record current-owner acceptance without editing active guidance.
+
+    Args:
+        id: Proposal id to accept.
+        actor: Current owner attributed to the decision.
+        at: Caller-supplied decision timestamp.
+        rationale: Reason for the decision.
+        repo: Repository root containing the proposal.
+        review_ref: Optional repository review reference.
+        ctx: Milo host context used to honor dry-run policy.
+    """
+    return _decision_command("accepted", id, actor, at, rationale, repo, review_ref, ctx)
+
+
+def curate_reject_command(
+    id: Annotated[str, Positional("ID")],
+    actor: Annotated[str, Option(metavar="ACTOR")],
+    at: Annotated[str, Option(metavar="TIMESTAMP")],
+    rationale: Annotated[str, Option(metavar="TEXT")],
+    repo: Annotated[str, Option(metavar="PATH")] = ".",
+    review_ref: Annotated[str | None, Option(metavar="REF")] = None,
+    ctx: Context | None = None,
+) -> CurationActionPayload | FailurePayload:
+    """Record current-owner rejection without editing active guidance.
+
+    Args:
+        id: Proposal id to reject.
+        actor: Current owner attributed to the decision.
+        at: Caller-supplied decision timestamp.
+        rationale: Reason for the decision.
+        repo: Repository root containing the proposal.
+        review_ref: Optional repository review reference.
+        ctx: Milo host context used to honor dry-run policy.
+    """
+    return _decision_command("rejected", id, actor, at, rationale, repo, review_ref, ctx)
+
+
+def curate_withdraw_command(
+    id: Annotated[str, Positional("ID")],
+    actor: Annotated[str, Option(metavar="ACTOR")],
+    at: Annotated[str, Option(metavar="TIMESTAMP")],
+    rationale: Annotated[str, Option(metavar="TEXT")],
+    repo: Annotated[str, Option(metavar="PATH")] = ".",
+    review_ref: Annotated[str | None, Option(metavar="REF")] = None,
+    ctx: Context | None = None,
+) -> CurationActionPayload | FailurePayload:
+    """Record proposer withdrawal without editing active guidance.
+
+    Args:
+        id: Proposal id to withdraw.
+        actor: Proposer attributed to the withdrawal.
+        at: Caller-supplied decision timestamp.
+        rationale: Reason for the withdrawal.
+        repo: Repository root containing the proposal.
+        review_ref: Optional repository review reference.
+        ctx: Milo host context used to honor dry-run policy.
+    """
+    return _decision_command("withdrawn", id, actor, at, rationale, repo, review_ref, ctx)
+
+
+def _apply_command(
+    operation: str,
+    id: str,
+    actor: str,
+    at: str,
+    rationale: str,
+    repo: str,
+    review_ref: str | None,
+    ctx: Context | None,
+) -> CurationActionPayload | FailurePayload:
+    try:
+        result = apply_record(
+            _root(repo),
+            id,
+            operation=operation,
+            actor=actor,
+            at=at,
+            rationale=rationale,
+            review_ref=review_ref,
+            dry_run=bool(ctx is not None and ctx.dry_run),
+        )
+    except (MurlocsError, OSError, ValueError) as exc:
+        return _failure("MURLOCS_CURATE_" + operation.upper(), exc)
+    return _curation_action_result(result)
+
+
+def curate_promote_command(
+    id: Annotated[str, Positional("ID")],
+    actor: Annotated[str, Option(metavar="ACTOR")],
+    at: Annotated[str, Option(metavar="TIMESTAMP")],
+    rationale: Annotated[str, Option(metavar="TEXT")],
+    repo: Annotated[str, Option(metavar="PATH")] = ".",
+    review_ref: Annotated[str | None, Option(metavar="REF")] = None,
+    ctx: Context | None = None,
+) -> CurationActionPayload | FailurePayload:
+    """Apply an accepted add or replacement without compiling generated maps.
+
+    Args:
+        id: Accepted proposal id to promote.
+        actor: Current owner attributed to the apply.
+        at: Caller-supplied apply timestamp.
+        rationale: Reason for applying the proposal.
+        repo: Repository root containing the proposal.
+        review_ref: Optional repository review reference.
+        ctx: Milo host context used to honor dry-run policy.
+    """
+    return _apply_command("promote", id, actor, at, rationale, repo, review_ref, ctx)
+
+
+def curate_prune_command(
+    id: Annotated[str, Positional("ID")],
+    actor: Annotated[str, Option(metavar="ACTOR")],
+    at: Annotated[str, Option(metavar="TIMESTAMP")],
+    rationale: Annotated[str, Option(metavar="TEXT")],
+    repo: Annotated[str, Option(metavar="PATH")] = ".",
+    review_ref: Annotated[str | None, Option(metavar="REF")] = None,
+    ctx: Context | None = None,
+) -> CurationActionPayload | FailurePayload:
+    """Apply an accepted removal without compiling generated maps.
+
+    Args:
+        id: Accepted removal proposal id to prune.
+        actor: Current owner attributed to the apply.
+        at: Caller-supplied apply timestamp.
+        rationale: Reason for applying the removal.
+        repo: Repository root containing the proposal.
+        review_ref: Optional repository review reference.
+        ctx: Milo host context used to honor dry-run policy.
+    """
+    return _apply_command("prune", id, actor, at, rationale, repo, review_ref, ctx)
+
+
+def curate_supersede_command(
+    id: Annotated[str, Positional("ID")],
+    with_id: Annotated[str, Option(aliases=("--with",), metavar="ID")],
+    actor: Annotated[str, Option(metavar="ACTOR")],
+    at: Annotated[str, Option(metavar="TIMESTAMP")],
+    rationale: Annotated[str, Option(metavar="TEXT")],
+    repo: Annotated[str, Option(metavar="PATH")] = ".",
+    review_ref: Annotated[str | None, Option(metavar="REF")] = None,
+    ctx: Context | None = None,
+) -> CurationActionPayload | FailurePayload:
+    """Apply an accepted replacement and supersede its promoted predecessor.
+
+    Args:
+        id: Promoted predecessor proposal id.
+        with_id: Accepted replacement proposal id.
+        actor: Current owner attributed to the apply.
+        at: Caller-supplied apply timestamp.
+        rationale: Reason for applying the replacement.
+        repo: Repository root containing both proposals.
+        review_ref: Optional repository review reference.
+        ctx: Milo host context used to honor dry-run policy.
+    """
+    try:
+        result = supersede_record(
+            _root(repo),
+            id,
+            with_id,
+            actor=actor,
+            at=at,
+            rationale=rationale,
+            review_ref=review_ref,
+            dry_run=bool(ctx is not None and ctx.dry_run),
+        )
+    except (MurlocsError, OSError, ValueError) as exc:
+        return _failure("MURLOCS_CURATE_SUPERSEDE", exc)
+    return _curation_action_result(result)
+
+
+def curate_recover_command(
+    id: Annotated[str, Positional("ID")],
+    repo: Annotated[str, Option(metavar="PATH")] = ".",
+    with_id: Annotated[str | None, Option(aliases=("--with",), metavar="ID")] = None,
+    ctx: Context | None = None,
+) -> CurationRecoveryPayload | FailurePayload:
+    """Explicitly recover one validated interrupted curation transaction.
+
+    Args:
+        id: Proposal id named by the interrupted transaction.
+        repo: Repository root containing the untrusted crash journal.
+        with_id: Second proposal id for a supersession transaction.
+        ctx: Milo host context used to preview exact recovery patches.
+    """
+    try:
+        result = recover_record_transaction(
+            _root(repo),
+            id,
+            with_proposal_id=with_id,
+            dry_run=bool(ctx is not None and ctx.dry_run),
+        )
+    except (MurlocsError, OSError, ValueError) as exc:
+        return _failure("MURLOCS_CURATE_RECOVER", exc)
+    verb = "would recover" if result["dry_run"] else "recovered"
+    return CommandResult(
+        result,
+        terminal_text=f"{verb} curation transaction: {result['status']}",
+    )
+
+
 def curate_review_command(
     id: Annotated[str, Positional("ID")],
     repo: Annotated[str, Option(metavar="PATH")] = ".",
@@ -1900,12 +2197,41 @@ def build_cli(*, name: str = "murlocs") -> CLI:
         surfaces=("cli", "mcp", "llms"),
         terminal_renderer=_render_result,
     )(curate_check_command)
+    for name, description, command in (
+        ("accept", "Record current-owner acceptance", curate_accept_command),
+        ("reject", "Record current-owner rejection", curate_reject_command),
+        ("withdraw", "Record proposer withdrawal", curate_withdraw_command),
+        ("promote", "Apply an accepted addition or replacement", curate_promote_command),
+        (
+            "supersede",
+            "Apply a replacement and supersede its predecessor",
+            curate_supersede_command,
+        ),
+        ("prune", "Apply an accepted removal", curate_prune_command),
+        ("recover", "Explicitly recover an interrupted transaction", curate_recover_command),
+    ):
+        curate.command(
+            name,
+            description=description,
+            surfaces=("cli",),
+            terminal_renderer=_render_result,
+        )(command)
     # Milo 0.4 exposes annotations on grouped CommandDef objects but not on
     # Group.command(). Preserve the same trust hints as root inspection commands.
-    curate._commands["propose"] = replace(
-        curate.get_command("propose"),
-        annotations={"destructiveHint": True, "openWorldHint": True},
-    )
+    for command_name in (
+        "propose",
+        "accept",
+        "reject",
+        "withdraw",
+        "promote",
+        "supersede",
+        "prune",
+        "recover",
+    ):
+        curate._commands[command_name] = replace(
+            curate.get_command(command_name),
+            annotations={"destructiveHint": True, "openWorldHint": True},
+        )
     for command_name in ("review", "check"):
         curate._commands[command_name] = replace(
             curate.get_command(command_name), annotations=inspection

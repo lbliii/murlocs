@@ -8,23 +8,40 @@ operation writes them and nothing here mutates an active manifest or layer.
 from __future__ import annotations
 
 import copy
+import difflib
 import json
 import os
 import re
 import tempfile
 import tomllib
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
-from murlocs.codeowners import find_codeowners, normalize_path, parse_codeowners
+from murlocs.codeowners import (
+    CODEOWNERS_LOCATIONS,
+    find_codeowners,
+    normalize_path,
+    parse_codeowners,
+)
+from murlocs.curation_transaction import (
+    FileGuard,
+    FileUpdate,
+    RecoveryPlan,
+    TreeGuard,
+    apply_recovery,
+    apply_transaction,
+    plan_recovery,
+    source_tree_sha256,
+    transaction_pending,
+)
 from murlocs.errors import MurlocsError
 from murlocs.layers import DiskSources, compose, read_disk_sources
-from murlocs.lockfile import sha256_bytes
+from murlocs.lockfile import LOCK_PATH, sha256_bytes
 from murlocs.manifest import parse_manifest_data
 from murlocs.model import LayerSource, Manifest
 from murlocs.paths import relative_posix, repo_path
-from murlocs.render import render_outputs
+from murlocs.render import prepare_manifest, render_outputs
 from murlocs.serialization import render_fragment_data, render_manifest_data
 from murlocs.verify import Finding, validate
 
@@ -62,8 +79,8 @@ EVENT_STATES = (
 )
 TRANSITIONS = {
     "proposed": {"accepted", "rejected", "withdrawn"},
-    "accepted": {"promoted", "rejected"},
-    "promoted": {"superseded", "pruned"},
+    "accepted": {"promoted", "pruned", "rejected"},
+    "promoted": {"superseded"},
     "superseded": set(),
     "pruned": set(),
     "rejected": set(),
@@ -87,7 +104,19 @@ ROOT_FIELDS = {
     "events",
 }
 EVIDENCE_FIELDS = {"kind", "reference", "summary"}
-EVENT_FIELDS = {"state", "actor", "at", "rationale", "review_ref"}
+EVENT_FIELDS = {
+    "state",
+    "actor",
+    "at",
+    "rationale",
+    "review_ref",
+    "before_sha256",
+    "after_sha256",
+    "source_before_sha256",
+    "source_after_sha256",
+    "related_proposal_id",
+}
+TERMINAL_STATES = {"promoted", "superseded", "pruned", "rejected", "withdrawn"}
 
 
 @dataclass(frozen=True)
@@ -104,6 +133,11 @@ class CurationEvent:
     at: str
     rationale: str
     review_ref: str | None = None
+    before_sha256: str | None = None
+    after_sha256: str | None = None
+    source_before_sha256: str | None = None
+    source_after_sha256: str | None = None
+    related_proposal_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -141,10 +175,13 @@ class CurationFinding:
 
 def proposal_path(root: Path, proposal_id: str) -> Path:
     _validate_id(proposal_id)
+    _reject_curation_symlinks(root, proposal_id)
     return repo_path(root, f"{CURATION_DIRECTORY}/{proposal_id}.toml", field="proposal path")
 
 
 def load_record(path: Path, *, expected_id: str | None = None) -> CurationRecord:
+    if path.is_symlink():
+        raise MurlocsError(f"curation record may not be a symlink: {path.name}")
     try:
         raw = path.read_bytes()
     except FileNotFoundError as exc:
@@ -213,9 +250,20 @@ def parse_record_data(
                 at=_string(table, "at", context),
                 rationale=_string(table, "rationale", context),
                 review_ref=_optional_string(table, "review_ref", context),
+                before_sha256=_optional_sha256(table, "before_sha256", context),
+                after_sha256=_optional_sha256(table, "after_sha256", context),
+                source_before_sha256=_optional_sha256(
+                    table, "source_before_sha256", context
+                ),
+                source_after_sha256=_optional_sha256(
+                    table, "source_after_sha256", context
+                ),
+                related_proposal_id=_optional_id(
+                    table, "related_proposal_id", context
+                ),
             )
         )
-    _validate_events(events, filename)
+    _validate_events(events, filename, intent)
 
     raw_payload = data.get("payload")
     payload = None if raw_payload is None else dict(_table(raw_payload, f"{filename}.payload"))
@@ -241,6 +289,7 @@ def parse_record_data(
 
 
 def check_records(root: Path) -> dict[str, Any]:
+    _reject_curation_symlinks(root)
     directory = repo_path(root, CURATION_DIRECTORY, field="curation directory")
     if not directory.exists():
         return {"ok": True, "records": [], "findings": []}
@@ -252,8 +301,24 @@ def check_records(root: Path) -> dict[str, Any]:
 
     records: list[dict[str, Any]] = []
     findings: list[CurationFinding] = []
+    if transaction_pending(root):
+        findings.append(
+            CurationFinding(
+                "pending_transaction",
+                "an interrupted curation transaction requires recovery by the next "
+                "explicit curation write",
+            )
+        )
     ids: dict[str, str] = {}
     for path in sorted(directory.iterdir(), key=lambda item: item.name):
+        if path.is_symlink():
+            findings.append(
+                CurationFinding(
+                    "record_symlink",
+                    f"curation record may not be a symlink: {path.name}",
+                )
+            )
+            continue
         if not path.is_file() or path.suffix != ".toml":
             continue
         file_id = path.stem
@@ -301,6 +366,8 @@ def review_proposal(root: Path, proposal_id: str) -> dict[str, Any]:
 
 
 def review_record(root: Path, record: CurationRecord) -> dict[str, Any]:
+    if record.state in TERMINAL_STATES:
+        return _terminal_review(root, record)
     disk = read_disk_sources(root)
     manifest = _manifest_from_disk(root, disk)
     source_index = _source_index(disk, record.target_source)
@@ -422,6 +489,11 @@ def review_record(root: Path, record: CurationRecord) -> dict[str, Any]:
                 "at": event.at,
                 "rationale": event.rationale,
                 "review_ref": event.review_ref,
+                "before_sha256": event.before_sha256,
+                "after_sha256": event.after_sha256,
+                "source_before_sha256": event.source_before_sha256,
+                "source_after_sha256": event.source_after_sha256,
+                "related_proposal_id": event.related_proposal_id,
             }
             for event in record.events
         ],
@@ -439,6 +511,7 @@ def review_record(root: Path, record: CurationRecord) -> dict[str, Any]:
             "current_sha256": current_hash,
             "proposed_sha256": proposed_source_hash,
             "stale_base": stale,
+            "active": True,
         },
         "exact_duplicates": duplicate_findings,
         "key_collisions": collision_findings,
@@ -471,6 +544,7 @@ def propose_record(
     payload_json: str | None,
     dry_run: bool,
 ) -> dict[str, Any]:
+    _prepare_transaction(root, dry_run)
     path = proposal_path(root, proposal_id)
     if path.exists():
         raise MurlocsError(
@@ -592,8 +666,697 @@ def render_record(record: CurationRecord) -> str:
         )
         if event.review_ref is not None:
             lines.append(f"review_ref = {_toml(event.review_ref)}")
+        for field in (
+            "before_sha256",
+            "after_sha256",
+            "source_before_sha256",
+            "source_after_sha256",
+            "related_proposal_id",
+        ):
+            value = getattr(event, field)
+            if value is not None:
+                lines.append(f"{field} = {_toml(value)}")
         lines.append("")
     return "\n".join(lines).rstrip() + "\n"
+
+
+def decide_record(
+    root: Path,
+    proposal_id: str,
+    *,
+    decision: str,
+    actor: str,
+    at: str,
+    rationale: str,
+    review_ref: str | None,
+    dry_run: bool,
+) -> dict[str, Any]:
+    """Append an attributed lifecycle decision without changing active guidance."""
+    _prepare_transaction(root, dry_run)
+    if decision not in {"accepted", "rejected", "withdrawn"}:
+        raise MurlocsError(f"unsupported curation decision: {decision}")
+    path = proposal_path(root, proposal_id)
+    before_bytes = path.read_bytes()
+    record = load_record(path, expected_id=proposal_id)
+    if decision not in TRANSITIONS[record.state]:
+        raise MurlocsError(
+            f"cannot transition proposal {proposal_id} to {decision} from {record.state}"
+        )
+
+    guards: tuple[FileGuard, ...] = ()
+    tree_guards: tuple[TreeGuard, ...] = ()
+    if decision == "withdrawn":
+        if actor != record.proposer:
+            raise MurlocsError(
+                f"withdraw actor must match attributed proposer {record.proposer!r}"
+            )
+    else:
+        disk = read_disk_sources(root)
+        manifest = _manifest_from_disk(root, disk)
+        source = disk.sources[_source_index(disk, record.target_source)]
+        current_owners = _current_required_owners(manifest, source)
+        guards = _preflight_guards(root, disk, manifest, ())
+        tree_guards = _preflight_tree_guards(root, manifest)
+        if actor not in current_owners:
+            raise MurlocsError(
+                f"decision actor {actor!r} is not a current required owner; "
+                "actor values are audit attribution, not authenticated identity"
+            )
+        if decision == "accepted":
+            report = review_record(root, record)
+            if not report["ok"]:
+                _raise_findings("proposal cannot be accepted", report["findings"])
+
+    event = CurationEvent(
+        state=decision,
+        actor=actor,
+        at=at,
+        rationale=rationale,
+        review_ref=review_ref,
+    )
+    updated = replace(record, events=(*record.events, event))
+    after_bytes = render_record(updated).encode("utf-8")
+    return _execute_plan(
+        root,
+        operation=decision,
+        proposal_ids=(proposal_id,),
+        actor=actor,
+        updates=(FileUpdate(path, before_bytes, after_bytes, "record", proposal_id),),
+        events=(event,),
+        dry_run=dry_run,
+        guards=guards,
+        tree_guards=tree_guards,
+    )
+
+
+def apply_record(
+    root: Path,
+    proposal_id: str,
+    *,
+    operation: str,
+    actor: str,
+    at: str,
+    rationale: str,
+    review_ref: str | None,
+    dry_run: bool,
+    failure_hook: Any = None,
+) -> dict[str, Any]:
+    """Promote or prune an accepted proposal through one recoverable transaction."""
+    _prepare_transaction(root, dry_run)
+    if operation not in {"promote", "prune"}:
+        raise MurlocsError(f"unsupported curation apply operation: {operation}")
+    record_path = proposal_path(root, proposal_id)
+    record_before = record_path.read_bytes()
+    record = load_record(record_path, expected_id=proposal_id)
+    expected_intents = {"promote": {"add", "replace"}, "prune": {"remove"}}
+    if record.state != "accepted" or record.intent not in expected_intents[operation]:
+        raise MurlocsError(
+            f"{operation} requires an accepted "
+            + ("add or replace" if operation == "promote" else "remove")
+            + " proposal"
+        )
+    plan = _active_source_plan(root, record, actor)
+    event_state = "promoted" if operation == "promote" else "pruned"
+    event = _apply_event(
+        event_state,
+        actor,
+        at,
+        rationale,
+        review_ref,
+        plan["before"],
+        plan["after"],
+        plan["source_before"],
+        plan["source_after"],
+    )
+    updated = replace(record, events=(*record.events, event))
+    updates = (
+        FileUpdate(
+            plan["source_path"], plan["source_bytes"], plan["rendered_bytes"], "source"
+        ),
+        FileUpdate(
+            record_path,
+            record_before,
+            render_record(updated).encode("utf-8"),
+            "record",
+            proposal_id,
+        ),
+    )
+    return _execute_plan(
+        root,
+        operation=operation,
+        proposal_ids=(proposal_id,),
+        actor=actor,
+        updates=updates,
+        events=(event,),
+        dry_run=dry_run,
+        guards=plan["guards"],
+        tree_guards=plan["tree_guards"],
+        expected_source=record.target_source,
+        failure_hook=failure_hook,
+    )
+
+
+def supersede_record(
+    root: Path,
+    old_proposal_id: str,
+    new_proposal_id: str,
+    *,
+    actor: str,
+    at: str,
+    rationale: str,
+    review_ref: str | None,
+    dry_run: bool,
+    failure_hook: Any = None,
+) -> dict[str, Any]:
+    """Apply an accepted replacement and link it to the promoted record it replaces."""
+    _prepare_transaction(root, dry_run)
+    if old_proposal_id == new_proposal_id:
+        raise MurlocsError("supersession requires two different proposal ids")
+    old_path = proposal_path(root, old_proposal_id)
+    new_path = proposal_path(root, new_proposal_id)
+    old_before = old_path.read_bytes()
+    new_before = new_path.read_bytes()
+    old = load_record(old_path, expected_id=old_proposal_id)
+    new = load_record(new_path, expected_id=new_proposal_id)
+    if old.state != "promoted":
+        raise MurlocsError("superseded proposal must currently be promoted")
+    if new.state != "accepted" or new.intent != "replace":
+        raise MurlocsError("replacement proposal must currently be accepted")
+    def identity(item: CurationRecord) -> tuple[str, str | None, str]:
+        return (
+            item.target_source,
+            item.target_scope,
+            item.subject_kind,
+        )
+    if identity(old) != identity(new):
+        raise MurlocsError("superseding proposal must target the same active subject")
+    if old.subject_kind not in LIST_SUBJECT_FIELDS and old.target_key != new.target_key:
+        raise MurlocsError("superseding proposal must target the same exact structured key")
+    plan = _active_source_plan(root, new, actor)
+    old_digest = old.events[-1].after_sha256
+    if old_digest is None or old_digest != _subject_digest(plan["before"]):
+        raise MurlocsError(
+            "superseding proposal does not replace the subject produced by its predecessor"
+        )
+    promoted = _apply_event(
+        "promoted",
+        actor,
+        at,
+        rationale,
+        review_ref,
+        plan["before"],
+        plan["after"],
+        plan["source_before"],
+        plan["source_after"],
+        related_proposal_id=old_proposal_id,
+    )
+    superseded = _apply_event(
+        "superseded",
+        actor,
+        at,
+        rationale,
+        review_ref,
+        plan["before"],
+        plan["after"],
+        plan["source_before"],
+        plan["source_after"],
+        related_proposal_id=new_proposal_id,
+    )
+    updates = (
+        FileUpdate(
+            plan["source_path"], plan["source_bytes"], plan["rendered_bytes"], "source"
+        ),
+        FileUpdate(
+            old_path,
+            old_before,
+            render_record(replace(old, events=(*old.events, superseded))).encode("utf-8"),
+            "record",
+            old_proposal_id,
+        ),
+        FileUpdate(
+            new_path,
+            new_before,
+            render_record(replace(new, events=(*new.events, promoted))).encode("utf-8"),
+            "record",
+            new_proposal_id,
+        ),
+    )
+    return _execute_plan(
+        root,
+        operation="supersede",
+        proposal_ids=(old_proposal_id, new_proposal_id),
+        actor=actor,
+        updates=updates,
+        events=(superseded, promoted),
+        dry_run=dry_run,
+        guards=plan["guards"],
+        tree_guards=plan["tree_guards"],
+        expected_source=new.target_source,
+        failure_hook=failure_hook,
+    )
+
+
+def recover_record_transaction(
+    root: Path,
+    proposal_id: str,
+    *,
+    with_proposal_id: str | None,
+    dry_run: bool,
+) -> dict[str, Any]:
+    """Preview or explicitly apply recovery of one exact curation transaction."""
+    proposal_ids = (
+        (proposal_id, with_proposal_id)
+        if with_proposal_id is not None
+        else (proposal_id,)
+    )
+    records = [
+        load_record(proposal_path(root, item), expected_id=item) for item in proposal_ids
+    ]
+    sources = {record.target_source for record in records}
+    if len(sources) != 1:
+        raise MurlocsError("recovery records must name the same exact active source")
+    source = sources.pop()
+    _reject_path_symlinks(root, source, label="recovery source")
+    disk = read_disk_sources(root)
+    _source_index(disk, source)
+    plan = plan_recovery(
+        root,
+        expected_source=source,
+        proposal_ids=proposal_ids,
+    )
+    plan = _semantic_recovery_plan(root, disk, records, plan)
+    patches = [_patch_payload(root, update) for update in plan.updates]
+    if not dry_run:
+        apply_recovery(root, plan)
+    return {
+        "ok": True,
+        "operation": "recover",
+        "proposal_ids": list(proposal_ids),
+        "source": source,
+        "status": plan.status,
+        "dry_run": dry_run,
+        "patches": patches,
+    }
+
+
+def _semantic_recovery_plan(
+    root: Path,
+    disk: DiskSources,
+    records: list[CurationRecord],
+    plan: RecoveryPlan,
+) -> RecoveryPlan:
+    """Derive recovery only from current lifecycle semantics, never journal images."""
+    if plan.operation == "incomplete":
+        return plan
+    record = records[-1]
+    source_index = _source_index(disk, record.target_source)
+    source_path = repo_path(root, record.target_source, field="recovery source")
+    current_bytes = source_path.read_bytes()
+    current_hash = sha256_bytes(current_bytes)
+    semantic_guards = [FileGuard(source_path, current_bytes)]
+    semantic_guards.extend(
+        FileGuard(proposal_path(root, item.id), proposal_path(root, item.id).read_bytes())
+        for item in records
+    )
+    plan = replace(plan, guards=tuple(semantic_guards))
+
+    if plan.operation == "supersede":
+        old, new = records
+        if (
+            old.state == "promoted"
+            and new.state == "accepted"
+            and current_hash == new.base_source_sha256
+        ):
+            return replace(plan, status="remove semantically unapplied transaction journal")
+        if old.state == "superseded" and new.state == "promoted":
+            old_event = old.events[-1]
+            new_event = new.events[-1]
+            if (
+                old_event.related_proposal_id == new.id
+                and new_event.related_proposal_id == old.id
+                and old_event.source_before_sha256 == new.base_source_sha256
+                and new_event.source_before_sha256 == new.base_source_sha256
+                and old_event.source_after_sha256 == current_hash
+                and new_event.source_after_sha256 == current_hash
+            ):
+                return replace(plan, status="remove semantically completed transaction journal")
+        raise MurlocsError(
+            "interrupted supersession cannot be recovered safely from current lifecycle "
+            "semantics; leave the journal in place for manual remediation"
+        )
+
+    expected_state = "promoted" if plan.operation == "promote" else "pruned"
+    if record.state == expected_state:
+        event = record.events[-1]
+        if (
+            event.source_before_sha256 == record.base_source_sha256
+            and event.source_after_sha256 == current_hash
+        ):
+            return replace(plan, status="remove semantically completed transaction journal")
+        raise MurlocsError(
+            "terminal lifecycle audit does not match the current active source; "
+            "manual remediation is required"
+        )
+    if record.state != "accepted":
+        raise MurlocsError(
+            "journal operation does not match the current proposal lifecycle; "
+            "manual remediation is required"
+        )
+    if current_hash == record.base_source_sha256:
+        return replace(plan, status="remove semantically unapplied transaction journal")
+    if plan.operation != "promote" or record.intent != "add":
+        raise MurlocsError(
+            "partial replacement or removal cannot be reconstructed without trusting journal "
+            "images; leave the journal in place for manual remediation"
+        )
+
+    inverse_key = record.target_key
+    if record.subject_kind in LIST_SUBJECT_FIELDS:
+        if record.payload is None:
+            raise MurlocsError("accepted addition is missing its payload")
+        inverse_key = stable_list_key(str(record.payload["value"]))
+    inverse = replace(record, intent="remove", target_key=inverse_key, payload=None)
+    manifest = _manifest_from_disk(root, disk)
+    fragments = copy.deepcopy(disk.fragments)
+    try:
+        _before, _after, structural = _apply_proposal(
+            fragments[source_index], inverse, manifest
+        )
+    except MurlocsError as exc:
+        raise MurlocsError(
+            "accepted addition is not the exact current subject; manual remediation is required"
+        ) from exc
+    if any(item.blocking for item in structural):
+        raise MurlocsError("accepted addition cannot be inverted deterministically")
+    reconstructed = _render_source(disk, source_index, fragments[source_index]).encode("utf-8")
+    if sha256_bytes(reconstructed) != record.base_source_sha256:
+        raise MurlocsError(
+            "reconstructed pre-addition source does not match the recorded base hash; "
+            "manual remediation is required"
+        )
+    update = FileUpdate(source_path, current_bytes, reconstructed, "source")
+    return replace(
+        plan,
+        updates=(update,),
+        status="roll back exact accepted addition reconstructed from lifecycle semantics",
+    )
+
+
+def _active_source_plan(root: Path, record: CurationRecord, actor: str) -> dict[str, Any]:
+    report = review_record(root, record)
+    if not report["ok"]:
+        _raise_findings("proposal cannot be applied", report["findings"])
+    disk = read_disk_sources(root)
+    manifest = _manifest_from_disk(root, disk)
+    index = _source_index(disk, record.target_source)
+    source = disk.sources[index]
+    current_owners = _current_required_owners(manifest, source)
+    if actor not in current_owners:
+        raise MurlocsError(
+            f"apply actor {actor!r} is not a current required owner; "
+            "actor values are audit attribution, not authenticated identity"
+        )
+    accepted = next(event for event in reversed(record.events) if event.state == "accepted")
+    if accepted.actor not in current_owners:
+        raise MurlocsError(
+            f"accepted event actor {accepted.actor!r} is not a current required owner"
+        )
+    fragments = copy.deepcopy(disk.fragments)
+    before, after, structural = _apply_proposal(fragments[index], record, manifest)
+    blocking = [item for item in structural if item.blocking]
+    if blocking:
+        _raise_findings("proposal cannot be applied", [item.payload() for item in blocking])
+    rendered = _render_source(disk, index, fragments[index]).encode("utf-8")
+    rendered_hash = sha256_bytes(rendered)
+    sources = list(disk.sources)
+    sources[index] = replace(source, sha256=rendered_hash)
+    resolved = compose(disk.root_data, sources, fragments)
+    prospective = parse_manifest_data(
+        root,
+        resolved.data,
+        layered=resolved.layered,
+        sources=resolved.sources,
+        scope_layers=resolved.scope_layers,
+        overrides=resolved.overrides,
+    )
+    findings = [item for item in validate(prospective) if item.code not in {"drift", "lock"}]
+    if findings:
+        _raise_findings(
+            "proposal fails prospective validation",
+            [{"code": item.code, "message": item.message} for item in findings],
+        )
+    outputs = prepare_manifest(prospective)
+    _reject_path_symlinks(root, record.target_source, label="target_source")
+    source_path = repo_path(root, record.target_source, field="target_source")
+    source_bytes = source_path.read_bytes()
+    if sha256_bytes(source_bytes) != record.base_source_sha256:
+        raise MurlocsError("proposal base source hash is stale")
+    return {
+        "source_path": source_path,
+        "source_bytes": source_bytes,
+        "rendered_bytes": rendered,
+        "source_before": sha256_bytes(source_bytes),
+        "source_after": rendered_hash,
+        "before": before,
+        "after": after,
+        "guards": _preflight_guards(root, disk, prospective, tuple(outputs)),
+        "tree_guards": _preflight_tree_guards(root, prospective),
+    }
+
+
+def _preflight_guards(
+    root: Path,
+    disk: DiskSources,
+    manifest: Manifest,
+    generated_paths: tuple[str, ...],
+) -> tuple[FileGuard, ...]:
+    paths = {str(source.path) for source in disk.sources}
+    paths.update(str(path) for path in generated_paths)
+    paths.add(str(LOCK_PATH))
+    paths.add(str(manifest.protocol))
+    paths.update(str(check.location) for check in manifest.checks.values())
+    paths.update(
+        str(invariant.evidence_file)
+        for invariant in manifest.invariants
+        if invariant.evidence_file is not None
+    )
+    paths.update(CODEOWNERS_LOCATIONS)
+    guards: list[FileGuard] = []
+    for raw in sorted(paths):
+        _reject_path_symlinks(root, raw, label="preflight dependency")
+        path = repo_path(root, raw, field="preflight dependency")
+        before = path.read_bytes() if path.is_file() else None
+        guards.append(FileGuard(path, before))
+    return tuple(guards)
+
+
+def _preflight_tree_guards(root: Path, manifest: Manifest) -> tuple[TreeGuard, ...]:
+    guards = []
+    suffixes = tuple(sorted(manifest.source_suffixes))
+    for raw_value in sorted(manifest.coverage_roots):
+        raw = str(raw_value)
+        _reject_path_symlinks(root, raw, label="coverage root")
+        path = repo_path(root, raw, field="coverage root")
+        guards.append(TreeGuard(path, suffixes, source_tree_sha256(root, path, suffixes)))
+    return tuple(guards)
+
+
+def _apply_event(
+    state: str,
+    actor: str,
+    at: str,
+    rationale: str,
+    review_ref: str | None,
+    before: Any,
+    after: Any,
+    source_before: str,
+    source_after: str,
+    *,
+    related_proposal_id: str | None = None,
+) -> CurationEvent:
+    return CurationEvent(
+        state=state,
+        actor=actor,
+        at=at,
+        rationale=rationale,
+        review_ref=review_ref,
+        before_sha256=_subject_digest(before),
+        after_sha256=_subject_digest(after),
+        source_before_sha256=source_before,
+        source_after_sha256=source_after,
+        related_proposal_id=related_proposal_id,
+    )
+
+
+def _subject_digest(value: Any) -> str:
+    canonical = json.dumps(
+        value, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+    return sha256_bytes(canonical)
+
+
+def _execute_plan(
+    root: Path,
+    *,
+    operation: str,
+    proposal_ids: tuple[str, ...],
+    actor: str,
+    updates: tuple[FileUpdate, ...],
+    events: tuple[CurationEvent, ...],
+    dry_run: bool,
+    failure_hook: Any = None,
+    guards: tuple[FileGuard, ...] = (),
+    tree_guards: tuple[TreeGuard, ...] = (),
+    expected_source: str | None = None,
+) -> dict[str, Any]:
+    if dry_run and transaction_pending(root):
+        raise MurlocsError("pending curation transaction requires recovery before dry-run")
+    patches = [_patch_payload(root, update) for update in updates]
+    if not dry_run:
+        apply_transaction(
+            root,
+            updates,
+            operation=operation,
+            proposal_ids=proposal_ids,
+            expected_source=expected_source,
+            guards=guards,
+            tree_guards=tree_guards,
+            failure_hook=failure_hook,
+        )
+    return {
+        "ok": True,
+        "operation": operation,
+        "proposal_ids": list(proposal_ids),
+        "actor": actor,
+        "identity_assurance": "not_authenticated",
+        "dry_run": dry_run,
+        "patches": patches,
+        "events": [_event_payload(event) for event in events],
+    }
+
+
+def _prepare_transaction(root: Path, dry_run: bool) -> None:
+    if transaction_pending(root):
+        raise MurlocsError(
+            "pending curation transaction is untrusted repository input; "
+            "inspect it with an explicit curation recovery command"
+        )
+
+
+def _patch_payload(root: Path, update: FileUpdate) -> dict[str, str]:
+    relative = relative_posix(root, update.path)
+    return {
+        "path": relative,
+        "diff": "".join(
+            difflib.unified_diff(
+                update.before.decode("utf-8").splitlines(keepends=True),
+                update.after.decode("utf-8").splitlines(keepends=True),
+                fromfile="a/" + relative,
+                tofile="b/" + relative,
+            )
+        ),
+    }
+
+
+def _reject_curation_symlinks(root: Path, proposal_id: str | None = None) -> None:
+    raw = CURATION_DIRECTORY
+    if proposal_id is not None:
+        raw += f"/{proposal_id}.toml"
+    _reject_path_symlinks(root, raw, label="curation storage")
+
+
+def _reject_path_symlinks(root: Path, raw: str, *, label: str) -> None:
+    candidate = Path(raw)
+    if candidate.is_absolute() or ".." in candidate.parts:
+        raise MurlocsError(f"{label} must be a safe repository-relative path: {raw}")
+    current = root
+    for part in candidate.parts:
+        current = current / part
+        if current.is_symlink():
+            raise MurlocsError(f"{label} may not traverse a symlink: {raw}")
+
+
+def _event_payload(event: CurationEvent) -> dict[str, Any]:
+    return {
+        field: getattr(event, field)
+        for field in (
+            "state",
+            "actor",
+            "at",
+            "rationale",
+            "review_ref",
+            "before_sha256",
+            "after_sha256",
+            "source_before_sha256",
+            "source_after_sha256",
+            "related_proposal_id",
+        )
+    }
+
+
+def _raise_findings(prefix: str, findings: list[dict[str, Any]]) -> None:
+    details = "; ".join(f"[{item['code']}] {item['message']}" for item in findings)
+    raise MurlocsError(f"{prefix}: {details}")
+
+
+def _terminal_review(root: Path, record: CurationRecord) -> dict[str, Any]:
+    last = record.events[-1]
+    expected_current_hash = (
+        last.source_after_sha256
+        if record.state in {"promoted", "superseded", "pruned"}
+        and last.source_after_sha256 is not None
+        else record.base_source_sha256
+    )
+    current_owners: tuple[str, ...] = ()
+    current_hash = ""
+    active = False
+    try:
+        disk = read_disk_sources(root)
+        manifest = _manifest_from_disk(root, disk)
+        source = disk.sources[_source_index(disk, record.target_source)]
+        current_owners = _current_required_owners(manifest, source)
+        current_hash = source.sha256
+        active = True
+    except (MurlocsError, OSError, ValueError):
+        pass
+    return {
+        "ok": True,
+        "proposal": {
+            "id": record.id,
+            "state": record.state,
+            "intent": record.intent,
+            "subject_kind": record.subject_kind,
+            "target_source": record.target_source,
+            "target_scope": record.target_scope,
+            "target_key": record.target_key,
+            "proposer": record.proposer,
+            "origin": record.origin,
+            "rationale": record.rationale,
+        },
+        "owners": {
+            "recorded": list(record.required_owners),
+            "current": list(current_owners),
+        },
+        "decisions": [_event_payload(event) for event in record.events],
+        "evidence": [
+            {"kind": item.kind, "reference": item.reference, "summary": item.summary}
+            for item in record.evidence
+        ],
+        "change": {"operation": record.intent, "before": None, "after": None},
+        "source": {
+            "recorded_sha256": record.base_source_sha256,
+            "current_sha256": current_hash,
+            "proposed_sha256": last.source_after_sha256 or record.base_source_sha256,
+            "stale_base": not active or current_hash != expected_current_hash,
+            "active": active,
+        },
+        "exact_duplicates": [],
+        "key_collisions": [],
+        "shadowing": [],
+        "affected_chains": [],
+        "validation_findings": [],
+        "findings": [],
+    }
 
 
 def stable_list_key(value: str) -> str:
@@ -1151,13 +1914,38 @@ def _validate_target_and_payload(
         _nonempty_value(payload["reason"], f"{context}.payload.reason")
 
 
-def _validate_events(events: list[CurationEvent], context: str) -> None:
+def _validate_events(events: list[CurationEvent], context: str, intent: str) -> None:
     if events[0].state != "proposed":
         raise MurlocsError(f"{context}.events[0].state must be proposed")
     for previous, current in zip(events, events[1:], strict=False):
         if current.state not in TRANSITIONS[previous.state]:
             raise MurlocsError(
                 f"{context} has invalid event transition {previous.state} -> {current.state}"
+            )
+    for index, event in enumerate(events):
+        audit_hashes = (
+            event.before_sha256,
+            event.after_sha256,
+            event.source_before_sha256,
+            event.source_after_sha256,
+        )
+        if event.state in {"promoted", "superseded", "pruned"} and any(
+            value is None for value in audit_hashes
+        ):
+            raise MurlocsError(
+                f"{context}.events[{index}] apply event must include before/after digests"
+            )
+        if event.state == "superseded" and event.related_proposal_id is None:
+            raise MurlocsError(
+                f"{context}.events[{index}] superseded event must link a proposal id"
+            )
+        if event.state == "promoted" and intent not in {"add", "replace"}:
+            raise MurlocsError(
+                f"{context}.events[{index}] promoted state is invalid for {intent} intent"
+            )
+        if event.state == "pruned" and intent != "remove":
+            raise MurlocsError(
+                f"{context}.events[{index}] pruned state is invalid for {intent} intent"
             )
 
 
@@ -1242,6 +2030,23 @@ def _optional_string(data: dict[str, Any], key: str, context: str) -> str | None
     if key not in data:
         return None
     return _string(data, key, context)
+
+
+def _optional_sha256(data: dict[str, Any], key: str, context: str) -> str | None:
+    value = _optional_string(data, key, context)
+    if value is not None and not SHA256_PATTERN.fullmatch(value):
+        raise MurlocsError(f"{context}.{key} must be 64 lowercase hex characters")
+    return value
+
+
+def _optional_id(data: dict[str, Any], key: str, context: str) -> str | None:
+    value = _optional_string(data, key, context)
+    if value is not None:
+        try:
+            _validate_id(value)
+        except MurlocsError as exc:
+            raise MurlocsError(f"{context}.{key}: {exc}") from exc
+    return value
 
 
 def _integer(data: dict[str, Any], key: str, context: str) -> int:
