@@ -1,7 +1,7 @@
 {
   "generated": {
     "AGENTS.md": {
-      "sha256": "7feb80d24643acc3ded5d6f6f28e437716a5b9a63674c236b1cb5064b7ba6bbc"
+      "sha256": "63b26f35bf3d7d6af6587c265c556cbfaebeb789432acefab15adce86ab8184c"
     },
     "skills/bootstrap-murlocs/AGENTS.md": {
       "sha256": "9de83a38841174543541174e011676bc28dd9b39099bf1e5bb4402aeb2d316ca"
@@ -27,7 +27,7 @@
       "id": "repo-base",
       "kind": "base",
       "path": ".murlocs/layers/base.toml",
-      "sha256": "f97bea4a0cd3ffc7bb9f77580768e6753e2618f0194764a54d395c48820b5365"
+      "sha256": "072e48cd3aa150e0f0342182d7df4491b375a67ac2a9e3a90abbed8616bc9e8e"
     },
     {
       "id": "core",

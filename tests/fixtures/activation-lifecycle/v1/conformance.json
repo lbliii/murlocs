@@ -1,0 +1,672 @@
+{
+  "contract": "io.murlocs.activation",
+  "schema_version": 1,
+  "operation_allowlist": ["check", "impact"],
+  "next_action_allowlist": ["inspect_findings", "request_authority", "retry", "use_fallback"],
+  "token_contract": {
+    "minted_by": "trusted-adapter",
+    "scope": ["adapter_id", "adapter_version", "session_id"],
+    "wire_input": "forbidden",
+    "state_semantics": "same-materialized-view",
+    "impact_dependency_semantics": "same-operation-dependencies",
+    "comparability": "same-adapter-version-session"
+  },
+  "cache_proof_contract": {
+    "default": "off",
+    "required_matches": ["contract_version", "adapter_id", "adapter_version", "session_id", "event", "operations", "operation_inputs", "manifest_identity", "state_id"],
+    "impact_required_match": "impact_dependency_id",
+    "missing_or_mismatch": "fresh-execution"
+  },
+  "prohibitions": ["model", "network", "hosted-service", "registered-command-execution", "repository-write"],
+  "cases": [
+    {
+      "id": "task-start-absent",
+      "request": {
+        "contract": "io.murlocs.activation",
+        "schema_version": 1,
+        "event": "task-start",
+        "correlation_id": "fixture-absent",
+        "host_context": {
+          "root": {"format": "windows-drive", "drive": "C", "segments": ["fixture", "repo"]},
+          "token_scope": {"adapter_id": "fixture-adapter", "adapter_version": "1", "session_id": "session-a"},
+          "manifest": ".murlocs/manifest.toml",
+          "view": "worktree",
+          "state_id": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+        }
+      },
+      "response": {
+        "contract": "io.murlocs.activation",
+        "schema_version": 1,
+        "event": "task-start",
+        "correlation_id": "fixture-absent",
+        "execution": {"status": "not_applicable", "code": "MURLOCS_ACTIVATION_ABSENT"},
+        "repository": {
+          "root": {"format": "windows-drive", "drive": "C", "segments": ["fixture", "repo"]},
+          "token_scope": {"adapter_id": "fixture-adapter", "adapter_version": "1", "session_id": "session-a"},
+          "manifest": ".murlocs/manifest.toml",
+          "view": "worktree",
+          "state_id": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+          "blocking": null
+        },
+        "silent": true,
+        "operations": [],
+        "cache": {"decision": "miss"},
+        "outcome": null,
+        "writes": [],
+        "fallback": [],
+        "next_actions": [],
+        "summary": "Murlocs is not present."
+      }
+    },
+    {
+      "id": "task-start-healthy",
+      "request": {
+        "contract": "io.murlocs.activation",
+        "schema_version": 1,
+        "event": "task-start",
+        "correlation_id": "fixture-healthy",
+        "host_context": {
+          "root": {"format": "posix", "segments": ["fixture", "repo"]},
+          "token_scope": {"adapter_id": "fixture-adapter", "adapter_version": "1", "session_id": "session-a"},
+          "manifest": ".murlocs/manifest.toml",
+          "view": "worktree",
+          "state_id": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "manifest_identity": "manifest:fixture-healthy",
+          "cache_offer": {
+            "cache_id": "cache:task-start:healthy",
+            "proof": {
+              "contract_version": "1",
+              "adapter_id": "fixture-adapter",
+              "adapter_version": "1",
+              "session_id": "session-a",
+              "event": "task-start",
+              "operations": ["check"],
+              "operation_inputs": {},
+              "manifest_identity": "manifest:fixture-healthy",
+              "state_id": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+            }
+          }
+        },
+        "deadline_ms": 2000
+      },
+      "response": {
+        "contract": "io.murlocs.activation",
+        "schema_version": 1,
+        "event": "task-start",
+        "correlation_id": "fixture-healthy",
+        "execution": {"status": "completed", "code": "MURLOCS_ACTIVATION_OK"},
+        "repository": {
+          "root": {"format": "posix", "segments": ["fixture", "repo"]},
+          "token_scope": {"adapter_id": "fixture-adapter", "adapter_version": "1", "session_id": "session-a"},
+          "manifest": ".murlocs/manifest.toml",
+          "view": "worktree",
+          "state_id": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "blocking": false
+        },
+        "silent": true,
+        "operations": [
+          {
+            "operation": "check",
+            "exit_code": 0,
+            "output_sha256": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "state_before": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+            "state_after": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+          }
+        ],
+        "cache": {"decision": "hit", "cache_id": "cache:task-start:healthy"},
+        "outcome": null,
+        "writes": [],
+        "fallback": [],
+        "next_actions": [],
+        "summary": "Murlocs task-start checks passed."
+      }
+    },
+    {
+      "id": "prospective-impact-focused",
+      "request": {
+        "contract": "io.murlocs.activation",
+        "schema_version": 1,
+        "event": "prospective-impact",
+        "correlation_id": "fixture-forecast",
+        "host_context": {
+          "root": {"format": "posix", "segments": ["fixture", "repo"]},
+          "token_scope": {"adapter_id": "fixture-adapter", "adapter_version": "1", "session_id": "session-a"},
+          "manifest": ".murlocs/manifest.toml",
+          "view": "worktree",
+          "state_id": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+          "baseline_resolution": {"object_format": "sha1", "commit_oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+          "impact_dependency_id": "sha256:abababababababababababababababababababababababababababababababab"
+        },
+        "paths": ["src/app.py", "-leading.py"],
+        "baseline": {"kind": "git-head"}
+      },
+      "response": {
+        "contract": "io.murlocs.activation",
+        "schema_version": 1,
+        "event": "prospective-impact",
+        "correlation_id": "fixture-forecast",
+        "execution": {"status": "completed", "code": "MURLOCS_ACTIVATION_OK"},
+        "repository": {
+          "root": {"format": "posix", "segments": ["fixture", "repo"]},
+          "token_scope": {"adapter_id": "fixture-adapter", "adapter_version": "1", "session_id": "session-a"},
+          "manifest": ".murlocs/manifest.toml",
+          "view": "worktree",
+          "state_id": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+          "blocking": false
+        },
+        "silent": true,
+        "operations": [
+          {
+            "operation": "impact",
+            "exit_code": 0,
+            "output_sha256": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "state_before": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+            "state_after": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+            "dependency_before_id": "sha256:abababababababababababababababababababababababababababababababab",
+            "dependency_after_id": "sha256:abababababababababababababababababababababababababababababababab"
+          }
+        ],
+        "cache": {"decision": "miss"},
+        "outcome": null,
+        "writes": [],
+        "fallback": [],
+        "next_actions": [],
+        "summary": "Prospective guidance impact is non-blocking."
+      }
+    },
+    {
+      "id": "post-edit-healthy",
+      "request": {
+        "contract": "io.murlocs.activation",
+        "schema_version": 1,
+        "event": "post-edit",
+        "correlation_id": "fixture-post-edit",
+        "host_context": {
+          "root": {"format": "posix", "segments": ["fixture", "repo"]},
+          "token_scope": {"adapter_id": "fixture-adapter", "adapter_version": "1", "session_id": "session-a"},
+          "manifest": ".murlocs/manifest.toml",
+          "view": "worktree",
+          "state_id": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+          "impact_dependency_id": "sha256:abababababababababababababababababababababababababababababababab"
+        },
+        "paths": ["src/app.py"]
+      },
+      "response": {
+        "contract": "io.murlocs.activation",
+        "schema_version": 1,
+        "event": "post-edit",
+        "correlation_id": "fixture-post-edit",
+        "execution": {"status": "completed", "code": "MURLOCS_ACTIVATION_OK"},
+        "repository": {
+          "root": {"format": "posix", "segments": ["fixture", "repo"]},
+          "token_scope": {"adapter_id": "fixture-adapter", "adapter_version": "1", "session_id": "session-a"},
+          "manifest": ".murlocs/manifest.toml",
+          "view": "worktree",
+          "state_id": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+          "blocking": false
+        },
+        "silent": true,
+        "operations": [
+          {
+            "operation": "check",
+            "exit_code": 0,
+            "output_sha256": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "state_before": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+            "state_after": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+          },
+          {
+            "operation": "impact",
+            "exit_code": 0,
+            "output_sha256": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "state_before": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+            "state_after": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+            "dependency_before_id": "sha256:abababababababababababababababababababababababababababababababab",
+            "dependency_after_id": "sha256:abababababababababababababababababababababababababababababababab"
+          }
+        ],
+        "cache": {"decision": "miss"},
+        "outcome": null,
+        "writes": [],
+        "fallback": [],
+        "next_actions": [],
+        "summary": "Post-edit Murlocs checks passed."
+      }
+    },
+    {
+      "id": "post-edit-stale-cache-rejected",
+      "request": {
+        "contract": "io.murlocs.activation",
+        "schema_version": 1,
+        "event": "post-edit",
+        "correlation_id": "fixture-stale",
+        "host_context": {
+          "root": {"format": "posix", "segments": ["fixture", "repo"]},
+          "token_scope": {"adapter_id": "fixture-adapter", "adapter_version": "1", "session_id": "session-a"},
+          "manifest": ".murlocs/manifest.toml",
+          "view": "worktree",
+          "state_id": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+          "manifest_identity": "manifest:fixture-healthy",
+          "impact_dependency_id": "sha256:abababababababababababababababababababababababababababababababab",
+          "cache_offer": {
+            "cache_id": "cache:post-edit:old-state",
+            "proof": {
+              "contract_version": "1",
+              "adapter_id": "fixture-adapter",
+              "adapter_version": "1",
+              "session_id": "session-a",
+              "event": "post-edit",
+              "operations": ["check", "impact"],
+              "operation_inputs": {"paths": ["src/app.py"]},
+              "manifest_identity": "manifest:fixture-healthy",
+              "state_id": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+              "impact_dependency_id": "sha256:abababababababababababababababababababababababababababababababab"
+            }
+          }
+        },
+        "paths": ["src/app.py"]
+      },
+      "response": {
+        "contract": "io.murlocs.activation",
+        "schema_version": 1,
+        "event": "post-edit",
+        "correlation_id": "fixture-stale",
+        "execution": {"status": "completed", "code": "MURLOCS_ACTIVATION_OK"},
+        "repository": {
+          "root": {"format": "posix", "segments": ["fixture", "repo"]},
+          "token_scope": {"adapter_id": "fixture-adapter", "adapter_version": "1", "session_id": "session-a"},
+          "manifest": ".murlocs/manifest.toml",
+          "view": "worktree",
+          "state_id": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+          "blocking": false
+        },
+        "silent": true,
+        "operations": [
+          {
+            "operation": "check",
+            "exit_code": 0,
+            "output_sha256": "sha256:1212121212121212121212121212121212121212121212121212121212121212",
+            "state_before": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+            "state_after": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+          },
+          {
+            "operation": "impact",
+            "exit_code": 0,
+            "output_sha256": "sha256:1313131313131313131313131313131313131313131313131313131313131313",
+            "state_before": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+            "state_after": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+            "dependency_before_id": "sha256:abababababababababababababababababababababababababababababababab",
+            "dependency_after_id": "sha256:abababababababababababababababababababababababababababababababab"
+          }
+        ],
+        "cache": {"decision": "rejected", "cache_id": "cache:post-edit:old-state"},
+        "outcome": null,
+        "writes": [],
+        "fallback": [],
+        "next_actions": [],
+        "summary": "Stale cached evidence was rejected; fresh post-edit checks passed."
+      }
+    },
+    {
+      "id": "post-edit-repository-mutated",
+      "request": {
+        "contract": "io.murlocs.activation",
+        "schema_version": 1,
+        "event": "post-edit",
+        "correlation_id": "fixture-mutated",
+        "host_context": {
+          "root": {"format": "posix", "segments": ["fixture", "repo"]},
+          "token_scope": {"adapter_id": "fixture-adapter", "adapter_version": "1", "session_id": "session-a"},
+          "manifest": ".murlocs/manifest.toml",
+          "view": "worktree",
+          "state_id": "sha256:8989898989898989898989898989898989898989898989898989898989898989"
+        },
+        "paths": ["src/app.py"]
+      },
+      "response": {
+        "contract": "io.murlocs.activation",
+        "schema_version": 1,
+        "event": "post-edit",
+        "correlation_id": "fixture-mutated",
+        "execution": {
+          "status": "stale",
+          "code": "MURLOCS_ACTIVATION_STALE",
+          "observed_state_id": "sha256:9090909090909090909090909090909090909090909090909090909090909090"
+        },
+        "repository": {
+          "root": {"format": "posix", "segments": ["fixture", "repo"]},
+          "token_scope": {"adapter_id": "fixture-adapter", "adapter_version": "1", "session_id": "session-a"},
+          "manifest": ".murlocs/manifest.toml",
+          "view": "worktree",
+          "state_id": "sha256:8989898989898989898989898989898989898989898989898989898989898989",
+          "blocking": null
+        },
+        "silent": false,
+        "operations": [],
+        "cache": {"decision": "miss"},
+        "outcome": null,
+        "writes": [],
+        "fallback": ["git-hook", "ci"],
+        "next_actions": [
+          {
+            "operation": "retry",
+            "arguments": {"event": "post-edit", "state_id": "current"},
+            "effect": "read_repository",
+            "authority": "integration"
+          }
+        ],
+        "summary": "Repository state changed during activation; discarded evidence must be retried."
+      }
+    },
+    {
+      "id": "pre-commit-staged-manifest-add",
+      "setup": {"worktree_manifest": "absent", "index_manifest": "regular"},
+      "request": {
+        "contract": "io.murlocs.activation",
+        "schema_version": 1,
+        "event": "pre-commit",
+        "correlation_id": "fixture-staged-add",
+        "enforcement": "enforcing",
+        "host_context": {
+          "root": {"format": "posix", "segments": ["fixture", "repo"]},
+          "token_scope": {"adapter_id": "fixture-adapter", "adapter_version": "1", "session_id": "session-a"},
+          "manifest": ".murlocs/manifest.toml",
+          "view": "index",
+          "state_id": "sha256:1414141414141414141414141414141414141414141414141414141414141414",
+          "impact_dependency_id": "sha256:abababababababababababababababababababababababababababababababab"
+        },
+        "paths": [".murlocs/manifest.toml"]
+      },
+      "response": {
+        "contract": "io.murlocs.activation",
+        "schema_version": 1,
+        "event": "pre-commit",
+        "correlation_id": "fixture-staged-add",
+        "execution": {"status": "completed", "code": "MURLOCS_ACTIVATION_OK"},
+        "repository": {
+          "root": {"format": "posix", "segments": ["fixture", "repo"]},
+          "token_scope": {"adapter_id": "fixture-adapter", "adapter_version": "1", "session_id": "session-a"},
+          "manifest": ".murlocs/manifest.toml",
+          "view": "index",
+          "state_id": "sha256:1414141414141414141414141414141414141414141414141414141414141414",
+          "blocking": false
+        },
+        "silent": true,
+        "operations": [
+          {
+            "operation": "check",
+            "exit_code": 0,
+            "output_sha256": "sha256:1515151515151515151515151515151515151515151515151515151515151515",
+            "state_before": "sha256:1414141414141414141414141414141414141414141414141414141414141414",
+            "state_after": "sha256:1414141414141414141414141414141414141414141414141414141414141414"
+          },
+          {
+            "operation": "impact",
+            "exit_code": 0,
+            "output_sha256": "sha256:1616161616161616161616161616161616161616161616161616161616161616",
+            "state_before": "sha256:1414141414141414141414141414141414141414141414141414141414141414",
+            "state_after": "sha256:1414141414141414141414141414141414141414141414141414141414141414",
+            "dependency_before_id": "sha256:abababababababababababababababababababababababababababababababab",
+            "dependency_after_id": "sha256:abababababababababababababababababababababababababababababababab"
+          }
+        ],
+        "cache": {"decision": "miss"},
+        "outcome": null,
+        "writes": [],
+        "fallback": [],
+        "next_actions": [],
+        "summary": "The staged manifest addition is present in the selected index view."
+      }
+    },
+    {
+      "id": "pre-commit-staged-manifest-delete",
+      "setup": {"worktree_manifest": "regular", "index_manifest": "absent"},
+      "request": {
+        "contract": "io.murlocs.activation",
+        "schema_version": 1,
+        "event": "pre-commit",
+        "correlation_id": "fixture-staged-delete",
+        "enforcement": "enforcing",
+        "host_context": {
+          "root": {"format": "posix", "segments": ["fixture", "repo"]},
+          "token_scope": {"adapter_id": "fixture-adapter", "adapter_version": "1", "session_id": "session-a"},
+          "manifest": ".murlocs/manifest.toml",
+          "view": "index",
+          "state_id": "sha256:1717171717171717171717171717171717171717171717171717171717171717"
+        },
+        "paths": [".murlocs/manifest.toml"]
+      },
+      "response": {
+        "contract": "io.murlocs.activation",
+        "schema_version": 1,
+        "event": "pre-commit",
+        "correlation_id": "fixture-staged-delete",
+        "execution": {"status": "not_applicable", "code": "MURLOCS_ACTIVATION_ABSENT"},
+        "repository": {
+          "root": {"format": "posix", "segments": ["fixture", "repo"]},
+          "token_scope": {"adapter_id": "fixture-adapter", "adapter_version": "1", "session_id": "session-a"},
+          "manifest": ".murlocs/manifest.toml",
+          "view": "index",
+          "state_id": "sha256:1717171717171717171717171717171717171717171717171717171717171717",
+          "blocking": null
+        },
+        "silent": true,
+        "operations": [],
+        "cache": {"decision": "miss"},
+        "outcome": null,
+        "writes": [],
+        "fallback": [],
+        "next_actions": [],
+        "summary": "The staged manifest deletion makes Murlocs absent from the selected index view."
+      }
+    },
+    {
+      "id": "pre-commit-timeout",
+      "request": {
+        "contract": "io.murlocs.activation",
+        "schema_version": 1,
+        "event": "pre-commit",
+        "correlation_id": "fixture-pre-commit",
+        "enforcement": "enforcing",
+        "host_context": {
+          "root": {"format": "posix", "segments": ["fixture", "repo"]},
+          "token_scope": {"adapter_id": "fixture-adapter", "adapter_version": "1", "session_id": "session-a"},
+          "manifest": ".murlocs/manifest.toml",
+          "view": "index",
+          "state_id": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+        },
+        "paths": ["src/app.py"],
+        "deadline_ms": 1
+      },
+      "response": {
+        "contract": "io.murlocs.activation",
+        "schema_version": 1,
+        "event": "pre-commit",
+        "correlation_id": "fixture-pre-commit",
+        "execution": {"status": "timeout", "code": "MURLOCS_ACTIVATION_TIMEOUT"},
+        "repository": {
+          "root": {"format": "posix", "segments": ["fixture", "repo"]},
+          "token_scope": {"adapter_id": "fixture-adapter", "adapter_version": "1", "session_id": "session-a"},
+          "manifest": ".murlocs/manifest.toml",
+          "view": "index",
+          "state_id": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "blocking": null
+        },
+        "silent": false,
+        "operations": [],
+        "cache": {"decision": "miss"},
+        "outcome": null,
+        "writes": [],
+        "fallback": [],
+        "next_actions": [
+          {
+            "operation": "retry",
+            "arguments": {"event": "pre-commit", "state_id": "current-index"},
+            "effect": "read_repository",
+            "authority": "integration"
+          }
+        ],
+        "summary": "Pre-commit activation timed out; the enforcing gate remains closed."
+      }
+    },
+    {
+      "id": "pre-completion-healthy-fresh",
+      "request": {
+        "contract": "io.murlocs.activation",
+        "schema_version": 1,
+        "event": "pre-completion",
+        "correlation_id": "fixture-complete",
+        "enforcement": "enforcing",
+        "host_context": {
+          "root": {"format": "posix", "segments": ["fixture", "repo"]},
+          "token_scope": {"adapter_id": "fixture-adapter", "adapter_version": "1", "session_id": "session-a"},
+          "manifest": ".murlocs/manifest.toml",
+          "view": "worktree",
+          "state_id": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+          "impact_dependency_id": "sha256:abababababababababababababababababababababababababababababababab"
+        },
+        "paths": ["src/app.py", "tests/test_app.py"]
+      },
+      "response": {
+        "contract": "io.murlocs.activation",
+        "schema_version": 1,
+        "event": "pre-completion",
+        "correlation_id": "fixture-complete",
+        "execution": {"status": "completed", "code": "MURLOCS_ACTIVATION_OK"},
+        "repository": {
+          "root": {"format": "posix", "segments": ["fixture", "repo"]},
+          "token_scope": {"adapter_id": "fixture-adapter", "adapter_version": "1", "session_id": "session-a"},
+          "manifest": ".murlocs/manifest.toml",
+          "view": "worktree",
+          "state_id": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+          "blocking": false
+        },
+        "silent": true,
+        "operations": [
+          {
+            "operation": "check",
+            "exit_code": 0,
+            "output_sha256": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "state_before": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+            "state_after": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+          },
+          {
+            "operation": "impact",
+            "exit_code": 0,
+            "output_sha256": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            "state_before": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+            "state_after": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+            "dependency_before_id": "sha256:abababababababababababababababababababababababababababababababab",
+            "dependency_after_id": "sha256:abababababababababababababababababababababababababababababababab"
+          }
+        ],
+        "cache": {"decision": "forbidden"},
+        "outcome": null,
+        "writes": [],
+        "fallback": [],
+        "next_actions": [],
+        "summary": "Fresh Murlocs completion evidence passed."
+      }
+    },
+    {
+      "id": "pre-completion-unavailable",
+      "request": {
+        "contract": "io.murlocs.activation",
+        "schema_version": 1,
+        "event": "pre-completion",
+        "correlation_id": "fixture-unavailable",
+        "enforcement": "prompt-mediated",
+        "host_context": {
+          "root": {"format": "posix", "segments": ["fixture", "repo"]},
+          "token_scope": {"adapter_id": "fixture-adapter", "adapter_version": "1", "session_id": "session-a"},
+          "manifest": ".murlocs/manifest.toml",
+          "view": "worktree",
+          "state_id": "sha256:7777777777777777777777777777777777777777777777777777777777777777"
+        },
+        "paths": ["src/app.py"]
+      },
+      "response": {
+        "contract": "io.murlocs.activation",
+        "schema_version": 1,
+        "event": "pre-completion",
+        "correlation_id": "fixture-unavailable",
+        "execution": {"status": "unavailable", "code": "MURLOCS_ACTIVATION_UNAVAILABLE"},
+        "repository": {
+          "root": {"format": "posix", "segments": ["fixture", "repo"]},
+          "token_scope": {"adapter_id": "fixture-adapter", "adapter_version": "1", "session_id": "session-a"},
+          "manifest": ".murlocs/manifest.toml",
+          "view": "worktree",
+          "state_id": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+          "blocking": null
+        },
+        "silent": false,
+        "operations": [],
+        "cache": {"decision": "forbidden"},
+        "outcome": null,
+        "writes": [],
+        "fallback": ["git-hook", "ci"],
+        "next_actions": [
+          {
+            "operation": "use_fallback",
+            "arguments": {"fallback": "git-hook"},
+            "effect": "read_repository",
+            "authority": "integration"
+          }
+        ],
+        "summary": "Murlocs is unavailable; completion evidence is missing."
+      }
+    },
+    {
+      "id": "pre-completion-agent-claim-rejected",
+      "request_valid": false,
+      "request_error": "repository",
+      "request": {
+        "contract": "io.murlocs.activation",
+        "schema_version": 1,
+        "event": "pre-completion",
+        "correlation_id": "fixture-agent-claim",
+        "enforcement": "prompt-mediated",
+        "host_context": {
+          "root": {"format": "posix", "segments": ["fixture", "repo"]},
+          "token_scope": {"adapter_id": "fixture-adapter", "adapter_version": "1", "session_id": "session-a"},
+          "manifest": ".murlocs/manifest.toml",
+          "view": "worktree",
+          "state_id": "sha256:7878787878787878787878787878787878787878787878787878787878787878"
+        },
+        "repository": {
+          "state_id": "sha256:7878787878787878787878787878787878787878787878787878787878787878"
+        },
+        "paths": ["src/app.py"]
+      },
+      "response": {
+        "contract": "io.murlocs.activation",
+        "schema_version": 1,
+        "event": "pre-completion",
+        "correlation_id": "fixture-agent-claim",
+        "execution": {"status": "invalid", "code": "MURLOCS_ACTIVATION_INVALID"},
+        "repository": {
+          "root": {"format": "posix", "segments": ["fixture", "repo"]},
+          "token_scope": {"adapter_id": "fixture-adapter", "adapter_version": "1", "session_id": "session-a"},
+          "manifest": ".murlocs/manifest.toml",
+          "view": "worktree",
+          "state_id": "sha256:7878787878787878787878787878787878787878787878787878787878787878",
+          "blocking": null
+        },
+        "silent": false,
+        "operations": [],
+        "cache": {"decision": "forbidden"},
+        "outcome": null,
+        "writes": [],
+        "fallback": ["git-hook", "ci"],
+        "next_actions": [
+          {
+            "operation": "use_fallback",
+            "arguments": {"fallback": "git-hook"},
+            "effect": "read_repository",
+            "authority": "integration"
+          }
+        ],
+        "summary": "A syntactically valid agent-supplied token is untrusted and invalid."
+      }
+    }
+  ]
+}
