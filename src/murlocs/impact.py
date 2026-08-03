@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import tomllib
@@ -16,6 +17,10 @@ from murlocs.lockfile import read_lock, sha256_bytes
 from murlocs.model import Manifest, Scope
 
 POLICY_VERSION = 2
+GIT_SOURCE_HISTORY_LIMIT = 64
+GIT_SOURCE_BLOB_LIMIT = 1024 * 1024
+GIT_SOURCE_BATCH_LIMIT = 8 * 1024 * 1024
+GIT_READ_TIMEOUT_SECONDS = 10
 REQUIRED_POLICY = (
     "A changed path is owned by a scope or names its generated map, guidance source, "
     "review protocol, manual evidence, or registered-check configuration; guidance-map "
@@ -363,7 +368,7 @@ def _stale_source_paths_against_lock(manifest: Manifest) -> tuple[str, ...] | No
 def _workspace_source_changes_root_render(
     manifest: Manifest, source_path: str
 ) -> bool | None:
-    """Compare source semantics with the Git blob recorded by the compile lock."""
+    """Compare source semantics with a bounded, batched locked Git baseline."""
     try:
         lock = read_lock(manifest.root)
     except (MurlocsError, OSError):
@@ -371,34 +376,101 @@ def _workspace_source_changes_root_render(
     if lock is None:
         return None
     locked = next((source for source in lock.sources if source.path == source_path), None)
-    if locked is None:
+    loaded = next((source for source in manifest.sources if source.path == source_path), None)
+    if (
+        locked is None
+        or loaded is None
+        or any(marker in source_path for marker in ("\0", "\n", "\r"))
+    ):
         return None
+    git_env = os.environ.copy()
+    git_env.update({"GIT_NO_LAZY_FETCH": "1", "GIT_OPTIONAL_LOCKS": "0"})
     try:
         history = subprocess.run(
-            ["git", "log", "--format=%H", "--all", "--", source_path],
+            [
+                "git",
+                "--no-lazy-fetch",
+                "--no-pager",
+                "--no-replace-objects",
+                "rev-list",
+                f"--max-count={GIT_SOURCE_HISTORY_LIMIT}",
+                "--all",
+                "--",
+                f":(literal){source_path}",
+            ],
             cwd=manifest.root,
             check=False,
             capture_output=True,
+            env=git_env,
+            timeout=GIT_READ_TIMEOUT_SECONDS,
         )
         current_bytes = (manifest.root / source_path).read_bytes()
-    except OSError:
+    except (OSError, subprocess.TimeoutExpired):
         return None
-    if history.returncode:
+    if history.returncode or sha256_bytes(current_bytes) != loaded.sha256:
         return None
-    baseline_bytes = None
-    for raw_commit in history.stdout.splitlines():
-        commit = raw_commit.decode("ascii", errors="ignore")
-        if not commit:
-            continue
-        completed = subprocess.run(
-            ["git", "show", f"{commit}:{source_path}"],
+    commits = _parse_git_commit_ids(history.stdout)
+    if commits is None:
+        return None
+    object_names = tuple(f"{commit}:{source_path}" for commit in commits)
+    batch_input = ("\n".join(object_names) + "\n").encode("utf-8")
+    try:
+        checked = subprocess.run(
+            [
+                "git",
+                "--no-lazy-fetch",
+                "--no-pager",
+                "--no-replace-objects",
+                "cat-file",
+                "--batch-check",
+            ],
             cwd=manifest.root,
             check=False,
             capture_output=True,
+            input=batch_input,
+            env=git_env,
+            timeout=GIT_READ_TIMEOUT_SECONDS,
         )
-        if completed.returncode == 0 and sha256_bytes(completed.stdout) == locked.sha256:
-            baseline_bytes = completed.stdout
-            break
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    metadata = _parse_git_batch_sizes(checked.stdout, object_names)
+    present_sizes = tuple(
+        entry[1] for entry in metadata or () if entry is not None
+    )
+    if (
+        checked.returncode
+        or metadata is None
+        or not present_sizes
+        or any(size > GIT_SOURCE_BLOB_LIMIT for size in present_sizes)
+        or sum(present_sizes) > GIT_SOURCE_BATCH_LIMIT
+    ):
+        return None
+    try:
+        completed = subprocess.run(
+            [
+                "git",
+                "--no-lazy-fetch",
+                "--no-pager",
+                "--no-replace-objects",
+                "cat-file",
+                "--batch",
+            ],
+            cwd=manifest.root,
+            check=False,
+            capture_output=True,
+            input=batch_input,
+            env=git_env,
+            timeout=GIT_READ_TIMEOUT_SECONDS,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    blobs = _parse_git_batch_blobs(completed.stdout, object_names, metadata)
+    if completed.returncode or blobs is None:
+        return None
+    baseline_bytes = next(
+        (blob for blob in blobs if blob is not None and sha256_bytes(blob) == locked.sha256),
+        None,
+    )
     if baseline_bytes is None:
         return None
     try:
@@ -407,6 +479,94 @@ def _workspace_source_changes_root_render(
     except (UnicodeDecodeError, tomllib.TOMLDecodeError):
         return None
     return _fragment_changes_root_render(before, after)
+
+
+def _parse_git_commit_ids(output: bytes) -> tuple[str, ...] | None:
+    """Require a nonempty sequence of exact lowercase Git object ids."""
+    lines = output.splitlines()
+    if not lines or any(
+        re.fullmatch(rb"[0-9a-f]{40}|[0-9a-f]{64}", line) is None for line in lines
+    ):
+        return None
+    return tuple(line.decode("ascii") for line in lines)
+
+
+def _parse_git_size(raw: bytes) -> int | None:
+    """Bound numeric parsing before integer conversion of untrusted Git output."""
+    if not raw or len(raw) > 20 or not raw.isdigit():
+        return None
+    return int(raw)
+
+
+def _parse_git_batch_sizes(
+    output: bytes, object_names: tuple[str, ...]
+) -> tuple[tuple[bytes, int] | None, ...] | None:
+    """Parse exact `git cat-file --batch-check` output before reading content."""
+    lines = output.splitlines()
+    if len(lines) != len(object_names):
+        return None
+    metadata: list[tuple[bytes, int] | None] = []
+    for line, object_name in zip(lines, object_names, strict=True):
+        if line == object_name.encode("utf-8") + b" missing":
+            metadata.append(None)
+            continue
+        fields = line.split(b" ")
+        size = _parse_git_size(fields[2]) if len(fields) == 3 else None
+        if (
+            len(fields) != 3
+            or re.fullmatch(rb"[0-9a-f]{40}|[0-9a-f]{64}", fields[0]) is None
+            or fields[1] != b"blob"
+            or size is None
+        ):
+            return None
+        metadata.append((fields[0], size))
+    return tuple(metadata)
+
+
+def _parse_git_batch_blobs(
+    output: bytes,
+    object_names: tuple[str, ...],
+    metadata: tuple[tuple[bytes, int] | None, ...],
+) -> tuple[bytes | None, ...] | None:
+    """Parse exact `git cat-file --batch` output without accepting partial results."""
+    if len(metadata) != len(object_names):
+        return None
+    position = 0
+    total_size = 0
+    blobs: list[bytes | None] = []
+    for object_name, expected in zip(object_names, metadata, strict=True):
+        header_end = output.find(b"\n", position)
+        if header_end < 0:
+            return None
+        header = output[position:header_end]
+        position = header_end + 1
+        if expected is None:
+            if header != object_name.encode("utf-8") + b" missing":
+                return None
+            blobs.append(None)
+            continue
+        fields = header.split(b" ")
+        size = _parse_git_size(fields[2]) if len(fields) == 3 else None
+        if (
+            len(fields) != 3
+            or re.fullmatch(rb"[0-9a-f]{40}|[0-9a-f]{64}", fields[0]) is None
+            or fields[0] != expected[0]
+            or fields[1] != b"blob"
+            or size is None
+            or size != expected[1]
+        ):
+            return None
+        total_size += size
+        if size > GIT_SOURCE_BLOB_LIMIT or total_size > GIT_SOURCE_BATCH_LIMIT:
+            return None
+        content_end = position + size
+        if content_end >= len(output) or output[content_end : content_end + 1] != b"\n":
+            return None
+        blobs.append(output[position:content_end])
+        position = content_end + 1
+    if position != len(output):
+        return None
+    return tuple(blobs)
 
 
 def _revision_mentions_global_guidance(

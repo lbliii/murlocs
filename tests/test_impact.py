@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 from milo.testing import MCPClient
 
+import murlocs.impact as impact_module
 from murlocs.cli import _normalize_repeatable_options, build_cli
 from murlocs.impact import build_impact_report
 from murlocs.manifest import load_manifest
@@ -560,7 +561,9 @@ def test_two_stale_sources_use_git_semantics_to_keep_explicit_local_edit_focused
     assert by_id(report, "root")["status"] == "unaffected"
 
 
-def test_two_stale_sources_without_baseline_report_conservative_root_ambiguity(tmp_path):
+def test_non_git_sources_report_conservative_root_ambiguity_with_one_git_probe(
+    tmp_path, monkeypatch
+):
     root = tmp_path / "repo"
     build(root)
     assert invoke("compile", "--repo", str(root)).exit_code == 0
@@ -576,14 +579,564 @@ def test_two_stale_sources_without_baseline_report_conservative_root_ambiguity(t
         + worker.read_text(encoding="utf-8"),
         encoding="utf-8",
     )
+    calls = []
+    real_run = subprocess.run
+
+    def tracked_run(*args, **kwargs):
+        calls.append(args[0])
+        return real_run(*args, **kwargs)
+
+    monkeypatch.setattr(impact_module.subprocess, "run", tracked_run)
 
     report = structured(root, path=[".murlocs/layers/api.toml"])
+
+    assert not (root / ".git").exists()
+    assert len(calls) == 1
+    assert "rev-list" in calls[0]
+    assert {scope["status"] for scope in report["scopes"]} == {"required"}
+    assert all(
+        any("cannot be attributed more narrowly" in reason for reason in scope["reasons"])
+        for scope in report["scopes"]
+    )
+
+
+def test_concurrent_source_swap_after_history_probe_fails_closed(tmp_path, monkeypatch):
+    root = tmp_path / "repo"
+    build(root)
+    assert invoke("compile", "--repo", str(root)).exit_code == 0
+    subprocess.run(["git", "init"], cwd=root, check=True, capture_output=True)
+    commit_all(root, "compiled baseline")
+    api = root / ".murlocs/layers/api.toml"
+    api.write_text(
+        api.read_text(encoding="utf-8")
+        + '\n[judgments.api]\nadvocate = ["Initial local edit."]\n',
+        encoding="utf-8",
+    )
+    worker = root / ".murlocs/layers/worker.toml"
+    worker.write_text(
+        'operating_rules = ["Review worker-wide changes."]\n\n'
+        + worker.read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    calls = []
+    real_run = subprocess.run
+
+    def swap_after_history(*args, **kwargs):
+        result = real_run(*args, **kwargs)
+        calls.append(args[0])
+        if "rev-list" in args[0]:
+            api.write_text(
+                api.read_text(encoding="utf-8").replace(
+                    "Initial local edit.", "Concurrent local edit."
+                ),
+                encoding="utf-8",
+            )
+        return result
+
+    monkeypatch.setattr(impact_module.subprocess, "run", swap_after_history)
+
+    report = structured(root, path=[".murlocs/layers/api.toml"])
+
+    assert {scope["status"] for scope in report["scopes"]} == {"required"}
+    assert len(calls) == 1
+    assert "rev-list" in calls[0]
+    assert "Concurrent local edit." in api.read_text(encoding="utf-8")
+
+
+def test_unsupported_no_lazy_fetch_option_fails_closed_without_retry(
+    tmp_path, monkeypatch
+):
+    root = tmp_path / "repo"
+    build(root)
+    assert invoke("compile", "--repo", str(root)).exit_code == 0
+    subprocess.run(["git", "init"], cwd=root, check=True, capture_output=True)
+    commit_all(root, "compiled baseline")
+    api = root / ".murlocs/layers/api.toml"
+    api.write_text(
+        api.read_text(encoding="utf-8")
+        + '\n[judgments.api]\nadvocate = ["Prefer explicit API boundaries."]\n',
+        encoding="utf-8",
+    )
+    worker = root / ".murlocs/layers/worker.toml"
+    worker.write_text(
+        'operating_rules = ["Review worker-wide changes."]\n\n'
+        + worker.read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    calls = []
+
+    def unsupported_git(args, **kwargs):
+        calls.append(args)
+        return subprocess.CompletedProcess(
+            args, 129, stdout=b"", stderr=b"unknown option: --no-lazy-fetch"
+        )
+
+    monkeypatch.setattr(impact_module.subprocess, "run", unsupported_git)
+
+    report = structured(root, path=[".murlocs/layers/api.toml"])
+
+    assert {scope["status"] for scope in report["scopes"]} == {"required"}
+    assert len(calls) == 1
+    assert "--no-lazy-fetch" in calls[0]
+
+
+def test_locked_baseline_lookup_is_batched_bounded_and_fails_closed_on_exhaustion(
+    tmp_path, monkeypatch
+):
+    root = tmp_path / "repo"
+    build(root)
+    assert invoke("compile", "--repo", str(root)).exit_code == 0
+    subprocess.run(["git", "init"], cwd=root, check=True, capture_output=True)
+    commit_all(root, "compiled baseline")
+    api = root / ".murlocs/layers/api.toml"
+    for index in range(impact_module.GIT_SOURCE_HISTORY_LIMIT + 1):
+        api.write_text(
+            api.read_text(encoding="utf-8") + f"\n# local history {index}\n",
+            encoding="utf-8",
+        )
+        commit_all(root, f"local source history {index}")
+    worker = root / ".murlocs/layers/worker.toml"
+    worker.write_text(
+        'operating_rules = ["Review worker-wide changes."]\n\n'
+        + worker.read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    calls = []
+    real_run = subprocess.run
+
+    def tracked_run(*args, **kwargs):
+        calls.append((args[0], kwargs))
+        return real_run(*args, **kwargs)
+
+    monkeypatch.setattr(impact_module.subprocess, "run", tracked_run)
+
+    report = structured(root, path=[".murlocs/layers/api.toml"])
+
+    assert {scope["status"] for scope in report["scopes"]} == {"required"}
+    assert len(calls) == 3
+    assert "rev-list" in calls[0][0]
+    assert f"--max-count={impact_module.GIT_SOURCE_HISTORY_LIMIT}" in calls[0][0]
+    assert calls[1][0][-1] == "--batch-check"
+    assert calls[2][0][-1] == "--batch"
+    assert all("show" not in call[0] for call in calls)
+    assert all("--no-lazy-fetch" in call[0] for call in calls)
+    assert all(call[1]["env"]["GIT_NO_LAZY_FETCH"] == "1" for call in calls)
+    assert all(call[1]["env"]["GIT_OPTIONAL_LOCKS"] == "0" for call in calls)
+    assert all(
+        any("cannot be attributed more narrowly" in reason for reason in scope["reasons"])
+        for scope in report["scopes"]
+    )
+
+
+def test_raw_batched_lookup_never_executes_diff_filters_or_hooks(tmp_path):
+    root = tmp_path / "repo"
+    build(root)
+    assert invoke("compile", "--repo", str(root)).exit_code == 0
+    sentinel = root / "GIT_DRIVER_EXECUTED"
+    driver = root / "git-driver.sh"
+    driver.write_text(
+        f'#!/bin/sh\ntouch "{sentinel}"\ncat "$1" 2>/dev/null || cat\n',
+        encoding="utf-8",
+    )
+    driver.chmod(0o755)
+    hooks = root / "hooks"
+    hooks.mkdir()
+    for name in ("post-checkout", "post-merge", "pre-commit", "reference-transaction"):
+        hook = hooks / name
+        hook.write_text(f'#!/bin/sh\ntouch "{sentinel}"\n', encoding="utf-8")
+        hook.chmod(0o755)
+    (root / ".gitattributes").write_text(
+        "*.toml diff=sentinel filter=sentinel\n", encoding="utf-8"
+    )
+    subprocess.run(["git", "init"], cwd=root, check=True, capture_output=True)
+    commit_all(root, "compiled baseline with inert drivers")
+    for key, value in (
+        ("diff.sentinel.textconv", str(driver)),
+        ("filter.sentinel.clean", str(driver)),
+        ("filter.sentinel.smudge", str(driver)),
+        ("filter.sentinel.process", str(driver)),
+        ("core.hooksPath", str(hooks)),
+    ):
+        subprocess.run(
+            ["git", "config", key, value], cwd=root, check=True, capture_output=True
+        )
+    api = root / ".murlocs/layers/api.toml"
+    api.write_text(
+        api.read_text(encoding="utf-8")
+        + '\n[judgments.api]\nadvocate = ["Prefer explicit API boundaries."]\n',
+        encoding="utf-8",
+    )
+    worker = root / ".murlocs/layers/worker.toml"
+    worker.write_text(
+        'operating_rules = ["Review worker-wide changes."]\n\n'
+        + worker.read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+
+    report = structured(root, path=[".murlocs/layers/api.toml"])
+
+    assert by_id(report, "api")["status"] == "required"
+    assert by_id(report, "worker")["status"] == "recommended"
+    assert by_id(report, "root")["status"] == "unaffected"
+    assert not sentinel.exists()
+    assert not (root / "MUST_NOT_EXIST").exists()
+
+
+def test_real_git_batch_preserves_special_path_spaces_and_duplicate_blob_order(
+    tmp_path, monkeypatch
+):
+    root = tmp_path / "repo"
+    build(root)
+    special_path = ".murlocs/layers/- api:glob[*?].toml"
+    manifest = root / ".murlocs/manifest.toml"
+    manifest.write_text(
+        manifest.read_text(encoding="utf-8").replace(
+            ".murlocs/layers/api.toml", special_path
+        ),
+        encoding="utf-8",
+    )
+    api = root / ".murlocs/layers/api.toml"
+    special = root / special_path
+    api.rename(special)
+    assert invoke("compile", "--repo", str(root)).exit_code == 0
+    subprocess.run(["git", "init"], cwd=root, check=True, capture_output=True)
+    commit_all(root, "compiled special-path baseline")
+    baseline = special.read_bytes()
+    special.write_text(
+        special.read_text(encoding="utf-8") + "\n# intermediate blob\n",
+        encoding="utf-8",
+    )
+    commit_all(root, "intermediate special-path blob")
+    special.write_bytes(baseline)
+    commit_all(root, "restore duplicate baseline blob")
+    history = subprocess.run(
+        ["git", "rev-list", "--all", "--", f":(literal){special_path}"],
+        cwd=root,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
+    blob_ids = [
+        subprocess.run(
+            ["git", "rev-parse", f"{commit}:{special_path}"],
+            cwd=root,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        for commit in history
+    ]
+    assert len(blob_ids) > len(set(blob_ids))
+    special.write_text(
+        special.read_text(encoding="utf-8")
+        + '\n[judgments.api]\nadvocate = ["Current local edit."]\n',
+        encoding="utf-8",
+    )
+    worker = root / ".murlocs/layers/worker.toml"
+    worker.write_text(
+        'operating_rules = ["Review worker-wide changes."]\n\n'
+        + worker.read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    calls = []
+    real_run = subprocess.run
+
+    def tracked_run(*args, **kwargs):
+        calls.append((args[0], kwargs))
+        return real_run(*args, **kwargs)
+
+    monkeypatch.setattr(impact_module.subprocess, "run", tracked_run)
+
+    report = structured(root, path=[special_path])
+
+    assert by_id(report, "api")["status"] == "required"
+    assert by_id(report, "worker")["status"] == "recommended"
+    assert by_id(report, "root")["status"] == "unaffected"
+    assert len(calls) == 3
+    assert calls[1][1]["input"] == calls[2][1]["input"]
+    assert special_path.encode("utf-8") in calls[1][1]["input"]
+    assert all("%(rest)" not in argument for argument in calls[1][0])
+
+
+def test_newline_layer_path_is_never_split_into_git_batch_input(tmp_path, monkeypatch):
+    root = tmp_path / "repo"
+    build(root)
+    newline_path = ".murlocs/layers/api\n.toml"
+    manifest = root / ".murlocs/manifest.toml"
+    manifest.write_text(
+        manifest.read_text(encoding="utf-8").replace(
+            ".murlocs/layers/api.toml", ".murlocs/layers/api\\n.toml"
+        ),
+        encoding="utf-8",
+    )
+    api = root / ".murlocs/layers/api.toml"
+    newline_source = root / newline_path
+    api.rename(newline_source)
+    assert invoke("compile", "--repo", str(root)).exit_code == 0
+    newline_source.write_text(
+        newline_source.read_text(encoding="utf-8")
+        + '\n[judgments.api]\nadvocate = ["Current local edit."]\n',
+        encoding="utf-8",
+    )
+    worker = root / ".murlocs/layers/worker.toml"
+    worker.write_text(
+        'operating_rules = ["Review worker-wide changes."]\n\n'
+        + worker.read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+
+    def unexpected_git(*args, **kwargs):
+        pytest.fail("newline source paths must fail closed before Git batch input")
+
+    monkeypatch.setattr(impact_module.subprocess, "run", unexpected_git)
+
+    report = structured(root, path=[newline_path])
 
     assert {scope["status"] for scope in report["scopes"]} == {"required"}
     assert all(
         any("cannot be attributed more narrowly" in reason for reason in scope["reasons"])
         for scope in report["scopes"]
     )
+
+
+def test_missing_locked_git_blob_falls_back_conservatively(tmp_path):
+    root = tmp_path / "repo"
+    build(root)
+    assert invoke("compile", "--repo", str(root)).exit_code == 0
+    subprocess.run(["git", "init"], cwd=root, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "config", "gc.auto", "0"], cwd=root, check=True, capture_output=True
+    )
+    commit_all(root, "compiled baseline")
+    blob = subprocess.run(
+        ["git", "rev-parse", "HEAD:.murlocs/layers/api.toml"],
+        cwd=root,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    object_path = root / ".git/objects" / blob[:2] / blob[2:]
+    assert object_path.is_file()
+    object_path.unlink()
+    api = root / ".murlocs/layers/api.toml"
+    api.write_text(
+        api.read_text(encoding="utf-8")
+        + '\n[[invariants]]\nid = "api-added"\nscope = "api"\n'
+        + 'statement = "An added API invariant."\nseverity = "important"\n'
+        + 'verification = "manual"\nevidence_file = "docs/api.md"\n'
+        + 'anchor = "API design"\n',
+        encoding="utf-8",
+    )
+
+    report = structured(root, path=[".murlocs/layers/api.toml"])
+
+    assert report["summary"] == {"required": 3, "recommended": 0, "unaffected": 0}
+
+
+def test_git_batch_parser_accepts_missing_entries_and_rejects_partial_output():
+    oid = b"a" * 40
+    object_names = ("first:path", "missing:path")
+    sizes = oid + b" blob 3\nmissing:path missing\n"
+    valid = oid + b" blob 3\nabc\nmissing:path missing\n"
+    metadata = ((oid, 3), None)
+
+    assert impact_module._parse_git_batch_sizes(sizes, object_names) == metadata
+    assert impact_module._parse_git_batch_sizes(sizes, object_names[:1]) is None
+    assert impact_module._parse_git_batch_blobs(
+        valid, object_names, metadata
+    ) == (b"abc", None)
+    assert impact_module._parse_git_batch_blobs(valid[:-1], object_names, metadata) is None
+    assert (
+        impact_module._parse_git_batch_blobs(
+            valid + b"extra", object_names, metadata
+        )
+        is None
+    )
+
+
+def test_git_batch_parsers_reject_invalid_ids_sequence_sizes_and_caps():
+    oid = b"a" * 40
+    other_oid = b"b" * 40
+    object_names = ("candidate:path",)
+    metadata = ((oid, 3),)
+    locked_bytes = b"abc"
+
+    assert impact_module._parse_git_commit_ids(oid + b"\ninvalid\n") is None
+    assert impact_module._parse_git_commit_ids(b"A" * 40 + b"\n") is None
+    assert (
+        impact_module._parse_git_batch_sizes(
+            b"z" * 40 + b" blob 3\n", object_names
+        )
+        is None
+    )
+    assert (
+        impact_module._parse_git_batch_sizes(
+            oid + b" blob " + b"9" * 5000 + b"\n", object_names
+        )
+        is None
+    )
+    assert (
+        impact_module._parse_git_batch_sizes(
+            oid + b" blob 3 extra\n", object_names
+        )
+        is None
+    )
+    assert (
+        impact_module._parse_git_batch_sizes(b"other:path missing\n", object_names)
+        is None
+    )
+    corrupt_headers = (
+        other_oid + b" blob 3\n" + locked_bytes + b"\n",
+        oid + b" blob 4\n" + locked_bytes + b"x\n",
+        oid + b" blob 3 extra\n" + locked_bytes + b"\n",
+        b"candidate:path missing\n",
+        oid + b" blob " + b"9" * 5000 + b"\n",
+    )
+    assert all(
+        impact_module._parse_git_batch_blobs(output, object_names, metadata) is None
+        for output in corrupt_headers
+    )
+    oversized = impact_module.GIT_SOURCE_BLOB_LIMIT + 1
+    assert (
+        impact_module._parse_git_batch_blobs(
+            oid + f" blob {oversized}\n".encode("ascii"),
+            object_names,
+            ((oid, oversized),),
+        )
+        is None
+    )
+    assert (
+        impact_module._parse_git_batch_blobs(
+            oid + b" blob 3\n" + locked_bytes + b"\n",
+            object_names,
+            (None,),
+        )
+        is None
+    )
+
+
+def test_fake_batch_oid_with_locked_bytes_cannot_narrow_routing(tmp_path, monkeypatch):
+    root = tmp_path / "repo"
+    build(root)
+    assert invoke("compile", "--repo", str(root)).exit_code == 0
+    subprocess.run(["git", "init"], cwd=root, check=True, capture_output=True)
+    commit_all(root, "compiled baseline")
+    api = root / ".murlocs/layers/api.toml"
+    locked_bytes = api.read_bytes()
+    api.write_text(
+        api.read_text(encoding="utf-8")
+        + '\n[judgments.api]\nadvocate = ["Prefer explicit API boundaries."]\n',
+        encoding="utf-8",
+    )
+    worker = root / ".murlocs/layers/worker.toml"
+    worker.write_text(
+        'operating_rules = ["Review worker-wide changes."]\n\n'
+        + worker.read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    calls = []
+
+    def fake_git(args, **kwargs):
+        calls.append(args)
+        if "rev-list" in args:
+            stdout = b"a" * 40 + b"\n"
+        elif "--batch-check" in args:
+            stdout = b"z" * 40 + f" blob {len(locked_bytes)}\n".encode("ascii")
+        else:
+            stdout = (
+                b"z" * 40
+                + f" blob {len(locked_bytes)}\n".encode("ascii")
+                + locked_bytes
+                + b"\n"
+            )
+        return subprocess.CompletedProcess(args, 0, stdout=stdout, stderr=b"")
+
+    monkeypatch.setattr(impact_module.subprocess, "run", fake_git)
+
+    report = structured(root, path=[".murlocs/layers/api.toml"])
+
+    assert {scope["status"] for scope in report["scopes"]} == {"required"}
+    assert len(calls) == 2
+    assert not any(call[-1] == "--batch" for call in calls)
+
+
+def test_oversized_historical_blob_fails_closed_before_content_batch(
+    tmp_path, monkeypatch
+):
+    root = tmp_path / "repo"
+    build(root)
+    assert invoke("compile", "--repo", str(root)).exit_code == 0
+    subprocess.run(["git", "init"], cwd=root, check=True, capture_output=True)
+    commit_all(root, "compiled baseline")
+    api = root / ".murlocs/layers/api.toml"
+    baseline = api.read_bytes()
+    api.write_text(
+        api.read_text(encoding="utf-8")
+        + "\n# "
+        + "x" * (impact_module.GIT_SOURCE_BLOB_LIMIT + 1)
+        + "\n",
+        encoding="utf-8",
+    )
+    commit_all(root, "oversized historical source")
+    api.write_bytes(baseline)
+    commit_all(root, "restore compiled source")
+    api.write_text(
+        api.read_text(encoding="utf-8")
+        + '\n[judgments.api]\nadvocate = ["Prefer explicit API boundaries."]\n',
+        encoding="utf-8",
+    )
+    worker = root / ".murlocs/layers/worker.toml"
+    worker.write_text(
+        'operating_rules = ["Review worker-wide changes."]\n\n'
+        + worker.read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    calls = []
+    real_run = subprocess.run
+
+    def tracked_run(*args, **kwargs):
+        calls.append(args[0])
+        return real_run(*args, **kwargs)
+
+    monkeypatch.setattr(impact_module.subprocess, "run", tracked_run)
+
+    report = structured(root, path=[".murlocs/layers/api.toml"])
+
+    assert {scope["status"] for scope in report["scopes"]} == {"required"}
+    assert len(calls) == 2
+    assert "rev-list" in calls[0]
+    assert calls[1][-1] == "--batch-check"
+    assert not any(call[-1] == "--batch" for call in calls)
+
+
+def test_cumulative_historical_blob_cap_blocks_content_batch(tmp_path, monkeypatch):
+    root = tmp_path / "repo"
+    build(root)
+    assert invoke("compile", "--repo", str(root)).exit_code == 0
+    commits = [f"{index:040x}" for index in range(9)]
+    calls = []
+
+    def bounded_git(args, **kwargs):
+        calls.append(args)
+        if "rev-list" in args:
+            stdout = ("\n".join(commits) + "\n").encode("ascii")
+        elif "--batch-check" in args:
+            stdout = b"".join(
+                f"{commit} blob {impact_module.GIT_SOURCE_BLOB_LIMIT}\n".encode("ascii")
+                for commit in commits
+            )
+        else:
+            pytest.fail("content batch must not run after cumulative size overflow")
+        return subprocess.CompletedProcess(args, 0, stdout=stdout, stderr=b"")
+
+    monkeypatch.setattr(impact_module.subprocess, "run", bounded_git)
+
+    result = impact_module._workspace_source_changes_root_render(
+        load_manifest(root), ".murlocs/layers/api.toml"
+    )
+
+    assert result is None
+    assert len(calls) == 2
 
 
 def test_committed_source_with_uncompiled_root_semantics_uses_locked_git_blob(tmp_path):
