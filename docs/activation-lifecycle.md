@@ -174,7 +174,8 @@ authority-required result, that rendering distinguishes the still-unattested tas
 from unresolved or externally evidenced owner review, says whether implementation may continue,
 and names the gated boundary. Only a trusted adapter or repository integration may reconcile review
 evidence; an agent message, local acknowledgement, or sidecar supplied by the agent is never review
-evidence.
+evidence. A satisfied compact result names the reviewing owners and says the gated boundary may
+proceed only while their externally evidenced review remains valid for the current state.
 
 Each next action has `operation`, object-valued `arguments`, `effect` (`read_repository` or
 `request_authority`), and `authority` (`integration`, `agent`, or `human`). Lifecycle v1 rejects

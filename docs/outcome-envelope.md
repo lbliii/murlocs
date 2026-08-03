@@ -50,8 +50,8 @@ The additive `decision` member keeps outcome schema version 1 compatible. It del
 `task_authorization: not_attested` and `agent_acknowledgement: not_recorded` by default: Murlocs
 neither authenticates an actor nor accepts a local acknowledgement or chat claim as approval. A
 trusted adapter may attest task authorization separately from owner review, but Murlocs never
-grants it. An
-authority-required outcome says `implementation: may_continue`, defaults to a `merge` gate, and
+grants it. An authority-required outcome says `implementation: may_continue`, defaults to a
+`merge` gate, and
 lists the exact required owners derived from its request-authority action. A trusted adapter may
 select the applicable `commit`, `push`, `merge`, or `completion` gate while reconciling evidence;
 agent-callable surfaces cannot set it.
@@ -62,7 +62,13 @@ session, the current opaque state token, and all required owners. The resulting 
 adapter provenance, review id, reviewed state, and owners. Missing, changed, stale, or mismatched
 evidence always returns the decision to `unresolved`. This function is not exposed through the
 terminal, programmatic, or MCP agent surfaces, and parsing a JSON claim alone never authenticates
-it.
+it. Parsing an `externally_satisfied` decision nevertheless rejects evidence unless its integration
+token source, adapter scope, current state id, and required owners agree with the envelope. Compact
+output says exactly whose review gates the boundary; when valid external evidence satisfies it, the
+output says the boundary may proceed only while that evidence remains valid.
+
+The independent [compact outcome blind/reveal](pilots/compact-outcome-blind-reveal.md) confirmed the
+continue/gate/owner interpretation and supplied the wording findings locked by the golden fixture.
 
 ## Correlation and trusted tokens
 

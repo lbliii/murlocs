@@ -171,16 +171,18 @@ def test_authority_review_requires_matching_trusted_adapter_evidence():
     assert satisfied["decision"]["authority_state"] == "externally_satisfied"
     assert satisfied["decision"]["gated_boundary"] == "completion"
     assert satisfied["decision"]["review_evidence"] == evidence
-    assert "retain the trusted owner-review evidence" in render_compact_outcome(satisfied)
+    satisfied_text = render_compact_outcome(satisfied)
+    assert "@api review satisfies the completion gate" in satisfied_text
+    assert "completion may proceed while evidence remains valid" in satisfied_text
 
     authorized_unresolved = reconcile_external_authority_evidence(
         authority, None, task_authorized=True
     )
     assert authorized_unresolved["decision"]["task_authorization"] == "externally_attested"
     assert authorized_unresolved["decision"]["authority_state"] == "unresolved"
-    assert "continue implementation; obtain owner review" in render_compact_outcome(
-        authorized_unresolved
-    )
+    unresolved_text = render_compact_outcome(authorized_unresolved)
+    assert "implementation may continue; @api review gates merge" in unresolved_text
+    assert "obtain @api review before merge" in unresolved_text
 
     unavailable_integration = reconcile_external_authority_evidence(authority, None)
     assert unavailable_integration["decision"]["authority_state"] == "unresolved"
@@ -197,6 +199,43 @@ def test_authority_review_requires_matching_trusted_adapter_evidence():
     forged["decision"]["agent_acknowledgement"] = "claimed"
     with pytest.raises(MurlocsError, match="agent acknowledgement"):
         parse_outcome(forged)
+
+
+def test_parser_rejects_forged_mismatched_stale_and_removed_review_evidence():
+    outcomes = json.loads((FIXTURE_ROOT / "conformance.json").read_text(encoding="utf-8"))
+    authority = next(
+        case["outcome"] for case in outcomes["cases"] if case["id"] == "authority-required"
+    )
+    evidence = {
+        "adapter_id": "fixture-adapter",
+        "adapter_version": "1",
+        "session_id": "session-a",
+        "review_id": "review-17",
+        "reviewed_state_id": "state-7",
+        "owners": ["@api"],
+    }
+    satisfied = reconcile_external_authority_evidence(authority, evidence)
+
+    forged = copy.deepcopy(satisfied)
+    forged["correlation"] = {
+        "correlation_id": "fixture-authority",
+        "state_id": None,
+        "dependency_id": None,
+        "token_source": "none",
+        "token_scope": None,
+    }
+    mismatched = copy.deepcopy(satisfied)
+    mismatched["decision"]["review_evidence"]["session_id"] = "session-b"
+    stale = copy.deepcopy(satisfied)
+    stale["decision"]["review_evidence"]["reviewed_state_id"] = "state-older"
+    missing_owner = copy.deepcopy(satisfied)
+    missing_owner["decision"]["review_evidence"]["owners"] = []
+    removed = copy.deepcopy(satisfied)
+    removed["decision"]["review_evidence"] = None
+
+    for value in (forged, mismatched, stale, missing_owner, removed):
+        with pytest.raises(MurlocsError, match="current matching integration review evidence"):
+            parse_outcome(value)
 
 
 def test_check_pass_and_safe_drift_are_versioned_read_only_outcomes(tmp_path: Path):
@@ -352,8 +391,8 @@ def test_terminal_uses_compact_outcome_rendering(tmp_path: Path):
     result = invoke("impact", "--repo", str(root), "--path", "src/api/app/service.py")
 
     assert result.exit_code == 0
-    assert "status: advisory (advisory); scopes: api; owners: @api" in result.output
-    assert "lifecycle: implementation may continue; merge is gated" in result.output
+    assert "status: advisory; scopes: api; owners: @api" in result.output
+    assert "lifecycle: implementation may continue; @api review gates merge" in result.output
     assert "provenance" not in result.output
 
 

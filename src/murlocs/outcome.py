@@ -552,18 +552,8 @@ def reconcile_external_authority_evidence(
         parsed["decision"] = decision
         return parsed
     reviewed = _parse_review_evidence(evidence)
-    correlation = parsed["correlation"]
-    scope = correlation["token_scope"]
     required = decision["required_owners"]
-    if (
-        correlation["token_source"] != "integration"
-        or scope is None
-        or reviewed["adapter_id"] != scope["adapter_id"]
-        or reviewed["adapter_version"] != scope["adapter_version"]
-        or reviewed["session_id"] != scope["session_id"]
-        or reviewed["reviewed_state_id"] != correlation["state_id"]
-        or not set(required).issubset(reviewed["owners"])
-    ):
+    if not _external_review_is_current(parsed, reviewed, required):
         parsed["decision"] = decision
         return parsed
     decision["authority_state"] = "externally_satisfied"
@@ -581,25 +571,24 @@ def render_compact_outcome(outcome: Mapping[str, Any]) -> str:
     action = parsed["next_actions"][0]
     scopes = ", ".join(action["arguments"]["scopes"]) or "none"
     owners = ", ".join(action["arguments"]["owners"]) or "none"
-    effect = "blocking" if parsed["blocking"] else "advisory"
     lines = [
-        f"status: {parsed['status']} ({effect}); scopes: {scopes}; owners: {owners}",
+        f"status: {parsed['status']}; scopes: {scopes}; owners: {owners}",
     ]
     if parsed["resolution_class"] == "authority_required":
-        authority = decision["authority_state"].replace("_", " ")
-        lines.append(
-            "lifecycle: implementation may continue; "
-            f"{decision['gated_boundary']} is gated; authority: {authority}"
-        )
+        boundary = decision["gated_boundary"]
         if decision["authority_state"] == "externally_satisfied":
             lines.append(
-                "next: retain the trusted owner-review evidence through the gated boundary."
+                f"lifecycle: {owners} review satisfies the {boundary} gate; "
+                f"{boundary} may proceed while evidence remains valid."
+            )
+            lines.append(
+                f"next: retain the trusted {owners} review evidence through {boundary}."
             )
         else:
             lines.append(
-                f"next: continue implementation; obtain owner review from {owners} before "
-                f"{decision['gated_boundary']}."
+                f"lifecycle: implementation may continue; {owners} review gates {boundary}."
             )
+            lines.append(f"next: obtain {owners} review before {boundary}.")
     elif action["operation"] == "compile_managed_guidance":
         lines.append("next: ask the authorized integration to compile managed guidance.")
     else:
@@ -1160,8 +1149,12 @@ def _parse_decision(value: Any, outcome: Mapping[str, Any]) -> OutcomeDecisionPa
         raise MurlocsError("outcome authority routing does not match findings")
     elif state == "unresolved" and evidence is not None:
         raise MurlocsError("unresolved authority cannot retain external review evidence")
-    elif state == "externally_satisfied" and evidence is None:
-        raise MurlocsError("satisfied authority requires external review evidence")
+    elif state == "externally_satisfied" and (
+        evidence is None or not _external_review_is_current(outcome, evidence, owners)
+    ):
+        raise MurlocsError(
+            "satisfied authority requires current matching integration review evidence"
+        )
     elif state == "not_required":
         raise MurlocsError("authority outcome cannot omit its authority state")
     return {
@@ -1197,6 +1190,24 @@ def _parse_review_evidence(value: Any) -> OutcomeReviewEvidencePayload:
         ),
         "owners": _string_list(value.get("owners"), "review.owners"),
     }
+
+
+def _external_review_is_current(
+    outcome: Mapping[str, Any],
+    evidence: OutcomeReviewEvidencePayload,
+    required_owners: list[str],
+) -> bool:
+    correlation = outcome["correlation"]
+    scope = correlation["token_scope"]
+    return bool(
+        correlation["token_source"] == "integration"
+        and scope is not None
+        and evidence["adapter_id"] == scope["adapter_id"]
+        and evidence["adapter_version"] == scope["adapter_version"]
+        and evidence["session_id"] == scope["session_id"]
+        and evidence["reviewed_state_id"] == correlation["state_id"]
+        and set(required_owners).issubset(evidence["owners"])
+    )
 
 
 def _string_list(value: Any, field: str, *, maximum: int = 1024) -> list[str]:
