@@ -191,13 +191,47 @@ def test_deferred_area_is_recorded_as_reasoned_exemption(tmp_path):
         "docs",
         "--repo",
         str(root),
+        "--owners",
+        "@docs",
+        "--owners",
+        "@reviewers",
         "--defer",
         "legacy=migrating in a later phase",
+        "--defer",
+        "src/pkg=owned in a later phase",
+        "--format",
+        "json",
     )
     assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["owners"] == ["@docs", "@reviewers"]
+    assert payload["deferred"] == {
+        "legacy": "migrating in a later phase",
+        "src/pkg": "owned in a later phase",
+    }
     layer = (root / ".murlocs" / "layers" / "docs.toml").read_text(encoding="utf-8")
     assert "[coverage.exemptions]" in layer
     assert "migrating in a later phase" in layer
+
+
+def test_duplicate_deferred_path_is_rejected_actionably(tmp_path):
+    root = root_only(tmp_path)
+
+    result = invoke(
+        "--dry-run",
+        "add-scope",
+        "docs",
+        "--repo",
+        str(root),
+        "--defer",
+        "legacy=first reason",
+        "--defer",
+        "legacy=conflicting reason",
+    )
+
+    assert result.exit_code == 1
+    assert "duplicate deferral for path: legacy" in result.stderr
+    assert not (root / ".murlocs" / "layers").exists()
 
 
 def test_apply_never_overwrites_unmanaged_map(tmp_path):

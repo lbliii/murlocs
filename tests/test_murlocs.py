@@ -6,7 +6,7 @@ from pathlib import Path
 from milo import generate_llms_txt
 from milo.testing import MCPClient
 
-from murlocs.cli import build_cli
+from murlocs.cli import _repeatable_option_flags, build_cli
 from murlocs.lockfile import sha256_bytes
 
 
@@ -19,6 +19,36 @@ def make_repo(tmp_path: Path) -> Path:
 
 def invoke(*argv: str):
     return build_cli().invoke(list(argv))
+
+
+def test_all_array_options_are_discovered_from_command_schemas():
+    observed = {
+        path: tuple(sorted(_repeatable_option_flags(command.schema)))
+        for path, command in build_cli().walk_commands()
+        if _repeatable_option_flags(command.schema)
+    }
+
+    assert observed == {
+        "add-scope": ("--defer", "--owners"),
+        "impact": ("--path",),
+        "init": ("--coverage-root",),
+        "split-layers": (
+            "--check",
+            "--coverage-exemption",
+            "--coverage-root",
+            "--root-owner",
+            "--scope",
+        ),
+    }
+
+
+def test_repeatable_option_help_matches_supported_terminal_syntax():
+    add_scope = invoke("add-scope", "--help")
+    split = invoke("split-layers", "--help")
+
+    assert "repeat for multiple owners" in add_scope.output
+    assert "repeat as needed" in add_scope.output
+    assert "repeat as needed" in split.output
 
 
 def initialize(root: Path, name: str | None = None) -> None:
@@ -66,6 +96,10 @@ def test_init_dry_run_writes_nothing(tmp_path):
 
 def test_init_accepts_explicit_coverage_roots_and_reports_structural_gaps(tmp_path):
     root = make_repo(tmp_path)
+    (root / "tests").mkdir()
+    (root / "tests" / "test_core.py").write_text(
+        "def test_core(): pass\n", encoding="utf-8"
+    )
 
     result = invoke(
         "init",
@@ -73,6 +107,8 @@ def test_init_accepts_explicit_coverage_roots_and_reports_structural_gaps(tmp_pa
         str(root),
         "--coverage-root",
         "src",
+        "--coverage-root",
+        "tests",
         "--format",
         "json",
     )
@@ -81,10 +117,12 @@ def test_init_accepts_explicit_coverage_roots_and_reports_structural_gaps(tmp_pa
     payload = json.loads(result.output)
     assert payload["coverage"] == {
         "state": "structurally_incomplete",
-        "roots": ["src"],
+        "roots": ["src", "tests"],
         "evaluated": True,
     }
-    assert 'roots = ["src"]' in (root / ".murlocs" / "manifest.toml").read_text(encoding="utf-8")
+    assert 'roots = ["src", "tests"]' in (
+        root / ".murlocs" / "manifest.toml"
+    ).read_text(encoding="utf-8")
     checked = invoke("check", "--repo", str(root), "--format", "json")
     checked_payload = json.loads(checked.output)
     assert checked_payload["ok"] is False
@@ -98,6 +136,43 @@ def test_init_rejects_invalid_coverage_root_before_writing(tmp_path):
 
     assert result.exit_code == 1
     assert "coverage root is not a directory" in result.stderr
+    assert not (root / ".murlocs").exists()
+    assert not (root / "AGENTS.md").exists()
+
+
+def test_repeatable_option_occurrence_requires_a_value(tmp_path):
+    root = make_repo(tmp_path)
+
+    empty = invoke(
+        "init",
+        "--repo",
+        str(root),
+        "--coverage-root",
+        "--format",
+        "json",
+    )
+    repeated_empty = invoke(
+        "init",
+        "--repo",
+        str(root),
+        "--coverage-root",
+        "src",
+        "--coverage-root",
+        "--format",
+        "json",
+    )
+    inline_empty = invoke(
+        "init",
+        "--repo",
+        str(root),
+        "--coverage-root=",
+        "--format",
+        "json",
+    )
+
+    for result in (empty, repeated_empty, inline_empty):
+        assert result.exit_code == 2
+        assert "argument --coverage-root: expected at least one argument" in result.stderr
     assert not (root / ".murlocs").exists()
     assert not (root / "AGENTS.md").exists()
 

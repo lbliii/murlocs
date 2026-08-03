@@ -4,9 +4,10 @@ import json
 import subprocess
 from pathlib import Path
 
+import pytest
 from milo.testing import MCPClient
 
-from murlocs.cli import _normalize_impact_path_options, build_cli
+from murlocs.cli import _normalize_repeatable_options, build_cli
 
 MANIFEST = """schema_version = 1
 network = "Impact"
@@ -337,7 +338,32 @@ def test_repeated_terminal_paths_accept_equals_syntax_in_order(tmp_path):
     ]
 
 
-def test_impact_path_normalizer_does_not_change_unrelated_commands():
+def test_inline_dash_path_matches_programmatic_and_mcp_surfaces(tmp_path):
+    root = tmp_path / "repo"
+    build(root)
+    (root / "-dash.py").write_text("VALUE = 1\n", encoding="utf-8")
+
+    result = invoke(
+        "impact",
+        "--path=-dash.py",
+        "--path",
+        "README.md",
+        "--repo",
+        str(root),
+        "--format",
+        "json",
+    )
+
+    assert result.exit_code == 0, result.stderr
+    terminal = json.loads(result.output)
+    paths = ["-dash.py", "README.md"]
+    programmatic = build_cli().call("impact", repo=str(root), path=paths)
+    mcp = structured(root, path=paths)
+    assert terminal["input"]["paths"] == paths
+    assert terminal == programmatic == mcp
+
+
+def test_repeatable_normalizer_preserves_root_option_values_and_coalesces_selected_flags():
     argv = [
         "--output-file",
         "impact",
@@ -350,11 +376,72 @@ def test_impact_path_normalizer_does_not_change_unrelated_commands():
         "impact",
     ]
 
-    assert _normalize_impact_path_options(
+    normalized, protected = _normalize_repeatable_options(
         argv,
-        frozenset({"init", "impact"}),
-        frozenset({"--output-file"}),
-    ) == argv
+        command_index=2,
+        option_flags={"--coverage-root": "--coverage-root"},
+    )
+    assert protected == {}
+    assert normalized == [
+        "--output-file",
+        "impact",
+        "init",
+        "--coverage-root",
+        "src",
+        "tests",
+        "--name",
+        "impact",
+    ]
+
+
+def test_repeatable_normalizer_protects_inline_dash_values_and_rejects_empty_occurrences():
+    normalized, protected = _normalize_repeatable_options(
+        ["impact", "--path=-dash.py", "--path", "README.md"],
+        command_index=0,
+        option_flags={"--path": "--path"},
+    )
+
+    assert normalized[:2] == ["impact", "--path"]
+    assert normalized[3:] == ["README.md"]
+    assert protected == {normalized[2]: "-dash.py"}
+
+    with pytest.raises(ValueError, match="--path"):
+        _normalize_repeatable_options(
+            ["impact", "--path", "README.md", "--path", "--format", "json"],
+            command_index=0,
+            option_flags={"--path": "--path"},
+        )
+    with pytest.raises(ValueError, match="--path"):
+        _normalize_repeatable_options(
+            ["impact", "--path="],
+            command_index=0,
+            option_flags={"--path": "--path"},
+        )
+
+
+@pytest.mark.parametrize(
+    "flag",
+    [
+        "--coverage-root",
+        "--owners",
+        "--defer",
+        "--scope",
+        "--root-owner",
+        "--check",
+        "--coverage-exemption",
+        "--path",
+    ],
+)
+def test_every_repeatable_option_can_protect_an_inline_dash_value(flag):
+    normalized, protected = _normalize_repeatable_options(
+        ["command", f"{flag}=-dash-value", flag, "ordinary-value"],
+        command_index=0,
+        option_flags={flag: flag},
+    )
+
+    assert normalized[:2] == ["command", flag]
+    assert normalized[3:] == ["ordinary-value"]
+    assert protected == {normalized[2]: "-dash-value"}
 
 
 def test_duplicate_repeated_terminal_paths_are_deduplicated(tmp_path):

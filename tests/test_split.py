@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 import json
+import os
+import shutil
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -9,9 +13,30 @@ from murlocs.cli import build_cli
 from murlocs.errors import MurlocsError
 from murlocs.split import apply_split_layers, parse_split_targets, plan_split_layers
 
+MURLOCS = Path(shutil.which("murlocs") or Path(sys.executable).with_name("murlocs"))
+PROJECT_SRC = Path(__file__).parents[1] / "src"
+
 
 def invoke(*argv: str):
     return build_cli().invoke(list(argv))
+
+
+def invoke_packaged(*argv: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [str(MURLOCS), *argv],
+        env={
+            **os.environ,
+            "NO_COLOR": "1",
+            "PYTHONPATH": os.pathsep.join(
+                value
+                for value in (str(PROJECT_SRC), os.environ.get("PYTHONPATH"))
+                if value
+            ),
+        },
+        text=True,
+        capture_output=True,
+        check=False,
+    )
 
 
 MANIFEST = """schema_version = 1
@@ -258,6 +283,78 @@ def test_shared_controls_move_only_with_explicit_assignments(tmp_path):
     assert plan.semantic_changes == ()
     assert "check:shared explicitly assigned to core" in plan.decisions
     assert "coverage-root:src/core explicitly assigned to root" in plan.decisions
+
+
+def test_real_parser_preserves_every_repeated_split_option(tmp_path):
+    root = repository(tmp_path)
+    manifest = root / ".murlocs" / "manifest.toml"
+    manifest.write_text(
+        manifest.read_text(encoding="utf-8").replace(
+            '"src/core/generated" = "generated code"',
+            '"src/core/generated" = "generated code"\n'
+            '"docs/generated" = "generated documentation"',
+        ),
+        encoding="utf-8",
+    )
+
+    result = invoke_packaged(
+        "--dry-run",
+        "split-layers",
+        "--scope",
+        "core=core,domain,@core",
+        "--scope",
+        "docs=docs,domain,@docs",
+        "--root-owner",
+        "@platform",
+        "--root-owner",
+        "@security",
+        "--check",
+        "shared=root",
+        "--check",
+        "core-only=core",
+        "--coverage-root",
+        "src/core=core",
+        "--coverage-root",
+        "docs=docs",
+        "--coverage-exemption",
+        "src/core/generated=core",
+        "--coverage-exemption",
+        "docs/generated=docs",
+        "--repo",
+        str(root),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert 'owners = ["@platform", "@security"]' in result.stdout
+    assert "core → core" in result.stdout
+    assert "docs → docs" in result.stdout
+    assert "check:shared explicitly assigned to root" in result.stdout
+    assert "check:core-only explicitly assigned to core" in result.stdout
+    assert "coverage-root:src/core explicitly assigned to core" in result.stdout
+    assert "coverage-root:docs explicitly assigned to docs" in result.stdout
+    assert "coverage-exemption:src/core/generated explicitly assigned to core" in result.stdout
+    assert "coverage-exemption:docs/generated explicitly assigned to docs" in result.stdout
+
+
+def test_repeated_split_assignment_key_is_rejected_actionably(tmp_path):
+    root = repository(tmp_path)
+
+    result = invoke(
+        "--dry-run",
+        "split-layers",
+        "--scope",
+        "core=core,domain,@core",
+        "--check",
+        "shared=root",
+        "--check",
+        "shared=core",
+        "--repo",
+        str(root),
+    )
+
+    assert result.exit_code == 1
+    assert "duplicate check assignment: shared" in result.stderr
+    assert not (root / ".murlocs" / "layers").exists()
 
 
 def test_apply_recomputes_codeowners_after_planning(tmp_path):

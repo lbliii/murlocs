@@ -99,15 +99,19 @@ only a single-file manifest. Each scope selection explicitly names its destinati
 and owners:
 
 ```bash
-# Read-only preview: multiple values follow the repeatable --scope option.
+# Read-only preview: repeat each list-valued option once per value.
 murlocs --dry-run split-layers \
-  --scope core=core,domain,@core docs=docs,domain,@docs \
-  --root-owner @platform
+  --scope core=core,domain,@core \
+  --scope docs=docs,domain,@docs \
+  --root-owner @platform \
+  --root-owner @security
 
 # Apply exactly the previewed mechanical split. Without --apply, it remains read-only.
 murlocs split-layers \
-  --scope core=core,domain,@core docs=docs,domain,@docs \
+  --scope core=core,domain,@core \
+  --scope docs=docs,domain,@docs \
   --root-owner @platform \
+  --root-owner @security \
   --apply
 ```
 
@@ -115,9 +119,10 @@ The planner moves each selected scope together with its keyed judgments and inva
 used only by invariants moving to one layer follows those invariants. Shared or unreferenced checks
 stay in the root by default; use `--check NAME=LAYER` to make a different explicit decision.
 Coverage roots and exemptions wholly inside one selected scope move with it, while broad or shared
-coverage stays in the root. `--coverage-root PATH=LAYER|root` and
-`--coverage-exemption PATH=LAYER|root` record exceptions explicitly. Source suffixes remain a
-root-level, shared interpretation rule.
+coverage stays in the root. Repeat `--check NAME=LAYER|root`,
+`--coverage-root PATH=LAYER|root`, and `--coverage-exemption PATH=LAYER|root` for multiple explicit
+assignments. Repeating the same assignment key is an error instead of silently choosing one value.
+Source suffixes remain a root-level, shared interpretation rule.
 
 Dry-run writes nothing and reports:
 
@@ -152,7 +157,11 @@ murlocs init --name "My Repository"
 murlocs --dry-run add-scope docs --owners @docs
 # Add docs/ and a second directory, deferring an area that is not ready yet.
 murlocs add-scope docs --owners @docs
-murlocs add-scope fern --owners @web --defer legacy="migrating in a later phase"
+murlocs add-scope fern \
+  --owners @web \
+  --owners @platform \
+  --defer legacy="migrating in a later phase" \
+  --defer examples="adopting in a later phase"
 murlocs check
 ```
 
@@ -163,6 +172,9 @@ apply refuses to overwrite existing unmanaged or modified generated files and le
 untouched if the rollout cannot proceed. Deferred source-bearing areas are recorded as reasoned
 coverage exemptions so they stay visible as rollout gaps rather than silent omissions. Nested
 paths such as `docs/api` produce the correct root-to-scope map chain.
+
+Repeat `--owners OWNER` and `--defer PATH=REASON` once per value. A deferred path may appear only
+once; duplicate entries fail with the path named so competing reasons cannot overwrite each other.
 
 When `validate_codeowners = true`, the dry run also prints every exact CODEOWNERS rule required by
 the proposed layered manifest, including the root `.murlocs/manifest.toml` source. `--format json`
