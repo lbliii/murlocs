@@ -145,6 +145,9 @@ def enable_ownership_policy(root: Path) -> None:
     text = manifest.read_text(encoding="utf-8")
     manifest.write_text(
         text.replace(
+            "max_active_bytes = 24576",
+            'max_active_bytes = 24576\nowners = ["@platform"]',
+        ).replace(
             "[policies]\nrequire_scope_invariants = false",
             "[policies]\nrequire_scope_invariants = false\n"
             "require_layer_owners = true\nvalidate_codeowners = true",
@@ -237,10 +240,13 @@ def test_progressive_owned_rollout_with_deferral_and_codeowners(tmp_path: Path) 
     )
     payload = json.loads(preview.stdout)
     assert payload["deferred"] == {"legacy": "migrating later"}
-    assert payload["codeowners_requirements"][0]["entry"] == (
-        "/.murlocs/layers/src-app.toml @app"
+    app_requirement = next(
+        item
+        for item in payload["codeowners_requirements"]
+        if item["path"] == ".murlocs/layers/src-app.toml"
     )
-    assert payload["codeowners_requirements"][0]["blocking"] is True
+    assert app_requirement["entry"] == "/.murlocs/layers/src-app.toml @app"
+    assert app_requirement["blocking"] is True
     assert_unchanged(root, before, status)
 
     rejected = murlocs(
@@ -257,7 +263,11 @@ def test_progressive_owned_rollout_with_deferral_and_codeowners(tmp_path: Path) 
     assert_unchanged(root, before, status)
 
     codeowners = root / ".github" / "CODEOWNERS"
-    codeowners.write_text("/.murlocs/layers/src-app.toml @app\n", encoding="utf-8")
+    codeowners.write_text(
+        "/.murlocs/manifest.toml @platform\n"
+        "/.murlocs/layers/src-app.toml @app\n",
+        encoding="utf-8",
+    )
     commit_all(root, "approve app layer")
     murlocs(
         root,

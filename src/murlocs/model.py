@@ -125,3 +125,12 @@ class Manifest:
             if source.id == layer_id:
                 return source
         return None
+
+    def source_ids_for_scope(self, scope_id: str) -> tuple[str, ...]:
+        """Return the ordered authored sources represented by a scope's map."""
+        if not self.layered:
+            return ()
+        if scope_id == "root":
+            # The root map summarizes the complete guidance network.
+            return tuple(source.id for source in self.sources)
+        return self.scope_layers.get(scope_id, ())

@@ -935,11 +935,7 @@ def explain_command(
 
 
 def _contributing_layers(manifest: Manifest, scope: Any) -> tuple[str, ...]:
-    if not manifest.layered:
-        return ()
-    if scope.id == "root":
-        return tuple(source.id for source in manifest.sources)
-    return manifest.scope_layers.get(scope.id, ())
+    return manifest.source_ids_for_scope(scope.id)
 
 
 def _layer_payloads(manifest: Manifest, layer_ids: tuple[str, ...]) -> list[LayerPayload]:

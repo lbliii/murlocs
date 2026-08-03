@@ -211,7 +211,7 @@ def _scope_payload(
         ),
         key=lambda candidate: (len(PurePosixPath(_clean(candidate.path)).parts), candidate.id),
     )
-    layer_ids = manifest.scope_layers.get(scope.id, ())
+    layer_ids = manifest.source_ids_for_scope(scope.id)
     layers = []
     for layer_id in layer_ids:
         source = manifest.source(layer_id)

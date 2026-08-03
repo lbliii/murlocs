@@ -148,7 +148,15 @@ def test_root_owned_change_requires_root_review(tmp_path):
 
     report = structured(root, path=["README.md"])
 
-    assert by_id(report, "root")["status"] == "required"
+    root_scope = by_id(report, "root")
+    assert root_scope["status"] == "required"
+    assert root_scope["layers"][0] == {
+        "id": "manifest",
+        "kind": "base",
+        "path": ".murlocs/manifest.toml",
+        "owners": ["@platform"],
+    }
+    assert "@platform" in root_scope["owners"]
     assert by_id(report, "api")["status"] == "unaffected"
     assert report["policy"]["version"] == 1
 

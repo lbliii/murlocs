@@ -10,6 +10,7 @@ MANIFEST = """schema_version = 1
 network = "Exp"
 protocol = ".murlocs/PROTOCOL.md"
 max_active_bytes = 24576
+owners = ["@control"]
 pillars = ["P."]
 search_policy = ["S."]
 operating_rules = ["O."]
@@ -141,6 +142,13 @@ def test_structured_output_reports_focused_checks_and_budget(tmp_path):
     assert structured["budget"]["active_bytes"] > 0
     docs_scope = next(s for s in structured["scopes"] if s["id"] == "docs")
     assert [layer["id"] for layer in docs_scope["layers"]] == ["docs", "overlay"]
+    root_scope = next(s for s in structured["scopes"] if s["id"] == "root")
+    assert root_scope["layers"][0] == {
+        "id": "manifest",
+        "kind": "base",
+        "path": ".murlocs/manifest.toml",
+        "owners": ["@control"],
+    }
 
 
 def test_rejected_override_reports_both_source_locations(tmp_path):

@@ -1,4 +1,4 @@
-"""Minimal, opt-in `.github/CODEOWNERS` reader for exact layer-file ownership.
+"""Minimal, opt-in `.github/CODEOWNERS` reader for exact guidance-source ownership.
 
 This stays deliberately small: it parses the standard `pattern owner...` line format
 and exposes only exact-path lookups. Murlocs never uses it unless a repository opts in

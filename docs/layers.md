@@ -47,7 +47,8 @@ owners = ["@docs"]
 
 Each layer declaration needs an `id`, a `kind` (`base`, `domain`, or `overlay`), and a
 repository-relative `path`. An optional `owners` array names the guidance owners for that
-source (used by the provenance block and CODEOWNERS validation).
+source (used by the provenance block and CODEOWNERS validation). The root source derives its
+owners from the top-level manifest `owners` array rather than from a `[[layers]]` declaration.
 
 Only the root manifest may set the control plane: `schema_version`, `network`, `protocol`,
 `max_active_bytes`, `policies`, `layers`, and `owners`. A layer file that sets any of these
@@ -121,12 +122,12 @@ coverage exemptions so they stay visible as rollout gaps rather than silent omis
 paths such as `docs/api` produce the correct root-to-scope map chain.
 
 When `validate_codeowners = true`, the dry run also prints every exact CODEOWNERS rule required by
-the proposed layered manifest. `--format json` exposes these as `codeowners_requirements`, including
-the CODEOWNERS file, exact path, expected and current owners, status, and whether the requirement is
-blocking. Status is one of `missing-file`, `missing-entry`, `owner-mismatch`, or `satisfied`.
-Murlocs does not edit ownership policy: add or correct the displayed rule, review that change, and
-then rerun `add-scope`. Applying with any unsatisfied requirement fails before writing the layer,
-manifest registration, map, or lockfile.
+the proposed layered manifest, including the root `.murlocs/manifest.toml` source. `--format json`
+exposes these as `codeowners_requirements`, including the CODEOWNERS file, exact path, expected and
+current owners, status, and whether the requirement is blocking. Status is one of `missing-file`,
+`missing-entry`, `owner-mismatch`, or `satisfied`. Murlocs does not edit ownership policy: add or
+correct the displayed rule, review that change, and then rerun `add-scope`. Applying with any
+unsatisfied requirement fails before writing the layer, manifest registration, map, or lockfile.
 
 ## Ownership and provenance
 
@@ -139,18 +140,27 @@ Two opt-in policies make ownership enforceable while keeping the core local-firs
 
 ```toml
 [policies]
-require_layer_owners = true   # every declared layer must name at least one owner
-validate_codeowners = true    # each layer file must have an exact matching CODEOWNERS entry
+require_layer_owners = true   # every authored source must name at least one owner
+validate_codeowners = true    # each source file must have an exact matching CODEOWNERS entry
 ```
 
-`require_layer_owners` fails `murlocs check` if any layer omits owners. `validate_codeowners`
-reads `.github/CODEOWNERS` (or `CODEOWNERS` / `docs/CODEOWNERS`) and fails when a layer file has
-no exact-path entry or when its CODEOWNERS owners do not match the manifest owners. Both policies
-default to off, so repositories without CODEOWNERS keep working unchanged. Ownership problems are
-reported before compilation writes any generated file.
+For a layered network, the authored source set is the root manifest followed by its declared
+layers. `require_layer_owners` fails `murlocs check` if the top-level `owners` array or any layer
+declaration omits owners. `validate_codeowners` reads `.github/CODEOWNERS` (or `CODEOWNERS` /
+`docs/CODEOWNERS`) and fails when any source file has no exact-path entry or when its CODEOWNERS
+owners do not match the corresponding manifest metadata. Mismatch findings report expected and
+actual owner sets.
+
+Both policies default to off, so policy-disabled repositories keep working unchanged. They apply
+only after a network declares layers: existing single-file manifests retain their prior behavior,
+even if the policy keys are present. Murlocs treats owner strings as declared routing metadata; it
+does not edit CODEOWNERS, authenticate an owner, or infer approval from the current GitHub identity.
+Ownership problems are reported before compilation writes any generated file.
 
 `murlocs explain PATH` extends provenance with the effective-value trace, accepted overrides, and
-shadowed values; see `murlocs explain --json` for the full structured trace.
+shadowed values; see `murlocs explain --json` for the full structured trace. Root-map provenance,
+`explain`, and `impact` all report the root manifest source and its declared owners alongside the
+other sources represented by that root map.
 
 ## Murlocs repository dogfood
 
@@ -178,9 +188,8 @@ The initial conversion exposed three workflow details worth retaining:
   when keyed invariant content and every rendered guidance section remain unchanged. Migration
   review compared keyed semantic content and then compared rendered maps without provenance; the
   only rendered additions were the expected provenance blocks.
-- `validate_codeowners` currently checks declared layer files, not the root manifest source. This
-  repository gives the manifest an owner and an exact CODEOWNERS entry so root provenance is not
-  unowned, but that particular entry is convention rather than a validation-enforced requirement.
+- Root control-plane ownership is enforced like layer ownership: changing the top-level manifest
+  owner and its exact CODEOWNERS entry is one reviewed change.
 
 The root map names every source in its provenance because its network table summarizes every
 scope. Scoped maps name only their domain contributor. Representative `explain` and `impact`
