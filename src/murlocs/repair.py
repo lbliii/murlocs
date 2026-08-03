@@ -129,7 +129,7 @@ def recover_repair(root: Path, *, dry_run: bool) -> tuple[str, list[str]]:
     if all(current == item.after for current, item in zip(states, updates, strict=True)):
         if not dry_run:
             shutil.rmtree(_repair_directory(root))
-        return "finalize completed repair transaction", []
+        return "finalize completed repair transaction", [item.path for item in updates]
     if any(
         current != item.before and current != item.after
         for current, item in zip(states, updates, strict=True)

@@ -1013,7 +1013,7 @@ def repair_command(
         findings = validate(manifest)
         try:
             plan = plan_repair(manifest)
-        except (RepairUnavailable, MurlocsError):
+        except RepairUnavailable:
             outcome = build_check_outcome(manifest, findings)
             return CommandResult(
                 _repair_payload(
@@ -1031,7 +1031,9 @@ def repair_command(
         changed = plan.paths if dry_run else apply_repair(plan)
         outcome = build_check_outcome(manifest, findings)
     except MurlocsError as exc:
-        return _outcome_failure("MURLOCS_REPAIR", exc, operation="check")
+        return _outcome_failure(
+            "MURLOCS_REPAIR", exc, operation="check", correlation_id=None
+        )
     return CommandResult(
         _repair_payload(
             changed=changed,

@@ -95,8 +95,8 @@ def test_repair_refuses_semantic_and_modified_output_findings_without_writes(tmp
 
     assert modified.exit_code == 1
     assert modified_payload["ok"] is False
-    assert modified_payload["changed"] == []
-    assert modified_payload["outcome"]["resolution_class"] == "authority_required"
+    assert modified_payload["error"]["code"] == "MURLOCS_REPAIR"
+    assert modified_payload["outcome"]["resolution_class"] == "agent_action"
     assert snapshot(root) == before
 
 
@@ -127,6 +127,13 @@ def test_interrupted_repair_leaves_exact_recovery_state_then_rolls_back(
     assert journal.is_dir()
     monkeypatch.setattr(repair_module, "_atomic_write", original)
 
+    blocked = invoke("repair", "--repo", str(root), "--format", "json")
+    blocked_payload = json.loads(blocked.output)
+    assert blocked.exit_code == 1
+    assert blocked_payload["error"]["code"] == "MURLOCS_REPAIR"
+    assert "repair --recover" in blocked_payload["error"]["message"]
+    assert journal.is_dir()
+
     status, changed = recover_repair(root, dry_run=True)
     assert status == "roll back interrupted repair transaction"
     assert changed == [".murlocs/lock.json"]
@@ -137,6 +144,46 @@ def test_interrupted_repair_leaves_exact_recovery_state_then_rolls_back(
     assert changed == [".murlocs/lock.json"]
     assert not journal.exists()
     assert snapshot(root) == before
+
+
+def test_completed_repair_journal_finalization_reports_every_changed_path(tmp_path: Path):
+    root = repository(tmp_path)
+    introduce_source_drift(root)
+    plan = plan_repair_from_root(root)
+    journal = root / ".murlocs" / "repair" / ".transaction"
+    journal.mkdir(parents=True)
+    repair_module._write_journal(journal, plan)
+    for update in plan.updates:
+        target = root / update.path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(update.after)
+    after_repair = snapshot(root)
+
+    preview = invoke(
+        "--dry-run", "repair", "--recover", "--repo", str(root), "--format", "json"
+    )
+    preview_payload = json.loads(preview.output)
+
+    assert preview.exit_code == 0
+    assert preview_payload["changed"] == plan.paths
+    assert preview_payload["restage_required"] is True
+    assert preview_payload["rerun_required"] is True
+    assert journal.is_dir()
+    assert snapshot(root) == after_repair
+
+    applied = invoke("repair", "--recover", "--repo", str(root), "--format", "json")
+    applied_payload = json.loads(applied.output)
+
+    assert applied.exit_code == 0
+    assert applied_payload["changed"] == preview_payload["changed"]
+    assert applied_payload["restage_required"] is True
+    assert applied_payload["rerun_required"] is True
+    assert not journal.exists()
+    assert snapshot(root) == {
+        path: content
+        for path, content in after_repair.items()
+        if not path.startswith(".murlocs/repair/.transaction/")
+    }
 
 
 def test_repair_result_tells_git_callers_to_restage_and_rerun(tmp_path: Path):
