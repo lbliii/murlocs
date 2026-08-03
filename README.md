@@ -36,6 +36,7 @@ murlocs compile
 murlocs check
 murlocs explain src/my_package/feature.py
 murlocs impact --path src/my_package/feature.py
+murlocs curate check
 # Preview a write without changing files.
 murlocs --dry-run compile
 ```
@@ -123,10 +124,14 @@ deterministically into the same canonical model. Single-file manifests keep work
 | `murlocs check` | Validate schema, graph, proofs, coverage, budget, ownership, and drift. |
 | `murlocs explain PATH` | Print the ordered scope, invariant, layer provenance, override, and budget trace for a path. |
 | `murlocs impact` | Classify guidance review impact for repeated `--path` values and/or a Git `--revision-range`. |
+| `murlocs curate propose ID` | Create a versioned inert proposal under `.murlocs/curation/`; never edit active guidance. |
+| `murlocs curate review ID` | Report the deterministic prospective change, ownership, conflicts, affected chains, and budget delta. |
+| `murlocs curate check` | Validate every inert proposal and its current target without changing files. |
 
 Milo also provides `murlocs --mcp` (or `mrr --mcp`), `murlocs --llms-txt`, structured JSON output,
 shell completions, and in-process typed dispatch. Only read-only `status`, `inventory`, `diff`,
-`check`, `explain`, and `impact` are agent-visible. See
+`check`, `explain`, `impact`, `curate review`, and `curate check` are agent-visible. Proposal creation
+remains CLI-only. See
 [Adoption status and coverage](docs/adoption.md) for the lifecycle contract and
 [Changed-path impact](docs/impact.md) for the review policy, stable output, and CI and pre-commit
 examples.
@@ -140,9 +145,11 @@ as part of `compile` or `check` and never invokes a model.
 For release-level recipes spanning bootstrap, progressive rollout, migration and rollback,
 ordinary drift repair, and recorded evaluation, see [Primary user journeys](docs/journeys.md).
 
-The accepted [governed curation design](docs/curation.md) defines how agents and humans can propose
-additions, replacements, and removals without allowing unapproved candidates into compiled
-guidance. See [Architecture](docs/architecture.md) for trust boundaries and
+The [governed curation workflow](docs/curation.md) lets agents and humans propose additions,
+replacements, and removals without allowing unapproved candidates into compiled guidance. The
+first implementation provides inert record creation and deterministic review; owner decisions and
+promotion remain separate follow-up work. See [Architecture](docs/architecture.md) for trust
+boundaries and
 [Roadmap](docs/roadmap.md) for planned ecosystem work.
 
 ## Status

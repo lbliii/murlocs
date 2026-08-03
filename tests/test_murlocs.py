@@ -84,9 +84,7 @@ def test_init_accepts_explicit_coverage_roots_and_reports_structural_gaps(tmp_pa
         "roots": ["src"],
         "evaluated": True,
     }
-    assert 'roots = ["src"]' in (
-        root / ".murlocs" / "manifest.toml"
-    ).read_text(encoding="utf-8")
+    assert 'roots = ["src"]' in (root / ".murlocs" / "manifest.toml").read_text(encoding="utf-8")
     checked = invoke("check", "--repo", str(root), "--format", "json")
     checked_payload = json.loads(checked.output)
     assert checked_payload["ok"] is False
@@ -96,9 +94,7 @@ def test_init_accepts_explicit_coverage_roots_and_reports_structural_gaps(tmp_pa
 def test_init_rejects_invalid_coverage_root_before_writing(tmp_path):
     root = make_repo(tmp_path)
 
-    result = invoke(
-        "init", "--repo", str(root), "--coverage-root", "missing"
-    )
+    result = invoke("init", "--repo", str(root), "--coverage-root", "missing")
 
     assert result.exit_code == 1
     assert "coverage root is not a directory" in result.stderr
@@ -267,13 +263,26 @@ def test_milo_agent_surface_is_read_only_by_default():
     tools = {tool.name for tool in MCPClient(app).list_tools()}
     discovery = generate_llms_txt(app)
 
-    assert tools == {"check", "diff", "explain", "impact", "inventory", "status"}
+    assert tools == {
+        "check",
+        "curate.check",
+        "curate.review",
+        "diff",
+        "explain",
+        "impact",
+        "inventory",
+        "status",
+    }
     assert "**check**" in discovery
     assert "**explain**" in discovery
     assert "**inventory**" in discovery
     assert "**status**" in discovery
     assert "**diff**" in discovery
     assert "**impact**" in discovery
+    assert "## Create and inspect inert guidance curation proposals" in discovery
+    assert "- **check**: Validate inert curation records" in discovery
+    assert "- **review**: Review a proposal" in discovery
+    assert "- **propose**:" not in discovery
     assert "**init**" not in discovery
     assert "**compile**" not in discovery
     assert "**import**" not in discovery
@@ -287,6 +296,8 @@ def test_milo_agent_surface_is_read_only_by_default():
     }
     assert app.commands["status"].annotations == app.commands["check"].annotations
     assert app.commands["impact"].annotations == app.commands["check"].annotations
+    assert app.groups["curate"].commands["review"].annotations == app.commands["check"].annotations
+    assert app.groups["curate"].commands["check"].annotations == app.commands["check"].annotations
 
 
 def test_mcp_check_and_explain_return_structured_results(tmp_path):

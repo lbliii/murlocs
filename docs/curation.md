@@ -145,6 +145,61 @@ The planned command vocabulary is intentionally explicit:
 - `murlocs curate supersede OLD --with NEW` links a promoted record to the accepted replacement
   that supersedes it; it applies the replacement and records both sides in one transaction.
 
+The first implementation includes `propose`, read-only `review`, and read-only `check`. Decision
+events and active-source transactions remain deferred to the later implementation slice. This is a
+capability boundary, not an invitation to hand-edit an `accepted` event and treat it as authority:
+review validates checked-in histories, but no command in this slice accepts, authenticates,
+promotes, prunes, or supersedes guidance.
+
+### Creating and reviewing a proposal
+
+Proposal creation is CLI-only and requires caller-supplied attribution, time, and one evidence
+item. It snapshots the active source hash and current required owners. A dry-run renders the exact
+record and complete prospective report without creating `.murlocs/curation/`:
+
+```bash
+murlocs --dry-run curate propose core-path-rule \
+  --intent add \
+  --subject-kind operating_rule \
+  --target-source .murlocs/layers/core.toml \
+  --target-scope core \
+  --origin issue-314 \
+  --rationale "Make the repository confinement helper explicit." \
+  --proposer @contributor \
+  --evidence-kind file_anchor \
+  --evidence-reference src/murlocs/paths.py#repo_path \
+  --evidence-summary "The shared helper rejects repository path escapes." \
+  --at 2026-08-03T14:00:00Z \
+  --value "Resolve manifest-controlled paths with repo_path."
+
+murlocs curate review core-path-rule
+murlocs curate check
+```
+
+`review` and `check` are read-only on terminal, programmatic, MCP, and discovery surfaces. Use
+`--format json` for stable structured output. Human and structured reports carry the same proposal,
+owner, decision, evidence, before/after, hash, conflict, affected-chain, byte-budget, and validation
+facts.
+
+### Version-1 subject and payload shapes
+
+All records reject unknown fields. `add` and `replace` require `[payload]`; `remove` omits it.
+Unkeyed list additions omit `target_key`; list replacements and removals use
+`sha256:<64 lowercase hex characters>` for the normalized current value.
+
+| Subject kind | Stable target and payload |
+| --- | --- |
+| `pillar`, `search_policy`, `operating_rule`, `stop_and_ask`, `done_criterion` | `[payload] value = "..."`; replacement/removal keys are content digests. |
+| `scope` | `target_key` is the scope id; payload uses the canonical scope fields. Replacement must preserve the current `path` and `map`, which are immutable scope identity. |
+| `invariant` | `target_key` is the invariant id; payload uses the canonical invariant fields. |
+| `check` | `target_key` is the check name; payload contains `invoke`, `location`, and optional proof metadata. |
+| `judgment` | `target_key` is `SCOPE.advocate`, `SCOPE.do_not`, or `SCOPE.serves`; payload contains `values`. |
+| `coverage_exemption` | `target_key` is the repository-relative path; payload contains `reason`. |
+
+Structured payloads can be supplied to `propose` with `--payload-json`. Repository-confined target
+selection is exact: `target_source` must name the root manifest or a currently registered layer.
+Proposal ids must be lowercase path-safe ids and the CLI refuses to replace an existing record.
+
 All writes remain CLI-only. `review` may be exposed read-only through Milo's programmatic, MCP, and
 discovery surfaces. Every write supports dry-run before apply.
 
