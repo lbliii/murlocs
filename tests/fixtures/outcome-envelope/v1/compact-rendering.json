@@ -1,0 +1,19 @@
+{
+  "contract": "io.murlocs.outcome.compact-rendering",
+  "schema_version": 1,
+  "cases": [
+    {"id": "pass", "expected": ""},
+    {
+      "id": "deterministic-repair",
+      "expected": "status: blocking (blocking); scopes: root; owners: none\nnext: ask the authorized integration to compile managed guidance."
+    },
+    {
+      "id": "agent-action",
+      "expected": "status: advisory (advisory); scopes: api; owners: @api\nnext: inspect the named findings and affected guidance before proceeding."
+    },
+    {
+      "id": "authority-required",
+      "expected": "status: advisory (advisory); scopes: api; owners: @api\nlifecycle: implementation may continue; merge is gated; authority: unresolved\nnext: continue implementation; obtain owner review from @api before merge."
+    }
+  ]
+}

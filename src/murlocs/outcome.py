@@ -102,6 +102,25 @@ class OutcomeChangePayload(TypedDict):
     paths: list[str]
 
 
+class OutcomeReviewEvidencePayload(TypedDict):
+    adapter_id: str
+    adapter_version: str
+    session_id: str
+    review_id: str
+    reviewed_state_id: str
+    owners: list[str]
+
+
+class OutcomeDecisionPayload(TypedDict):
+    task_authorization: Literal["not_attested", "externally_attested"]
+    agent_acknowledgement: Literal["not_recorded"]
+    authority_state: Literal["not_required", "unresolved", "externally_satisfied"]
+    implementation: Literal["may_continue"]
+    gated_boundary: Literal["none", "commit", "push", "merge", "completion"]
+    required_owners: list[str]
+    review_evidence: OutcomeReviewEvidencePayload | None
+
+
 class OutcomePayload(TypedDict):
     contract: str
     schema_version: int
@@ -115,6 +134,7 @@ class OutcomePayload(TypedDict):
     findings: list[OutcomeFindingPayload]
     next_actions: list[OutcomeActionPayload]
     change: OutcomeChangePayload
+    decision: OutcomeDecisionPayload
     silent: bool
     summary: str
 
@@ -499,6 +519,94 @@ def bind_integration_tokens(
     return parsed
 
 
+def reconcile_external_authority_evidence(
+    outcome: Mapping[str, Any],
+    evidence: Mapping[str, Any] | None,
+    *,
+    gated_boundary: Literal["commit", "push", "merge", "completion"] = "merge",
+    task_authorized: bool = False,
+) -> OutcomePayload:
+    """Reconcile one adapter-owned owner-review observation with an outcome.
+
+    This is intentionally not a terminal, programmatic, or MCP input.  An
+    adapter calls it after validating its own review integration.  A missing,
+    stale, or mismatched observation always returns the authority state to
+    unresolved instead of preserving a prior review claim.
+    """
+    parsed = parse_outcome(outcome)
+    decision = _default_decision(parsed)
+    if parsed["resolution_class"] != "authority_required":
+        if evidence is not None:
+            raise MurlocsError("external authority evidence requires an authority outcome")
+        parsed["decision"] = decision
+        return parsed
+    if gated_boundary not in {"commit", "push", "merge", "completion"}:
+        raise MurlocsError("authority gate must be commit, push, merge, or completion")
+    if not isinstance(task_authorized, bool):
+        raise MurlocsError("trusted task authorization must be boolean")
+    decision["gated_boundary"] = gated_boundary
+    decision["task_authorization"] = (
+        "externally_attested" if task_authorized else "not_attested"
+    )
+    if evidence is None:
+        parsed["decision"] = decision
+        return parsed
+    reviewed = _parse_review_evidence(evidence)
+    correlation = parsed["correlation"]
+    scope = correlation["token_scope"]
+    required = decision["required_owners"]
+    if (
+        correlation["token_source"] != "integration"
+        or scope is None
+        or reviewed["adapter_id"] != scope["adapter_id"]
+        or reviewed["adapter_version"] != scope["adapter_version"]
+        or reviewed["session_id"] != scope["session_id"]
+        or reviewed["reviewed_state_id"] != correlation["state_id"]
+        or not set(required).issubset(reviewed["owners"])
+    ):
+        parsed["decision"] = decision
+        return parsed
+    decision["authority_state"] = "externally_satisfied"
+    decision["review_evidence"] = reviewed
+    parsed["decision"] = decision
+    return parsed
+
+
+def render_compact_outcome(outcome: Mapping[str, Any]) -> str:
+    """Render one bounded active-agent instruction from parsed outcome fields."""
+    parsed = parse_outcome(outcome)
+    if parsed["silent"]:
+        return ""
+    decision = parsed["decision"]
+    action = parsed["next_actions"][0]
+    scopes = ", ".join(action["arguments"]["scopes"]) or "none"
+    owners = ", ".join(action["arguments"]["owners"]) or "none"
+    effect = "blocking" if parsed["blocking"] else "advisory"
+    lines = [
+        f"status: {parsed['status']} ({effect}); scopes: {scopes}; owners: {owners}",
+    ]
+    if parsed["resolution_class"] == "authority_required":
+        authority = decision["authority_state"].replace("_", " ")
+        lines.append(
+            "lifecycle: implementation may continue; "
+            f"{decision['gated_boundary']} is gated; authority: {authority}"
+        )
+        if decision["authority_state"] == "externally_satisfied":
+            lines.append(
+                "next: retain the trusted owner-review evidence through the gated boundary."
+            )
+        else:
+            lines.append(
+                f"next: continue implementation; obtain owner review from {owners} before "
+                f"{decision['gated_boundary']}."
+            )
+    elif action["operation"] == "compile_managed_guidance":
+        lines.append("next: ask the authorized integration to compile managed guidance.")
+    else:
+        lines.append("next: inspect the named findings and affected guidance before proceeding.")
+    return "\n".join(lines)
+
+
 def merge_outcomes(outcomes: list[Mapping[str, Any]]) -> OutcomePayload:
     """Merge ordered operation sidecars under one matching correlation context."""
     if not outcomes:
@@ -664,7 +772,7 @@ def _parse_outcome(value: Any) -> OutcomePayload:
             raise MurlocsError(
                 f"outcome action arguments do not match findings: {action['id']}"
             )
-    return {
+    parsed: OutcomePayload = {
         "contract": OUTCOME_CONTRACT,
         "schema_version": OUTCOME_SCHEMA_VERSION,
         "code": code,
@@ -677,9 +785,20 @@ def _parse_outcome(value: Any) -> OutcomePayload:
         "findings": findings,
         "next_actions": actions,
         "change": change,
+        "decision": {
+            "task_authorization": "not_attested",
+            "agent_acknowledgement": "not_recorded",
+            "authority_state": "not_required",
+            "implementation": "may_continue",
+            "gated_boundary": "none",
+            "required_owners": [],
+            "review_evidence": None,
+        },
         "silent": silent,
         "summary": summary,
     }
+    parsed["decision"] = _parse_decision(value.get("decision"), parsed)
+    return parsed
 
 
 def outcome_json_bytes(outcome: Mapping[str, Any]) -> bytes:
@@ -713,7 +832,7 @@ def _envelope(
         OutcomeSeverity,
         _dominant((item["severity"] for item in findings), _SEVERITY_RANK, "none"),
     )
-    return {
+    payload: OutcomePayload = {
         "contract": OUTCOME_CONTRACT,
         "schema_version": OUTCOME_SCHEMA_VERSION,
         "code": _outcome_code(resolution),
@@ -736,9 +855,12 @@ def _envelope(
         "findings": sorted(findings, key=_finding_key),
         "next_actions": sorted(actions, key=lambda item: item["id"]),
         "change": {"repository_state_changed": False, "paths": []},
+        "decision": cast(OutcomeDecisionPayload, {}),
         "silent": status == "pass",
         "summary": summary,
     }
+    payload["decision"] = _default_decision(payload)
+    return payload
 
 
 def _action_for(
@@ -972,6 +1094,109 @@ def _parse_change(value: Any) -> OutcomeChangePayload:
     if changed or paths:
         raise MurlocsError("check and impact outcome v1 must be read-only")
     return {"repository_state_changed": False, "paths": []}
+
+
+def _default_decision(outcome: Mapping[str, Any]) -> OutcomeDecisionPayload:
+    authority = outcome.get("resolution_class") == "authority_required"
+    owners: list[str] = []
+    if authority:
+        for action in outcome.get("next_actions", []):
+            if isinstance(action, Mapping) and action.get("operation") == "request_authority":
+                arguments = action.get("arguments")
+                if isinstance(arguments, Mapping):
+                    owners = _string_list(arguments.get("owners"), "decision owners")
+                break
+    return {
+        "task_authorization": "not_attested",
+        "agent_acknowledgement": "not_recorded",
+        "authority_state": "unresolved" if authority else "not_required",
+        "implementation": "may_continue",
+        "gated_boundary": "merge" if authority else "none",
+        "required_owners": owners,
+        "review_evidence": None,
+    }
+
+
+def _parse_decision(value: Any, outcome: Mapping[str, Any]) -> OutcomeDecisionPayload:
+    expected = _default_decision(outcome)
+    if value is None:
+        return expected
+    if not isinstance(value, Mapping) or set(value) != {
+        "task_authorization",
+        "agent_acknowledgement",
+        "authority_state",
+        "implementation",
+        "gated_boundary",
+        "required_owners",
+        "review_evidence",
+    }:
+        raise MurlocsError("outcome decision has unknown or missing fields")
+    task_authorization = _enum(
+        value.get("task_authorization"),
+        {"not_attested": 0, "externally_attested": 1},
+        "decision.task_authorization",
+    )
+    if value.get("agent_acknowledgement") != "not_recorded":
+        raise MurlocsError("outcome does not accept agent acknowledgement")
+    if value.get("implementation") != "may_continue":
+        raise MurlocsError("outcome implementation decision is invalid")
+    gated = _enum(
+        value.get("gated_boundary"),
+        {"none": 0, "commit": 1, "push": 2, "merge": 3, "completion": 4},
+        "decision.gated_boundary",
+    )
+    state = _enum(
+        value.get("authority_state"),
+        {"not_required": 0, "unresolved": 1, "externally_satisfied": 2},
+        "decision.authority_state",
+    )
+    owners = _string_list(value.get("required_owners"), "decision.required_owners")
+    raw_evidence = value.get("review_evidence")
+    evidence = None if raw_evidence is None else _parse_review_evidence(raw_evidence)
+    if outcome["resolution_class"] != "authority_required":
+        if (state, gated, owners, evidence) != ("not_required", "none", [], None):
+            raise MurlocsError("only authority outcomes may carry authority decisions")
+    elif owners != expected["required_owners"] or gated == "none":
+        raise MurlocsError("outcome authority routing does not match findings")
+    elif state == "unresolved" and evidence is not None:
+        raise MurlocsError("unresolved authority cannot retain external review evidence")
+    elif state == "externally_satisfied" and evidence is None:
+        raise MurlocsError("satisfied authority requires external review evidence")
+    elif state == "not_required":
+        raise MurlocsError("authority outcome cannot omit its authority state")
+    return {
+        "task_authorization": cast(Any, task_authorization),
+        "agent_acknowledgement": "not_recorded",
+        "authority_state": cast(Any, state),
+        "implementation": "may_continue",
+        "gated_boundary": cast(Any, gated),
+        "required_owners": owners,
+        "review_evidence": evidence,
+    }
+
+
+def _parse_review_evidence(value: Any) -> OutcomeReviewEvidencePayload:
+    if not isinstance(value, Mapping) or set(value) != {
+        "adapter_id",
+        "adapter_version",
+        "session_id",
+        "review_id",
+        "reviewed_state_id",
+        "owners",
+    }:
+        raise MurlocsError("external review evidence has unknown or missing fields")
+    return {
+        "adapter_id": _bounded_string(value.get("adapter_id"), "review.adapter_id", maximum=255),
+        "adapter_version": _bounded_string(
+            value.get("adapter_version"), "review.adapter_version", maximum=255
+        ),
+        "session_id": _bounded_string(value.get("session_id"), "review.session_id", maximum=255),
+        "review_id": _bounded_string(value.get("review_id"), "review.review_id", maximum=255),
+        "reviewed_state_id": _bounded_string(
+            value.get("reviewed_state_id"), "review.reviewed_state_id", maximum=255
+        ),
+        "owners": _string_list(value.get("owners"), "review.owners"),
+    }
 
 
 def _string_list(value: Any, field: str, *, maximum: int = 1024) -> list[str]:

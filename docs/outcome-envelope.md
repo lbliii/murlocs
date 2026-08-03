@@ -37,6 +37,33 @@ report with exit code 0 for valid input. Both `recommended` and `required` impac
 advisory in the envelope: `required` selects the authority route, but repository or merge policy—not
 Murlocs—decides whether that route blocks work.
 
+## Compact agent rendering and phase decisions
+
+`render_compact_outcome` derives a small active-agent presentation directly from the parsed
+envelope; it never reinterprets prose or exposes a command. Passing outcomes render as an empty
+string, so a host can remain silent. Non-passing output names status/effect, affected scopes,
+required owners, the lifecycle gate when authority is required, and one safe next action. It omits
+repeated finding evidence, invariant text, checks, layers, and provenance. Generated fallback
+guidance recommends compact output for active agents; integrations should retain structured JSON.
+
+The additive `decision` member keeps outcome schema version 1 compatible. It deliberately records
+`task_authorization: not_attested` and `agent_acknowledgement: not_recorded` by default: Murlocs
+neither authenticates an actor nor accepts a local acknowledgement or chat claim as approval. A
+trusted adapter may attest task authorization separately from owner review, but Murlocs never
+grants it. An
+authority-required outcome says `implementation: may_continue`, defaults to a `merge` gate, and
+lists the exact required owners derived from its request-authority action. A trusted adapter may
+select the applicable `commit`, `push`, `merge`, or `completion` gate while reconciling evidence;
+agent-callable surfaces cannot set it.
+
+An adapter can call `reconcile_external_authority_evidence` after it has independently validated a
+repository or review-provider integration. The evidence must match the bound adapter id/version/
+session, the current opaque state token, and all required owners. The resulting evidence names its
+adapter provenance, review id, reviewed state, and owners. Missing, changed, stale, or mismatched
+evidence always returns the decision to `unresolved`. This function is not exposed through the
+terminal, programmatic, or MCP agent surfaces, and parsing a JSON claim alone never authenticates
+it.
+
 ## Correlation and trusted tokens
 
 Callers may pass `--correlation-id ID` (or the same typed programmatic/MCP input) to `check` and

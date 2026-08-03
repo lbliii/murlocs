@@ -51,6 +51,7 @@ from murlocs.outcome import (
     build_check_outcome,
     build_failure_outcome,
     build_impact_outcome,
+    render_compact_outcome,
     validate_correlation_id,
 )
 from murlocs.paths import repo_path
@@ -1449,7 +1450,7 @@ def check_command(
         terminal = "\n".join(
             [
                 *(str(item) for item in findings),
-                outcome["summary"],
+                render_compact_outcome(outcome),
                 _coverage_terminal(coverage),
             ]
         )
@@ -1712,11 +1713,13 @@ def impact_command(
                 lines.append(f"  - {reason}")
     else:
         lines.extend(["", "No declared guidance scope is affected."])
+    compact = render_compact_outcome(outcome)
     lines.extend(
         [
             "",
             "Review impact is a routing signal; it does not claim that guidance is false.",
             outcome["summary"],
+            *([compact] if compact else []),
         ]
     )
     return CommandResult(report, terminal_text="\n".join(lines))
