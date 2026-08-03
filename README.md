@@ -15,7 +15,8 @@ A prompt can help author guidance once. Murlocs owns the repeatable infrastructu
 - explicit scopes, cross-scope edges, invariants, proofs, and context budgets;
 - coverage checks for source-bearing units;
 - drift detection and safe ownership through `.murlocs/lock.json`;
-- path-specific explanations without starting an agent or executing repository commands.
+- path-specific explanations and changed-path review routing without starting an agent or
+  executing repository commands.
 
 The Milo-backed CLI is deterministic infrastructure. The bundled `bootstrap-murlocs` skill is the
 optional agent-assisted authoring layer for discovering architecture and drafting a truthful
@@ -34,6 +35,7 @@ murlocs init --name "My Repository"
 murlocs compile
 murlocs check
 murlocs explain src/my_package/feature.py
+murlocs impact --path src/my_package/feature.py
 # Preview a write without changing files.
 murlocs --dry-run compile
 ```
@@ -120,11 +122,14 @@ deterministically into the same canonical model. Single-file manifests keep work
 | `murlocs rollback` | Restore the exact pre-adoption guidance network. |
 | `murlocs check` | Validate schema, graph, proofs, coverage, budget, ownership, and drift. |
 | `murlocs explain PATH` | Print the ordered scope, invariant, layer provenance, override, and budget trace for a path. |
+| `murlocs impact` | Classify guidance review impact for repeated `--path` values and/or a Git `--revision-range`. |
 
 Milo also provides `murlocs --mcp` (or `mrr --mcp`), `murlocs --llms-txt`, structured JSON output,
 shell completions, and in-process typed dispatch. Only read-only `status`, `inventory`, `diff`,
-`check`, and `explain` are agent-visible. See [Adoption status and coverage](docs/adoption.md) for
-the lifecycle and structured-output contracts.
+`check`, `explain`, and `impact` are agent-visible. See
+[Adoption status and coverage](docs/adoption.md) for the lifecycle contract and
+[Changed-path impact](docs/impact.md) for the review policy, stable output, and CI and pre-commit
+examples.
 
 The optional, separate `murlocs.eval` harness measures whether scoped guidance actually helps agents
 search less while staying correct. It ingests versioned task and recorded-run files with

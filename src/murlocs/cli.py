@@ -10,6 +10,11 @@ from milo import CLI, Context, Option, Positional
 from murlocs import __version__
 from murlocs.adoption import adoption_status
 from murlocs.errors import MurlocsError
+from murlocs.impact import (
+    build_impact_report,
+    changed_paths_from_revision,
+    normalize_changed_paths,
+)
 from murlocs.manifest import (
     PROTOCOL_TEMPLATE,
     load_manifest,
@@ -147,6 +152,77 @@ class ExplainPayload(TypedDict):
     overrides: list[OverridePayload]
     checks: list[FocusedCheckPayload]
     budget: BudgetPayload
+
+
+class ImpactPayload(TypedDict):
+    ok: bool
+    schema_version: int
+    input: ImpactInputPayload
+    policy: ImpactPolicyPayload
+    summary: ImpactSummaryPayload
+    scopes: list[ImpactScopePayload]
+
+
+class ImpactInputPayload(TypedDict):
+    paths: list[str]
+    revision_range: str | None
+
+
+class ImpactPolicyPayload(TypedDict):
+    version: int
+    required: str
+    recommended: str
+    unaffected: str
+
+
+class ImpactSummaryPayload(TypedDict):
+    required: int
+    recommended: int
+    unaffected: int
+
+
+class ImpactGuidancePayload(TypedDict):
+    id: str
+    map: str
+
+
+class ImpactInvariantPayload(TypedDict):
+    id: str
+    severity: str
+    statement: str
+    verification: str
+    enforced_by: str | None
+    evidence_file: str | None
+    anchor: str | None
+
+
+class ImpactCheckPayload(TypedDict):
+    name: str
+    invoke: str
+    location: str
+    description: str
+
+
+class ImpactEdgePayload(TypedDict):
+    direction: str
+    type: str
+    scope: str
+    what: str
+
+
+class ImpactScopePayload(TypedDict):
+    id: str
+    path: str
+    map: str
+    status: str
+    reasons: list[str]
+    guidance_chain: list[ImpactGuidancePayload]
+    layers: list[LayerPayload]
+    owners: list[str]
+    invariants: list[ImpactInvariantPayload]
+    checks: list[ImpactCheckPayload]
+    edges: list[ImpactEdgePayload]
+    review_protocol: str
 
 
 class InventoryInstructionPayload(TypedDict):
@@ -856,6 +932,64 @@ def _focused_checks(manifest: Manifest, scopes: list[Any]) -> list[FocusedCheckP
     return ordered
 
 
+def impact_command(
+    path: Annotated[list[str] | None, Option(metavar="PATH")] = None,
+    revision_range: Annotated[str | None, Option(metavar="REVISION_RANGE")] = None,
+    repo: Annotated[str, Option(metavar="PATH")] = ".",
+) -> ImpactPayload | FailurePayload:
+    """Report which guidance scopes need review for a changed-path set.
+
+    Args:
+        path: Changed repository path. Repeat the option to report a set.
+        revision_range: Git revision range whose changed paths should be included.
+        repo: Repository root containing the guidance network.
+    """
+    try:
+        root = _root(repo)
+        manifest = load_manifest(root)
+        if not path and revision_range is None:
+            raise MurlocsError("provide at least one --path or --revision-range")
+        explicit = normalize_changed_paths(root, path or ())
+        from_git = (
+            changed_paths_from_revision(root, revision_range) if revision_range else ()
+        )
+        changed = tuple(sorted(set(explicit) | set(from_git)))
+        report = build_impact_report(
+            manifest,
+            changed,
+            revision_range=revision_range,
+        )
+    except MurlocsError as exc:
+        return _failure("MURLOCS_IMPACT", exc)
+
+    affected = [scope for scope in report["scopes"] if scope["status"] != "unaffected"]
+    lines = [
+        f"Guidance review impact for {len(changed)} changed path(s)",
+        *[f"  {changed_path}" for changed_path in changed],
+    ]
+    if affected:
+        for scope in affected:
+            lines.extend(["", f"[{scope['status']}] {scope['id']} → {scope['map']}"])
+            if scope["owners"]:
+                lines.append(f"  owners: {', '.join(scope['owners'])}")
+            for reason in scope["reasons"]:
+                lines.append(f"  - {reason}")
+    else:
+        lines.extend(["", "No declared guidance scope is affected."])
+    lines.extend(
+        [
+            "",
+            "Review impact is a routing signal; it does not claim that guidance is false.",
+            (
+                f"Summary: {report['summary']['required']} required, "
+                f"{report['summary']['recommended']} recommended, "
+                f"{report['summary']['unaffected']} unaffected"
+            ),
+        ]
+    )
+    return CommandResult(report, terminal_text="\n".join(lines))
+
+
 def inventory_command(
     repo: Annotated[str, Option(metavar="PATH")] = ".",
 ) -> InventoryPayload | FailurePayload:
@@ -1173,6 +1307,13 @@ def build_cli(*, name: str = "murlocs") -> CLI:
         annotations=inspection,
         terminal_renderer=_render_result,
     )(explain_command)
+    app.command(
+        "impact",
+        description="Report guidance review impact for changed repository paths",
+        surfaces=("cli", "mcp", "llms"),
+        annotations=inspection,
+        terminal_renderer=_render_result,
+    )(impact_command)
     return app
 
 
