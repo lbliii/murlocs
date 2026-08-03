@@ -157,7 +157,11 @@ def install_hooks(
     context, hooks = _installation_context(root)
     selected = _normalized_events(events)
     states = {event: _hook_state(hooks / event, event) for event in selected}
-    conflicts = [event for event, state_name in states.items() if state_name == "occupied"]
+    conflicts = [
+        event
+        for event, state_name in states.items()
+        if state_name in {"modified", "occupied"}
+    ]
     if conflicts:
         raise MurlocsError(
             "refusing to replace existing Git hook(s): " + ", ".join(conflicts)
@@ -737,7 +741,7 @@ def _hook_state(path: Path, event: HookEvent) -> str:
             return "occupied"
         runner = _owned_runner(path.read_bytes(), event)
         if runner is None:
-            return "occupied"
+            return "modified" if _has_murlocs_marker(path.read_bytes()) else "occupied"
         return _runner_state(runner)
     except OSError:
         return "occupied"
@@ -761,6 +765,10 @@ def _owned_runner(content: bytes, event: HookEvent) -> HookRunner | None:
         return runner if content == _hook_bytes(event, runner) else None
     except (UnicodeDecodeError, TypeError, ValueError, json.JSONDecodeError):
         return None
+
+
+def _has_murlocs_marker(content: bytes) -> bool:
+    return content.startswith(f"#!/bin/sh\n{HOOK_MARKER}\n".encode())
 
 
 def _runner_state(runner: HookRunner) -> str:

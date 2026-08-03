@@ -355,6 +355,23 @@ def test_status_reports_detectable_runner_version_mismatch(tmp_path: Path) -> No
     assert hook_status(root)["events"]["pre-commit"] == "version mismatch"
 
 
+def test_status_distinguishes_modified_owned_bytes_from_occupied_slots(
+    tmp_path: Path,
+) -> None:
+    root = repository(tmp_path)
+    runner = durable_runner(tmp_path)
+    install_hooks(root, ("pre-commit",), runner=str(runner))
+    hook = Path(git(root, "rev-parse", "--git-path", "hooks/pre-commit").decode())
+    if not hook.is_absolute():
+        hook = root / hook
+
+    hook.write_text(hook.read_text() + "# locally modified\n")
+    assert hook_status(root)["events"]["pre-commit"] == "modified"
+
+    hook.write_text("#!/bin/sh\nexit 0\n")
+    assert hook_status(root)["events"]["pre-commit"] == "occupied"
+
+
 def test_non_git_and_partial_adoption_fail_with_actionable_errors(tmp_path: Path) -> None:
     plain = tmp_path / "plain"
     plain.mkdir()
