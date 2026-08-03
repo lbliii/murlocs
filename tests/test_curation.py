@@ -385,12 +385,32 @@ def test_malformed_unknown_and_duplicate_records_are_actionable(tmp_path):
         encoding="utf-8",
     )
     checked = invoke("curate", "check", "--repo", str(root), "--format", "json")
+    assert checked.exit_code == 1
     payload = json.loads(checked.output)
     assert payload["ok"] is False
     findings = payload["findings"]
     assert any(item["code"] == "duplicate_id" for item in findings)
     assert any("unsupported fields: mystery" in item["message"] for item in findings)
     assert any("must be proposed" in item["message"] for item in findings)
+
+
+def test_structured_missing_proposal_preserves_operational_error_exit(tmp_path):
+    root = tmp_path / "repo"
+    initialize(root)
+
+    result = invoke(
+        "curate", "review", "missing", "--repo", str(root), "--format", "json"
+    )
+
+    assert result.exit_code == 1
+    assert result.stderr == ""
+    assert json.loads(result.output) == {
+        "error": {
+            "code": "MURLOCS_CURATE_REVIEW",
+            "message": "curation record not found: missing.toml",
+        },
+        "ok": False,
+    }
 
 
 def test_curation_records_are_inert_even_when_malformed_and_layer_shaped(tmp_path):

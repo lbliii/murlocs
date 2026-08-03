@@ -143,3 +143,18 @@ def test_status_human_and_structured_surfaces_name_evidence_and_next_action(
     assert structured["evidence"][0]["path"] == "."
     assert structured["next_actions"][0]["id"] == "preview_initialization"
     assert snapshot(root) == before
+
+
+def test_structured_status_with_blockers_retains_success_exit_contract(tmp_path: Path) -> None:
+    root = tmp_path / "repo"
+    root.mkdir()
+    (root / ".murlocs").mkdir()
+    (root / ".murlocs" / "lock.json").write_text("{}\n", encoding="utf-8")
+
+    result = invoke("status", "--repo", str(root), "--format", "json")
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["ok"] is True
+    assert payload["state"] == "ambiguous"
+    assert payload["blockers"]

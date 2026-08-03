@@ -153,6 +153,30 @@ def test_check_detects_manifest_drift(tmp_path):
     assert "manifest changed" in result.stderr
 
 
+def test_structured_check_preserves_declared_exit_code_and_payload(tmp_path):
+    root = make_repo(tmp_path)
+    initialize(root)
+    manifest = root / ".murlocs" / "manifest.toml"
+    manifest.write_text(
+        manifest.read_text(encoding="utf-8").replace(
+            "Repository guidance", "Agent guidance"
+        ),
+        encoding="utf-8",
+    )
+
+    result = invoke("check", "--repo", str(root), "--format", "json")
+
+    assert result.exit_code == 1
+    assert result.stderr == ""
+    payload = json.loads(result.output)
+    assert payload["ok"] is False
+    assert any(item["code"] == "drift" for item in payload["findings"])
+
+    mcp_result = MCPClient(build_cli()).call("check", repo=str(root))
+    assert mcp_result.is_error is False
+    assert mcp_result.structured == payload
+
+
 def test_check_detects_missing_manual_proof(tmp_path):
     root = make_repo(tmp_path)
     initialize(root)

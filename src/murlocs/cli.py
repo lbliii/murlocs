@@ -125,7 +125,10 @@ class MurlocsCLI(CLI):
             command_names,
             root_value_options,
         )
-        return super().run(normalized)
+        result = super().run(normalized)
+        if isinstance(result, CommandResult) and result.exit_code:
+            raise SystemExit(result.exit_code)
+        return result
 
 
 class CommandResult(dict[str, Any]):
