@@ -155,6 +155,11 @@ correctness-gated scripted evaluation without copying guidance from a private re
 For release-level recipes spanning bootstrap, progressive rollout, migration and rollback,
 ordinary drift repair, and recorded evaluation, see [Primary user journeys](docs/journeys.md).
 
+For governed curation experiments, `python -m murlocs.eval --longitudinal SERIES.json` joins actual
+curation records to revision-pinned before/after runs. It reports lifecycle, guidance-growth, and
+correctness-gated search/action trends while preserving raw evidence. These are correlations for
+owner review, never causal proof or authority to promote guidance.
+
 The [governed curation workflow](docs/curation.md) lets agents and humans propose additions,
 replacements, and removals without allowing unapproved candidates into compiled guidance. The
 implemented lifecycle provides inert record creation, deterministic review, current-owner
