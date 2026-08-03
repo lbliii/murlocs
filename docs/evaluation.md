@@ -53,15 +53,19 @@ python -m murlocs.eval \
 The bundled `import-graph` task ships with a small fixture repository whose import graph is
 objectively checkable. The demonstration is never selected implicitly: production use must provide
 both `--task` and `--runs`. `--output` is optional; without it the command prints the comparison but
-does not write a result.
+does not write a result. Result writes atomically replace their output-directory entry instead of
+following an existing symlink or hardlink, so a linked file outside that directory is not modified.
 
 ## Version 1 ingestion format
 
 Task definitions are TOML. They pin the prompt and repository revision and define objective facts
 that the answer must contain. Fact alternatives are matched case-insensitively; the threshold is a
-fraction from `0` through `1`. A task id is also its result filename, so version 1 restricts it to
+fraction greater than `0` and at most `1`. A task id is also its result filename, so version 1
+restricts it to
 1–128 ASCII letters, digits, dots, underscores, or hyphens; it must begin and end with a letter or
-digit and cannot contain `..`.
+digit and cannot contain `..`. At least one expected fact and a positive threshold are required;
+neither an empty fact set nor a zero threshold can make an otherwise wrong recorded answer pass
+correctness vacuously.
 
 ```toml
 schema_version = 1
@@ -120,6 +124,12 @@ link supplies facts that curation schema version 1 does not store: repository an
 revisions, affected scope/chain snapshots, and active bytes for each chain. Source revisions come
 from the lifecycle and must match the record's base and apply-event hashes.
 
+When a curation record has `target_scope`, that scope must appear in the supplied affected-chain
+snapshots. Other affected scopes and chain identities are versioned evidence supplied by the pilot,
+not independently reconstructed truth: schema version 1 does not retain the historical manifest
+checkout needed to recompute them. The evaluator does cross-check each snapshot's exact byte count
+against the linked Murlocs run's guidance text and preserves the supplied evidence for review.
+
 Every observation names a proposal, `before` or `after` phase, affected scope, exact guidance
 chain, source revision, task file, and recorded-run file. Murlocs rejects the series before
 producing a summary when:
@@ -131,6 +141,26 @@ producing a summary when:
 - an observation relabels a scope or chain not declared by that proposal;
 - before/after task definitions, models, or agent environments are incompatible; or
 - the Murlocs run's exact guidance bytes differ from the affected-chain byte snapshot.
+
+Version 1 is deliberately a **single-source linear series**, not a general revision graph. Applied
+proposals are ordered by their apply-event times. Repository, source, and guidance revisions must
+connect exactly from each after boundary to the next before boundary. Byte counts for every
+overlapping affected scope/chain must also connect. Equal apply times, cross-source series, branch
+joins, disconnected histories, and byte jumps are ambiguous and rejected instead of being added
+into a misleading cumulative total.
+
+A supersession is one transaction: the old proposal's terminal `superseded` event and the new
+replacement's `promoted` event must link each other and agree on subject/source digests, timestamp,
+actor, rationale, and review reference. Because the replacement apply event is bound to the
+declared revision boundary, this also binds the old terminal audit to that same boundary.
+
+Rejected, withdrawn, proposed, and accepted-but-unapplied records do not advance the history or add
+an active-byte delta. Their before revisions must match the active boundary at their proposal time.
+A canonical recorded-run evidence fingerprint is attributed once by default, so path aliases,
+hardlinks, or copied JSON cannot double-count one snapshot. The only reuse allowed is the identical
+after snapshot of one applied proposal as the before snapshot of the immediately adjacent applied
+proposal, with the same revision, task, scope, and chain. Result evidence retains both run-only and
+task-plus-run fingerprints.
 
 References are safe paths relative to the link manifest. Absolute paths, parent traversal,
 symlinks, unknown fields, and unsupported versions are rejected. Loading and analysis are

@@ -12,9 +12,17 @@ from typing import Any
 
 from murlocs.curation import CurationEvent, CurationRecord, load_record
 from murlocs.errors import MurlocsError
+from murlocs.eval._atomic import atomic_write_text
 from murlocs.eval.harness import compare_runs, guidance_bytes
-from murlocs.eval.model import METRIC_DEFINITIONS, ComparisonSummary, RunRecord, TaskDefinition
+from murlocs.eval.model import (
+    ARMS,
+    METRIC_DEFINITIONS,
+    ComparisonSummary,
+    RunRecord,
+    TaskDefinition,
+)
 from murlocs.eval.store import load_runs, load_task
+from murlocs.lockfile import sha256_bytes
 
 LONGITUDINAL_SCHEMA_VERSION = 1
 SERIES_ID_PATTERN = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?")
@@ -95,6 +103,10 @@ class RunObservation:
     source_revision: str
     task_path: str
     runs_path: str
+    task_file: Path
+    runs_file: Path
+    runs_sha256: str
+    snapshot_sha256: str
     task: TaskDefinition
     records: tuple[RunRecord, ...]
     summary: ComparisonSummary
@@ -140,6 +152,7 @@ def load_longitudinal(path: Path) -> LongitudinalDataset:
             raise ValueError(f"{path}: ambiguous duplicate proposal link {item.record.id!r}")
         proposal_index[item.record.id] = item
     _validate_supersession_links(proposal_index, str(path))
+    _validate_series_continuity(proposals, str(path))
 
     observations = tuple(
         _load_observation(base, item, proposal_index, f"{path}: observations[{index}]")
@@ -230,10 +243,8 @@ def analyze_longitudinal(dataset: LongitudinalDataset) -> dict[str, Any]:
 def save_longitudinal_results(directory: Path, result: dict[str, Any]) -> Path:
     """Write an explicit result artifact; inputs and repositories remain untouched."""
     series_id = _portable_id(str(result.get("series_id", "")), "series id")
-    directory.mkdir(parents=True, exist_ok=True)
     target = directory / f"{series_id}.json"
-    target.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    return target
+    return atomic_write_text(target, json.dumps(result, indent=2, sort_keys=True) + "\n")
 
 
 def render_longitudinal_summary(result: dict[str, Any]) -> str:
@@ -277,6 +288,13 @@ def _load_proposal(base: Path, value: Any, context: str) -> ProposalLink:
     chains = tuple(sorted(raw_chains, key=lambda value: (value.scope, value.chain)))
     if not chains:
         raise ValueError(f"{context}.affected_chains must not be empty")
+    if record.target_scope is not None and record.target_scope not in {
+        item.scope for item in chains
+    }:
+        raise ValueError(
+            f"{context}: record target_scope {record.target_scope!r} must be among "
+            "affected chain scopes"
+        )
     _validate_revision_link(record, revisions, chains, context)
     _validate_event_times(record, context)
     return ProposalLink(record_path, record, revisions, chains)
@@ -349,8 +367,11 @@ def _load_observation(
         )
     task_path = _nonempty(item, "task", context)
     runs_path = _nonempty(item, "runs", context)
-    task = load_task(_referenced_file(base, task_path, f"{context}.task"))
-    records = tuple(load_runs(_referenced_file(base, runs_path, f"{context}.runs"), task))
+    task_file = _referenced_file(base, task_path, f"{context}.task").resolve()
+    runs_file = _referenced_file(base, runs_path, f"{context}.runs").resolve()
+    task = load_task(task_file)
+    records = tuple(sorted(load_runs(runs_file, task), key=lambda record: ARMS.index(record.arm)))
+    runs_sha256, snapshot_sha256 = _evidence_sha256(task, records)
     if task.repository_revision != expected_repository:
         raise ValueError(
             f"{context}: task repository_revision {task.repository_revision!r} does not match "
@@ -378,6 +399,10 @@ def _load_observation(
         source_revision,
         task_path,
         runs_path,
+        task_file,
+        runs_file,
+        runs_sha256,
+        snapshot_sha256,
         task,
         records,
         compare_runs(task, list(records)),
@@ -419,7 +444,8 @@ def _validate_supersession_links(proposals: dict[str, ProposalLink], context: st
     for proposal in proposals.values():
         if proposal.record.state != "superseded":
             continue
-        related_id = proposal.record.events[-1].related_proposal_id
+        superseded_event = proposal.record.events[-1]
+        related_id = superseded_event.related_proposal_id
         related = proposals.get(related_id or "")
         if related is None:
             raise ValueError(
@@ -436,6 +462,115 @@ def _validate_supersession_links(proposals: dict[str, ProposalLink], context: st
                 f"{context}: supersession link {proposal.record.id!r} -> {related.record.id!r} "
                 "is not reciprocal"
             )
+        shared_fields = (
+            "before_sha256",
+            "after_sha256",
+            "source_before_sha256",
+            "source_after_sha256",
+            "at",
+            "actor",
+            "rationale",
+            "review_ref",
+        )
+        mismatched = [
+            field
+            for field in shared_fields
+            if getattr(superseded_event, field) != getattr(related_event, field)
+        ]
+        if mismatched:
+            raise ValueError(
+                f"{context}: supersession transaction {proposal.record.id!r} -> "
+                f"{related.record.id!r} disagrees on: {', '.join(mismatched)}"
+            )
+
+
+def _validate_series_continuity(
+    proposals: tuple[ProposalLink, ...], context: str
+) -> None:
+    """Require one deterministic revision line; unapplied records never advance it."""
+    target_sources = {item.record.target_source for item in proposals}
+    if len(target_sources) != 1:
+        raise ValueError(
+            f"{context}: a version 1 linear series must target exactly one active source"
+        )
+    applied = _applied_history(proposals)
+    applied_times = [time for time, _item in applied]
+    if len(set(applied_times)) != len(applied_times):
+        raise ValueError(
+            f"{context}: applied proposals have ambiguous equal event times in a linear series"
+        )
+
+    if applied:
+        initial = _revision_boundary(applied[0][1], "before")
+        for (previous_time, previous), (_next_time, following) in zip(
+            applied, applied[1:], strict=False
+        ):
+            if _event_time(following.record.events[0], following.record.id) < previous_time:
+                raise ValueError(
+                    f"{context}: proposal {following.record.id!r} predates the revision boundary "
+                    f"produced by {previous.record.id!r}"
+                )
+            if _revision_boundary(previous, "after") != _revision_boundary(following, "before"):
+                raise ValueError(
+                    f"{context}: disconnected revision history between applied proposals "
+                    f"{previous.record.id!r} and {following.record.id!r}"
+                )
+    else:
+        first = min(
+            proposals,
+            key=lambda item: (_event_time(item.record.events[0], item.record.id), item.record.id),
+        )
+        initial = _revision_boundary(first, "before")
+
+    boundary_bytes: dict[
+        tuple[str, str, str], dict[tuple[str, tuple[str, ...]], int]
+    ] = defaultdict(dict)
+    for item in proposals:
+        _record_boundary_bytes(boundary_bytes, item, "before", context)
+        if _apply_event(item.record) is not None:
+            _record_boundary_bytes(boundary_bytes, item, "after", context)
+
+    for item in proposals:
+        if _apply_event(item.record) is not None:
+            continue
+        proposed_at = _event_time(item.record.events[0], item.record.id)
+        prior = [candidate for time, candidate in applied if time <= proposed_at]
+        expected = _revision_boundary(prior[-1], "after") if prior else initial
+        if _revision_boundary(item, "before") != expected:
+            raise ValueError(
+                f"{context}: unapplied proposal {item.record.id!r} is disconnected from the "
+                "active revision boundary at its proposal time"
+            )
+
+
+def _revision_boundary(item: ProposalLink, phase: str) -> tuple[str, str, str]:
+    repository = getattr(item.revisions, f"repository_{phase}")
+    source = getattr(item.revisions, f"source_{phase}")
+    guidance = getattr(item.revisions, f"guidance_{phase}")
+    if repository is None or source is None or guidance is None:
+        raise AssertionError("validated applied revision boundary is incomplete")
+    return repository, source, guidance
+
+
+def _record_boundary_bytes(
+    boundaries: dict[tuple[str, str, str], dict[tuple[str, tuple[str, ...]], int]],
+    item: ProposalLink,
+    phase: str,
+    context: str,
+) -> None:
+    revision = _revision_boundary(item, phase)
+    known = boundaries[revision]
+    for chain in item.affected_chains:
+        value = getattr(chain, f"active_bytes_{phase}")
+        if value is None:
+            raise AssertionError("validated applied chain boundary is incomplete")
+        key = (chain.scope, chain.chain)
+        if key in known and known[key] != value:
+            raise ValueError(
+                f"{context}: affected chain bytes conflict at one revision boundary for "
+                f"scope {chain.scope!r}, chain {list(chain.chain)!r}"
+            )
+        known[key] = value
 
 
 def _validate_observation_links(
@@ -456,6 +591,7 @@ def _validate_observation_links(
             )
         seen.add(identity)
         grouped[item.proposal_id][item.phase][item.key] = item
+    _validate_physical_snapshot_reuse(proposals, observations, context)
     for proposal in proposals:
         phases = grouped[proposal.record.id]
         if not phases["before"]:
@@ -475,6 +611,51 @@ def _validate_observation_links(
         for key in sorted(phases["before"]):
             if key in phases["after"]:
                 _require_compatible_runs(phases["before"][key], phases["after"][key], context)
+
+
+def _validate_physical_snapshot_reuse(
+    proposals: tuple[ProposalLink, ...],
+    observations: tuple[RunObservation, ...],
+    context: str,
+) -> None:
+    references: dict[str, list[RunObservation]] = defaultdict(list)
+    for item in observations:
+        references[item.runs_sha256].append(item)
+    applied = [item for _time, item in _applied_history(proposals)]
+    positions = {item.record.id: index for index, item in enumerate(applied)}
+    for runs_sha256, uses in references.items():
+        if len(uses) == 1:
+            continue
+        if len(uses) != 2:
+            raise ValueError(
+                f"{context}: physical task/run snapshot has ambiguous attribution: "
+                f"{runs_sha256}"
+            )
+        after = next((item for item in uses if item.phase == "after"), None)
+        before = next((item for item in uses if item.phase == "before"), None)
+        adjacent = (
+            after is not None
+            and before is not None
+            and after.proposal_id in positions
+            and before.proposal_id in positions
+            and positions[before.proposal_id] == positions[after.proposal_id] + 1
+        )
+        same_boundary = (
+            adjacent
+            and after is not None
+            and before is not None
+            and after.key == before.key
+            and asdict(after.task) == asdict(before.task)
+            and after.source_revision == before.source_revision
+            and after.task.repository_revision == before.task.repository_revision
+            and _murlocs_run(after).guidance_revision
+            == _murlocs_run(before).guidance_revision
+        )
+        if not same_boundary:
+            raise ValueError(
+                f"{context}: physical task/run snapshot may be reused only for the identical "
+                "after-to-before boundary of adjacent applied proposals"
+            )
 
 
 def _require_compatible_runs(before: RunObservation, after: RunObservation, context: str) -> None:
@@ -586,6 +767,8 @@ def _proposal_evidence(
                 "source_revision": item.source_revision,
                 "task_path": item.task_path,
                 "runs_path": item.runs_path,
+                "runs_sha256": item.runs_sha256,
+                "snapshot_sha256": item.snapshot_sha256,
                 "task": asdict(item.task),
                 "records": [asdict(record) for record in item.records],
             }
@@ -597,6 +780,17 @@ def _proposal_evidence(
 def _apply_event(record: CurationRecord) -> CurationEvent | None:
     expected = "pruned" if record.intent == "remove" else "promoted"
     return next((event for event in record.events if event.state == expected), None)
+
+
+def _applied_history(
+    proposals: tuple[ProposalLink, ...],
+) -> list[tuple[datetime, ProposalLink]]:
+    applied = []
+    for item in proposals:
+        event = _apply_event(item.record)
+        if event is not None:
+            applied.append((_event_time(event, item.record.id), item))
+    return sorted(applied, key=lambda pair: (pair[0], pair[1].record.id))
 
 
 def _timeline_time(record: CurationRecord) -> datetime:
@@ -651,6 +845,29 @@ def _time_to_decision(record: CurationRecord) -> float | None:
 
 def _murlocs_run(observation: RunObservation) -> RunRecord:
     return next(record for record in observation.records if record.arm == "murlocs")
+
+
+def _evidence_sha256(
+    task: TaskDefinition, records: tuple[RunRecord, ...]
+) -> tuple[str, str]:
+    record_payload = [
+        asdict(record) for record in sorted(records, key=lambda item: ARMS.index(item.arm))
+    ]
+    runs_sha256 = sha256_bytes(
+        json.dumps(
+            record_payload,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    )
+    snapshot = json.dumps(
+        {"task": asdict(task), "records": record_payload},
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return runs_sha256, sha256_bytes(snapshot)
 
 
 def _murlocs_score(summary: ComparisonSummary) -> Any:

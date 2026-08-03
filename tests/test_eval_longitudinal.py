@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -9,11 +11,16 @@ from murlocs.curation import (
     CurationEvent,
     CurationEvidence,
     CurationRecord,
+    load_record,
     render_record,
     stable_list_key,
 )
 from murlocs.eval.__main__ import main as eval_main
-from murlocs.eval.longitudinal import analyze_longitudinal, load_longitudinal
+from murlocs.eval.longitudinal import (
+    analyze_longitudinal,
+    load_longitudinal,
+    save_longitudinal_results,
+)
 
 HASH_A = "a" * 64
 HASH_B = "b" * 64
@@ -25,6 +32,7 @@ def event(
     state: str,
     hour: int,
     *,
+    rationale: str | None = None,
     source_before: str | None = None,
     source_after: str | None = None,
     related: str | None = None,
@@ -34,7 +42,7 @@ def event(
         state=state,
         actor="@owner",
         at=f"2026-08-0{1 + hour // 24}T{hour % 24:02d}:00:00Z",
-        rationale=f"{state} for longitudinal fixture",
+        rationale=rationale or f"{state} for longitudinal fixture",
         before_sha256=HASH_A if applied else None,
         after_sha256=HASH_B if applied else None,
         source_before_sha256=source_before,
@@ -98,6 +106,7 @@ def write_runs(
     correct: bool = True,
     steps: int = 10,
     active_bytes: int = 0,
+    run_id: str = "fixture",
 ) -> None:
     runs = []
     for arm in ("no-guidance", "inline-dump", "murlocs"):
@@ -118,7 +127,7 @@ def write_runs(
                     "lines_inspected": steps * 3,
                     "tool_calls": steps,
                     "executable_steps": steps,
-                    "transcript": [f"recorded {arm} evidence"],
+                    "transcript": [f"recorded {arm} evidence for {run_id}"],
                 },
             }
         )
@@ -156,6 +165,7 @@ def build_series(tmp_path: Path) -> Path:
                 event(
                     "superseded",
                     26,
+                    rationale="replacement transaction",
                     source_before=HASH_B,
                     source_after=HASH_C,
                     related="replacement",
@@ -172,6 +182,7 @@ def build_series(tmp_path: Path) -> Path:
                 event(
                     "promoted",
                     26,
+                    rationale="replacement transaction",
                     source_before=HASH_B,
                     source_after=HASH_C,
                     related="addition",
@@ -262,6 +273,7 @@ def build_series(tmp_path: Path) -> Path:
                 correct=not (proposal_id == "replacement" and phase == "after"),
                 steps=steps,
                 active_bytes=active_bytes,
+                run_id=stem,
             )
             observations.append(
                 {
@@ -335,6 +347,8 @@ def test_longitudinal_summary_distinguishes_lifecycle_and_preserves_evidence(tmp
     ]
     assert evidence["revisions"]["source_after"] == HASH_B
     assert evidence["observations"][0]["records"][2]["evidence"]["transcript"]
+    assert len(evidence["observations"][0]["runs_sha256"]) == 64
+    assert len(evidence["observations"][0]["snapshot_sha256"]) == 64
     assert "efficiency_delta" in result["metric_definitions"]
 
 
@@ -398,6 +412,37 @@ def test_run_metadata_cannot_relabel_incompatible_revision(tmp_path, field):
         load_longitudinal(path)
 
 
+def test_longitudinal_join_rejects_task_without_objective_facts(tmp_path):
+    path = build_series(tmp_path)
+    task = tmp_path / "tasks/addition-before.toml"
+    task.write_text(
+        task.read_text(encoding="utf-8").split("[[expected_facts]]", 1)[0]
+        + "expected_facts = []\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="expected_facts must contain at least one"):
+        load_longitudinal(path)
+
+
+def test_longitudinal_join_rejects_zero_threshold_with_wrong_answers(tmp_path):
+    path = build_series(tmp_path)
+    task = tmp_path / "tasks/addition-before.toml"
+    task.write_text(
+        task.read_text(encoding="utf-8").replace(
+            "correctness_threshold = 1.0", "correctness_threshold = 0.0"
+        ),
+        encoding="utf-8",
+    )
+    runs_path = tmp_path / "runs/addition-before.json"
+    runs = json.loads(runs_path.read_text(encoding="utf-8"))
+    for item in runs["runs"]:
+        item["answer"] = "wholly wrong"
+    runs_path.write_text(json.dumps(runs), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="must be greater than 0 and at most 1"):
+        load_longitudinal(path)
+
+
 @pytest.mark.parametrize("failure", ["missing", "ambiguous"])
 def test_missing_and_ambiguous_run_links_are_rejected(tmp_path, failure):
     path = build_series(tmp_path)
@@ -437,6 +482,20 @@ def test_longitudinal_output_is_deterministic_and_inputs_are_read_only(tmp_path)
         if item.is_file()
     }
     first = analyze_longitudinal(load_longitudinal(path))
+    assert {
+        item.relative_to(tmp_path).as_posix(): item.read_bytes()
+        for item in tmp_path.rglob("*")
+        if item.is_file()
+    } == before
+    for runs_path in (tmp_path / "runs").glob("*.json"):
+        runs = json.loads(runs_path.read_text(encoding="utf-8"))
+        runs["runs"].reverse()
+        runs_path.write_text(json.dumps(runs), encoding="utf-8")
+    reordered = {
+        item.relative_to(tmp_path).as_posix(): item.read_bytes()
+        for item in tmp_path.rglob("*")
+        if item.is_file()
+    }
     second = analyze_longitudinal(load_longitudinal(reversed_path))
     after = {
         item.relative_to(tmp_path).as_posix(): item.read_bytes()
@@ -444,7 +503,7 @@ def test_longitudinal_output_is_deterministic_and_inputs_are_read_only(tmp_path)
         if item.is_file()
     }
     assert json.dumps(first, sort_keys=True) == json.dumps(second, sort_keys=True)
-    assert after == before
+    assert after == reordered
 
 
 def test_longitudinal_cli_writes_only_explicit_result(tmp_path, capsys):
@@ -455,6 +514,30 @@ def test_longitudinal_cli_writes_only_explicit_result(tmp_path, capsys):
     result = json.loads((output / "series-27.json").read_text(encoding="utf-8"))
     assert result["summary"]["rejections"] == 1
     assert result["raw_evidence"][0]["record"]["id"] == "addition"
+
+
+@pytest.mark.parametrize("link_kind", ["symlink", "hardlink"])
+def test_longitudinal_save_replaces_links_without_mutating_external_target(
+    tmp_path, link_kind
+):
+    result = analyze_longitudinal(load_longitudinal(build_series(tmp_path / "series")))
+    output = tmp_path / "results"
+    output.mkdir()
+    victim = tmp_path / "external.json"
+    victim.write_text("external content\n", encoding="utf-8")
+    target = output / "series-27.json"
+    if link_kind == "symlink":
+        target.symlink_to(victim)
+    else:
+        os.link(victim, target)
+
+    assert save_longitudinal_results(output, result) == target
+
+    assert victim.read_text(encoding="utf-8") == "external content\n"
+    assert not target.is_symlink()
+    assert target.is_file()
+    assert target.stat().st_ino != victim.stat().st_ino
+    assert json.loads(target.read_text(encoding="utf-8"))["series_id"] == "series-27"
 
 
 def test_supersession_must_have_reciprocal_proposal_link(tmp_path):
@@ -471,6 +554,42 @@ def test_supersession_must_have_reciprocal_proposal_link(tmp_path):
         load_longitudinal(path)
 
 
+def rewrite_superseded_event(tmp_path: Path, **changes: object) -> None:
+    record_path = tmp_path / "records/addition.toml"
+    current = load_record(record_path, expected_id="addition")
+    terminal = replace(current.events[-1], **changes)
+    updated = replace(current, events=(*current.events[:-1], terminal))
+    record_path.write_text(render_record(updated), encoding="utf-8")
+
+
+def test_superseded_source_after_must_match_replacement_transaction(tmp_path):
+    path = build_series(tmp_path)
+    rewrite_superseded_event(tmp_path, source_after_sha256=HASH_D)
+
+    with pytest.raises(ValueError, match="supersession transaction.*source_after_sha256"):
+        load_longitudinal(path)
+
+
+@pytest.mark.parametrize(
+    ("field", "mismatch"),
+    [
+        ("before_sha256", HASH_D),
+        ("after_sha256", HASH_D),
+        ("source_before_sha256", HASH_D),
+        ("at", "2026-08-02T03:00:00Z"),
+        ("actor", "@different-owner"),
+        ("rationale", "different transaction rationale"),
+        ("review_ref", "review-elsewhere"),
+    ],
+)
+def test_supersession_events_must_share_every_audit_field(tmp_path, field, mismatch):
+    path = build_series(tmp_path)
+    rewrite_superseded_event(tmp_path, **{field: mismatch})
+
+    with pytest.raises(ValueError, match=rf"supersession transaction.*{field}"):
+        load_longitudinal(path)
+
+
 def test_duplicate_affected_chain_is_ambiguous(tmp_path):
     path = build_series(tmp_path)
     payload = json.loads(path.read_text(encoding="utf-8"))
@@ -479,6 +598,108 @@ def test_duplicate_affected_chain_is_ambiguous(tmp_path):
     )
     path.write_text(json.dumps(payload), encoding="utf-8")
     with pytest.raises(ValueError, match="ambiguous duplicate affected guidance chain"):
+        load_longitudinal(path)
+
+
+def test_physical_snapshot_cannot_be_attributed_to_unrelated_proposals(tmp_path):
+    path = build_series(tmp_path)
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    pruning = next(
+        item
+        for item in payload["observations"]
+        if item["proposal_id"] == "pruning" and item["phase"] == "before"
+    )
+    rejected = next(
+        item for item in payload["observations"] if item["proposal_id"] == "rejected"
+    )
+    copied_task = tmp_path / "tasks/copied-unrelated.toml"
+    copied_runs = tmp_path / "runs/copied-unrelated.json"
+    copied_task.write_bytes((tmp_path / pruning["task"]).read_bytes())
+    reordered_runs = json.loads((tmp_path / pruning["runs"]).read_text(encoding="utf-8"))
+    reordered_runs["runs"].reverse()
+    copied_runs.write_text(json.dumps(reordered_runs), encoding="utf-8")
+    rejected["task"] = "tasks/copied-unrelated.toml"
+    rejected["runs"] = "runs/copied-unrelated.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="may be reused only.*adjacent applied proposals"):
+        load_longitudinal(path)
+
+
+def test_adjacent_after_to_before_snapshot_reuse_is_explicitly_safe(tmp_path):
+    path = build_series(tmp_path)
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    addition_after = next(
+        item
+        for item in payload["observations"]
+        if item["proposal_id"] == "addition" and item["phase"] == "after"
+    )
+    replacement_before = next(
+        item
+        for item in payload["observations"]
+        if item["proposal_id"] == "replacement" and item["phase"] == "before"
+    )
+    copied_task = tmp_path / "tasks/copied-adjacent.toml"
+    copied_runs = tmp_path / "runs/copied-adjacent.json"
+    copied_task.write_bytes((tmp_path / addition_after["task"]).read_bytes())
+    copied_runs.write_bytes((tmp_path / addition_after["runs"]).read_bytes())
+    replacement_before["task"] = "tasks/copied-adjacent.toml"
+    replacement_before["runs"] = "runs/copied-adjacent.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    result = analyze_longitudinal(load_longitudinal(path))
+    assert len(result["comparisons"]) == 3
+
+
+@pytest.mark.parametrize(
+    "disconnect", ["revision", "chain_bytes", "unapplied", "cross_source"]
+)
+def test_linear_series_rejects_disconnected_or_branching_history(tmp_path, disconnect):
+    path = build_series(tmp_path)
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    replacement = next(
+        item
+        for item in payload["proposals"]
+        if item["record"].endswith("replacement.toml")
+    )
+    if disconnect == "revision":
+        replacement["revisions"]["repository_before"] = "branch-x"
+        expected = "disconnected revision history"
+    elif disconnect == "chain_bytes":
+        replacement["affected_chains"][0]["active_bytes_before"] = 999
+        expected = "affected chain bytes conflict"
+    elif disconnect == "unapplied":
+        rejected = next(
+            item
+            for item in payload["proposals"]
+            if item["record"].endswith("rejected.toml")
+        )
+        rejected["revisions"]["guidance_before"] = "disconnected-guidance"
+        expected = "unapplied proposal.*disconnected"
+    else:
+        record_path = tmp_path / "records/rejected.toml"
+        record_path.write_text(
+            record_path.read_text(encoding="utf-8").replace(
+                'target_source = ".murlocs/manifest.toml"',
+                'target_source = ".murlocs/layers/other.toml"',
+            ),
+            encoding="utf-8",
+        )
+        expected = "must target exactly one active source"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match=expected):
+        load_longitudinal(path)
+
+
+def test_record_target_scope_must_be_in_supplied_affected_scopes(tmp_path):
+    path = build_series(tmp_path)
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["proposals"][0]["affected_chains"][0]["scope"] = "unrelated"
+    payload["proposals"][0]["affected_chains"][0]["chain"] = ["unrelated"]
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="record target_scope.*must be among"):
         load_longitudinal(path)
 
 
