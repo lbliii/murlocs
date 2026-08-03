@@ -579,6 +579,11 @@ class CurationOwnersPayload(TypedDict):
     current: list[str]
 
 
+class CurationRequiredScopesPayload(TypedDict):
+    recorded: list[str]
+    current: list[str]
+
+
 class CurationDecisionPayload(TypedDict):
     state: str
     actor: str
@@ -648,6 +653,7 @@ class CurationReviewPayload(TypedDict):
     ok: bool
     proposal: CurationProposalPayload
     owners: CurationOwnersPayload
+    required_scopes: CurationRequiredScopesPayload
     decisions: list[CurationDecisionPayload]
     evidence: list[CurationEvidencePayload]
     change: CurationChangePayload
@@ -1475,6 +1481,8 @@ def impact_command(
             manifest,
             changed,
             revision_range=revision_range,
+            explicit_paths=explicit,
+            revision_paths=from_git,
         )
     except MurlocsError as exc:
         return _failure("MURLOCS_IMPACT", exc)
@@ -1758,7 +1766,7 @@ def curate_propose_command(
         evidence_summary: Concise explanation of the evidence.
         at: Caller-supplied event timestamp.
         repo: Repository root containing the guidance network.
-        target_scope: Optional affected scope id.
+        target_scope: Optional subject-addressing scope; never a rendered-effect boundary.
         target_key: Stable key for replacement, removal, or structured addition.
         value: String payload for list guidance.
         payload_json: Object payload for structured guidance.
@@ -2073,6 +2081,10 @@ def curate_review_command(
         f"  target scope: {proposal['target_scope'] or '-'}",
         f"  current owners: {', '.join(report['owners']['current']) or 'unowned'}",
         f"  recorded owners: {', '.join(report['owners']['recorded']) or 'unowned'}",
+        f"  current required scopes: "
+        f"{', '.join(report['required_scopes']['current']) or 'none recorded'}",
+        f"  recorded required scopes: "
+        f"{', '.join(report['required_scopes']['recorded']) or 'legacy/none'}",
         f"  proposer: {proposal['proposer']} · origin: {proposal['origin']}",
         f"  rationale: {proposal['rationale']}",
         f"  stale base: {'yes' if source['stale_base'] else 'no'}",

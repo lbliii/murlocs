@@ -133,9 +133,25 @@ def test_review_is_deterministic_read_only_and_has_human_json_mcp_parity(tmp_pat
         .call("curate.review", id="add-review-rule", repo=str(root))
         .structured
     )
+    programmatic = build_cli().call(
+        "curate.review", id="add-review-rule", repo=str(root)
+    )
+    tool = next(
+        item for item in MCPClient(build_cli()).list_tools() if item.name == "curate.review"
+    )
 
     assert first.exit_code == second.exit_code == human.exit_code == 0
-    assert json.loads(first.output) == json.loads(second.output) == structured
+    assert json.loads(first.output) == json.loads(second.output) == programmatic == structured
+    assert structured["required_scopes"] == {
+        "recorded": ["root"],
+        "current": ["root"],
+    }
+    success_schema = tool.output_schema["anyOf"][0]
+    assert "required_scopes" in success_schema["required"]
+    assert success_schema["properties"]["required_scopes"]["required"] == [
+        "current",
+        "recorded",
+    ]
     assert "intent: add operating_rule" in human.output
     assert "Before:\n  (none)" in human.output
     assert "After:" in human.output
@@ -144,6 +160,8 @@ def test_review_is_deterministic_read_only_and_has_human_json_mcp_parity(tmp_pat
     assert "proposed source:" in human.output
     assert "Decisions:\n  - proposed by @contributor" in human.output
     assert "Affected guidance chains:" in human.output
+    assert "current required scopes: root" in human.output
+    assert "recorded required scopes: root" in human.output
     assert "Exact duplicates:\n  - none" in human.output
     assert snapshot(root) == before
 
@@ -501,7 +519,10 @@ def test_current_owners_are_recomputed_and_propose_is_not_agent_visible(tmp_path
     report = json.loads(
         invoke("curate", "review", "owned", "--repo", str(root), "--format", "json").output
     )
-    assert report["owners"] == {"recorded": ["@platform"], "current": ["@maintainers"]}
+    assert report["owners"] == {
+        "recorded": ["@domain", "@platform"],
+        "current": ["@domain", "@maintainers"],
+    }
     assert any(item["code"] == "owners_changed" for item in report["findings"])
 
     tools = {tool.name for tool in MCPClient(build_cli()).list_tools()}

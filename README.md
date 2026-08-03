@@ -137,7 +137,8 @@ Milo also provides `murlocs --mcp` (or `mrr --mcp`), `murlocs --llms-txt`, struc
 shell completions, and in-process typed dispatch. Only read-only `status`, `inventory`, `diff`,
 `check`, `explain`, `impact`, `curate review`, and `curate check` are agent-visible. Every curation
 write remains CLI-only and supports `--dry-run`. Actor values are audit attribution, not identities
-authenticated by Murlocs. See
+authenticated by Murlocs. Curation owner routing follows every prospectively changed guidance chain;
+`target_scope` addresses a subject but does not confine root-level list guidance. See
 [Adoption status and coverage](docs/adoption.md) for the lifecycle contract and
 [Changed-path impact](docs/impact.md) for the review policy, stable output, and CI and pre-commit
 examples.

@@ -8,6 +8,8 @@ import pytest
 from milo.testing import MCPClient
 
 from murlocs.cli import _normalize_repeatable_options, build_cli
+from murlocs.impact import build_impact_report
+from murlocs.manifest import load_manifest
 
 MANIFEST = """schema_version = 1
 network = "Impact"
@@ -31,6 +33,7 @@ source_suffixes = [".py"]
 [checks.api-test]
 invoke = "touch MUST_NOT_EXIST"
 location = "pyproject.toml"
+proof_contains = "[tool.pytest.ini_options]"
 description = "Check API behavior."
 
 [[layers]]
@@ -159,7 +162,7 @@ def test_root_owned_change_requires_root_review(tmp_path):
     }
     assert "@platform" in root_scope["owners"]
     assert by_id(report, "api")["status"] == "unaffected"
-    assert report["policy"]["version"] == 1
+    assert report["policy"]["version"] == 2
 
 
 def test_nested_owned_change_reports_chain_layers_owners_and_proof(tmp_path):
@@ -361,6 +364,454 @@ def test_inline_dash_path_matches_programmatic_and_mcp_surfaces(tmp_path):
     mcp = structured(root, path=paths)
     assert terminal["input"]["paths"] == paths
     assert terminal == programmatic == mcp
+
+
+def test_generated_root_map_change_routes_every_active_guidance_chain(tmp_path):
+    root = tmp_path / "repo"
+    build(root)
+
+    report = structured(root, path=["AGENTS.md"])
+
+    assert {scope["status"] for scope in report["scopes"]} == {"required"}
+    assert all(
+        any("active guidance chain" in reason for reason in scope["reasons"])
+        for scope in report["scopes"]
+    )
+
+
+def test_uncompiled_global_layer_change_routes_every_scope(tmp_path):
+    root = tmp_path / "repo"
+    build(root)
+    assert invoke("compile", "--repo", str(root)).exit_code == 0
+    layer = root / ".murlocs/layers/api.toml"
+    layer.write_text(
+        'operating_rules = ["Review every affected guidance chain."]\n\n'
+        + layer.read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+
+    report = structured(root, path=[".murlocs/layers/api.toml"])
+
+    assert {scope["status"] for scope in report["scopes"]} == {"required"}
+    assert all(
+        any("affecting AGENTS.md" in reason for reason in scope["reasons"])
+        for scope in report["scopes"]
+    )
+
+
+def test_synchronized_global_layer_still_routes_every_scope_from_source_only(tmp_path):
+    root = tmp_path / "repo"
+    build(root)
+    layer = root / ".murlocs/layers/api.toml"
+    layer.write_text(
+        'operating_rules = ["Review every affected guidance chain."]\n\n'
+        + layer.read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    assert invoke("compile", "--repo", str(root)).exit_code == 0
+    subprocess.run(["git", "init"], cwd=root, check=True, capture_output=True)
+    commit_all(root, "synchronized global guidance")
+
+    report = structured(root, path=[".murlocs/layers/api.toml"])
+
+    assert report["summary"] == {"required": 3, "recommended": 0, "unaffected": 0}
+
+
+def test_synchronized_global_source_survives_local_generated_map_drift(tmp_path):
+    root = tmp_path / "repo"
+    build(root)
+    layer = root / ".murlocs/layers/api.toml"
+    layer.write_text(
+        'operating_rules = ["Review every affected guidance chain."]\n\n'
+        + layer.read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    assert invoke("compile", "--repo", str(root)).exit_code == 0
+    generated = root / "src/api/AGENTS.md"
+    generated.write_text(
+        generated.read_text(encoding="utf-8") + "\nmanual output drift\n",
+        encoding="utf-8",
+    )
+
+    report = structured(root, path=[".murlocs/layers/api.toml"])
+
+    assert report["summary"] == {"required": 3, "recommended": 0, "unaffected": 0}
+
+
+def test_missing_root_map_is_drift_for_uncompiled_root_summary_change(tmp_path):
+    root = tmp_path / "repo"
+    build(root)
+    assert invoke("compile", "--repo", str(root)).exit_code == 0
+    subprocess.run(["git", "init"], cwd=root, check=True, capture_output=True)
+    commit_all(root, "compiled baseline")
+    (root / "AGENTS.md").unlink()
+    layer = root / ".murlocs/layers/api.toml"
+    layer.write_text(
+        layer.read_text(encoding="utf-8")
+        + '\n[[invariants]]\nid = "api-added"\nscope = "api"\n'
+        + 'statement = "An added API invariant."\nseverity = "important"\n'
+        + 'verification = "manual"\nevidence_file = "docs/api.md"\n'
+        + 'anchor = "API design"\n',
+        encoding="utf-8",
+    )
+
+    report = structured(root, path=[".murlocs/layers/api.toml"])
+
+    assert report["summary"] == {"required": 3, "recommended": 0, "unaffected": 0}
+
+
+def test_scope_local_layer_change_remains_focused_before_and_after_compile(tmp_path):
+    root = tmp_path / "repo"
+    build(root)
+    assert invoke("compile", "--repo", str(root)).exit_code == 0
+    layer = root / ".murlocs/layers/api.toml"
+    layer.write_text(
+        layer.read_text(encoding="utf-8")
+        + '\n[judgments.api]\nadvocate = ["Prefer explicit API boundaries."]\n',
+        encoding="utf-8",
+    )
+
+    before_compile = structured(root, path=[".murlocs/layers/api.toml"])
+    assert by_id(before_compile, "api")["status"] == "required"
+    assert by_id(before_compile, "worker")["status"] == "recommended"
+    assert by_id(before_compile, "root")["status"] == "unaffected"
+
+    assert invoke("compile", "--repo", str(root)).exit_code == 0
+    after_compile = structured(root, path=[".murlocs/layers/api.toml"])
+    assert by_id(after_compile, "api")["status"] == "required"
+    assert by_id(after_compile, "worker")["status"] == "recommended"
+    assert by_id(after_compile, "root")["status"] == "unaffected"
+
+
+def test_existing_global_content_does_not_widen_exact_local_rendered_drift(tmp_path):
+    root = tmp_path / "repo"
+    build(root)
+    layer = root / ".murlocs/layers/api.toml"
+    layer.write_text(
+        'operating_rules = ["Existing global rule."]\n\n'
+        + layer.read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    assert invoke("compile", "--repo", str(root)).exit_code == 0
+    layer.write_text(
+        layer.read_text(encoding="utf-8")
+        + '\n[judgments.api]\nadvocate = ["Prefer explicit API boundaries."]\n',
+        encoding="utf-8",
+    )
+
+    report = structured(root, path=[".murlocs/layers/api.toml"])
+
+    assert by_id(report, "api")["status"] == "required"
+    assert by_id(report, "worker")["status"] == "recommended"
+    assert by_id(report, "root")["status"] == "unaffected"
+
+
+def test_unrelated_worker_drift_is_not_attributed_to_explicit_api_source(tmp_path):
+    root = tmp_path / "repo"
+    build(root)
+    assert invoke("compile", "--repo", str(root)).exit_code == 0
+    worker = root / ".murlocs/layers/worker.toml"
+    worker.write_text(
+        worker.read_text(encoding="utf-8")
+        + '\n[[invariants]]\nid = "worker-queue"\nscope = "worker"\n'
+        + 'statement = "Worker queues stay bounded."\nseverity = "important"\n'
+        + 'verification = "manual"\nevidence_file = "docs/api.md"\n'
+        + 'anchor = "API design"\n',
+        encoding="utf-8",
+    )
+
+    report = structured(root, path=[".murlocs/layers/api.toml"])
+
+    assert by_id(report, "api")["status"] == "required"
+    assert by_id(report, "worker")["status"] == "recommended"
+    assert by_id(report, "root")["status"] == "unaffected"
+    assert not any(
+        "affecting src/worker/AGENTS.md" in reason
+        for scope in report["scopes"]
+        for reason in scope["reasons"]
+    )
+
+
+def test_two_stale_sources_use_git_semantics_to_keep_explicit_local_edit_focused(
+    tmp_path,
+):
+    root = tmp_path / "repo"
+    build(root)
+    assert invoke("compile", "--repo", str(root)).exit_code == 0
+    subprocess.run(["git", "init"], cwd=root, check=True, capture_output=True)
+    commit_all(root, "rendered baseline")
+    api = root / ".murlocs/layers/api.toml"
+    api.write_text(
+        api.read_text(encoding="utf-8")
+        + '\n[judgments.api]\nadvocate = ["Prefer explicit API boundaries."]\n',
+        encoding="utf-8",
+    )
+    worker = root / ".murlocs/layers/worker.toml"
+    worker.write_text(
+        'operating_rules = ["Review worker-wide changes."]\n\n'
+        + worker.read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+
+    report = structured(root, path=[".murlocs/layers/api.toml"])
+
+    assert by_id(report, "api")["status"] == "required"
+    assert by_id(report, "worker")["status"] == "recommended"
+    assert by_id(report, "root")["status"] == "unaffected"
+
+
+def test_two_stale_sources_without_baseline_report_conservative_root_ambiguity(tmp_path):
+    root = tmp_path / "repo"
+    build(root)
+    assert invoke("compile", "--repo", str(root)).exit_code == 0
+    api = root / ".murlocs/layers/api.toml"
+    api.write_text(
+        api.read_text(encoding="utf-8")
+        + '\n[judgments.api]\nadvocate = ["Prefer explicit API boundaries."]\n',
+        encoding="utf-8",
+    )
+    worker = root / ".murlocs/layers/worker.toml"
+    worker.write_text(
+        'operating_rules = ["Review worker-wide changes."]\n\n'
+        + worker.read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+
+    report = structured(root, path=[".murlocs/layers/api.toml"])
+
+    assert {scope["status"] for scope in report["scopes"]} == {"required"}
+    assert all(
+        any("cannot be attributed more narrowly" in reason for reason in scope["reasons"])
+        for scope in report["scopes"]
+    )
+
+
+def test_committed_source_with_uncompiled_root_semantics_uses_locked_git_blob(tmp_path):
+    root = tmp_path / "repo"
+    build(root)
+    assert invoke("compile", "--repo", str(root)).exit_code == 0
+    subprocess.run(["git", "init"], cwd=root, check=True, capture_output=True)
+    commit_all(root, "compiled baseline")
+    api = root / ".murlocs/layers/api.toml"
+    api.write_text(
+        api.read_text(encoding="utf-8")
+        + '\n[[invariants]]\nid = "api-added"\nscope = "api"\n'
+        + 'statement = "An added API invariant."\nseverity = "important"\n'
+        + 'verification = "manual"\nevidence_file = "docs/api.md"\n'
+        + 'anchor = "API design"\n',
+        encoding="utf-8",
+    )
+    commit_all(root, "commit source without compiling")
+
+    report = structured(root, path=[".murlocs/layers/api.toml"])
+
+    assert report["summary"] == {"required": 3, "recommended": 0, "unaffected": 0}
+
+
+def test_workspace_invariant_addition_routes_root_but_statement_edit_stays_focused(
+    tmp_path,
+):
+    root = tmp_path / "repo"
+    build(root)
+    assert invoke("compile", "--repo", str(root)).exit_code == 0
+    layer = root / ".murlocs/layers/api.toml"
+    layer.write_text(
+        layer.read_text(encoding="utf-8").replace(
+            "The API design is documented.", "The API design stays documented."
+        ),
+        encoding="utf-8",
+    )
+
+    focused = structured(root, path=[".murlocs/layers/api.toml"])
+    assert by_id(focused, "api")["status"] == "required"
+    assert by_id(focused, "root")["status"] == "unaffected"
+
+    assert invoke("compile", "--repo", str(root)).exit_code == 0
+    layer.write_text(
+        layer.read_text(encoding="utf-8")
+        + '\n[[invariants]]\nid = "api-added"\nscope = "api"\n'
+        + 'statement = "An added API invariant."\nseverity = "important"\n'
+        + 'verification = "manual"\nevidence_file = "docs/api.md"\n'
+        + 'anchor = "API design"\n',
+        encoding="utf-8",
+    )
+
+    widened = structured(root, path=[".murlocs/layers/api.toml"])
+    assert widened["summary"] == {"required": 3, "recommended": 0, "unaffected": 0}
+
+
+def test_revision_source_only_routes_removal_of_last_global_field(tmp_path):
+    root = tmp_path / "repo"
+    build(root)
+    layer = root / ".murlocs/layers/api.toml"
+    global_header = 'operating_rules = ["Review every affected guidance chain."]\n\n'
+    layer.write_text(global_header + layer.read_text(encoding="utf-8"), encoding="utf-8")
+    assert invoke("compile", "--repo", str(root)).exit_code == 0
+    subprocess.run(["git", "init"], cwd=root, check=True, capture_output=True)
+    commit_all(root, "global baseline")
+
+    layer.write_text(
+        layer.read_text(encoding="utf-8").removeprefix(global_header), encoding="utf-8"
+    )
+    assert invoke("compile", "--repo", str(root)).exit_code == 0
+    report = build_impact_report(
+        load_manifest(root),
+        (".murlocs/layers/api.toml",),
+        revision_range="HEAD",
+    )
+
+    assert report["summary"] == {"required": 3, "recommended": 0, "unaffected": 0}
+
+
+def test_revision_local_edit_ignores_unchanged_global_content(tmp_path):
+    root = tmp_path / "repo"
+    build(root)
+    layer = root / ".murlocs/layers/api.toml"
+    layer.write_text(
+        'operating_rules = ["Existing global rule."]\n\n'
+        + layer.read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    assert invoke("compile", "--repo", str(root)).exit_code == 0
+    subprocess.run(["git", "init"], cwd=root, check=True, capture_output=True)
+    commit_all(root, "global baseline")
+
+    layer.write_text(
+        layer.read_text(encoding="utf-8")
+        + '\n[judgments.api]\nadvocate = ["Prefer explicit API boundaries."]\n',
+        encoding="utf-8",
+    )
+    assert invoke("compile", "--repo", str(root)).exit_code == 0
+    report = build_impact_report(
+        load_manifest(root),
+        (".murlocs/layers/api.toml",),
+        revision_range="HEAD",
+    )
+
+    assert by_id(report, "api")["status"] == "required"
+    assert by_id(report, "worker")["status"] == "recommended"
+    assert by_id(report, "root")["status"] == "unaffected"
+
+
+@pytest.mark.parametrize("change", ["scope-add", "invariant-add", "command-backed"])
+def test_revision_root_summary_semantics_route_every_scope(tmp_path, change):
+    root = tmp_path / "repo"
+    build(root)
+    assert invoke("compile", "--repo", str(root)).exit_code == 0
+    subprocess.run(["git", "init"], cwd=root, check=True, capture_output=True)
+    commit_all(root, "summary baseline")
+    layer = root / ".murlocs/layers/api.toml"
+    text = layer.read_text(encoding="utf-8")
+    if change == "scope-add":
+        text += (
+            '\n[[scopes]]\nid = "api-child"\npath = "src/api/app"\n'
+            + 'map = "src/api/app/AGENTS.md"\npoint_of_view = "API child."\n'
+            + 'owns = []\nguardrails = []\nedges = []\n'
+        )
+    elif change == "invariant-add":
+        text += (
+            '\n[[invariants]]\nid = "api-added"\nscope = "api"\n'
+            + 'statement = "An added API invariant."\nseverity = "important"\n'
+            + 'verification = "manual"\nevidence_file = "docs/api.md"\n'
+            + 'anchor = "API design"\n'
+        )
+    else:
+        text = text.replace(
+            'verification = "manual"\nevidence_file = "docs/api.md"\nanchor = "API design"',
+            'verification = "command"\nenforced_by = "api-test"',
+        )
+    layer.write_text(text, encoding="utf-8")
+
+    report = structured(root, revision_range="HEAD")
+
+    assert {scope["status"] for scope in report["scopes"]} == {"required"}
+
+
+def test_revision_invariant_statement_only_edit_remains_focused(tmp_path):
+    root = tmp_path / "repo"
+    build(root)
+    assert invoke("compile", "--repo", str(root)).exit_code == 0
+    subprocess.run(["git", "init"], cwd=root, check=True, capture_output=True)
+    commit_all(root, "invariant baseline")
+    layer = root / ".murlocs/layers/api.toml"
+    layer.write_text(
+        layer.read_text(encoding="utf-8").replace(
+            "The API design is documented.", "The API design stays documented."
+        ),
+        encoding="utf-8",
+    )
+
+    report = structured(root, revision_range="HEAD")
+
+    assert by_id(report, "api")["status"] == "required"
+    assert by_id(report, "worker")["status"] == "recommended"
+    assert by_id(report, "root")["status"] == "unaffected"
+
+
+def test_explicit_global_source_semantics_survive_union_with_worker_revision(tmp_path):
+    root = tmp_path / "repo"
+    build(root)
+    api = root / ".murlocs/layers/api.toml"
+    api.write_text(
+        'operating_rules = ["Existing global rule."]\n\n'
+        + api.read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    assert invoke("compile", "--repo", str(root)).exit_code == 0
+    subprocess.run(["git", "init"], cwd=root, check=True, capture_output=True)
+    commit_all(root, "global baseline")
+    worker = root / ".murlocs/layers/worker.toml"
+    worker.write_text(
+        worker.read_text(encoding="utf-8")
+        + '\n[judgments.worker]\nadvocate = ["Keep worker queues bounded."]\n',
+        encoding="utf-8",
+    )
+
+    result = invoke(
+        "impact",
+        "--path",
+        ".murlocs/layers/api.toml",
+        "--revision-range",
+        "HEAD",
+        "--repo",
+        str(root),
+        "--format",
+        "json",
+    )
+    assert result.exit_code == 0, result.stderr
+    report = json.loads(result.output)
+    assert report["summary"] == {"required": 3, "recommended": 0, "unaffected": 0}
+
+
+def test_revision_content_inspection_never_executes_textconv(tmp_path):
+    root = tmp_path / "repo"
+    build(root)
+    sentinel = root / "TEXTCONV_EXECUTED"
+    driver = root / "textconv-driver.sh"
+    driver.write_text(
+        f'#!/bin/sh\ntouch "{sentinel}"\ncat "$1"\n', encoding="utf-8"
+    )
+    driver.chmod(0o755)
+    (root / ".gitattributes").write_text("*.toml diff=sentinel\n", encoding="utf-8")
+    subprocess.run(["git", "init"], cwd=root, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "config", "diff.sentinel.textconv", str(driver)],
+        cwd=root,
+        check=True,
+        capture_output=True,
+    )
+    commit_all(root, "textconv baseline")
+    api = root / ".murlocs/layers/api.toml"
+    api.write_text(
+        'operating_rules = ["Revision global rule."]\n\n'
+        + api.read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+
+    report = structured(root, revision_range="HEAD")
+
+    assert report["summary"] == {"required": 3, "recommended": 0, "unaffected": 0}
+    assert not sentinel.exists()
 
 
 def test_repeatable_normalizer_preserves_root_option_values_and_coalesces_selected_flags():

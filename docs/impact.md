@@ -19,15 +19,25 @@ the inline spelling `--path=-dash.py` so it cannot be mistaken for another termi
 
 The revision argument is passed as one revision expression to read-only `git diff --name-only`.
 It can therefore also be `HEAD` when comparing the index and working tree with the current commit.
-When explicit and Git-derived paths are both supplied, Murlocs reports their union.
+Every diff disables external diff drivers and text conversion, so repository configuration cannot
+turn impact analysis into command execution. When explicit and Git-derived paths are both supplied,
+Murlocs reports their union while retaining each path's provenance; an explicit synchronized source
+does not lose its current semantic routing merely because another path also came from Git.
 
-## Review policy v1
+## Review policy v2
 
 Every declared scope has exactly one status:
 
 - `required`: a changed path is owned by the scope or names its generated map, a contributing
   guidance source, network review protocol, manual evidence, or registered-check configuration.
   A root control-plane manifest or review-protocol change requires every scope to be reviewed.
+  A changed generated map requires every scope whose active root-to-target guidance chain contains
+  that map. For guidance-source edits, Murlocs uses current rendered drift when available; a
+  synchronized source that contains a root-level list or check contribution is still routed through
+  every chain. Git revision comparison also detects root-render changes from removing the last
+  global field, adding/removing scopes or invariants, moving an invariant between scopes, and
+  changing the command-backed invariant ratio. An invariant statement-only edit remains local when
+  the root summary is unchanged.
 - `recommended`: a changed path falls inside the nearest non-root scope without matching declared
   ownership, or a required scope is connected to this scope by one incoming or outgoing declared
   edge. Edge propagation is deliberately one hop so a connected graph does not turn every change
@@ -41,6 +51,23 @@ declared ownership and the other explicit relationships above.
 An affected status means “review this guidance in light of the change,” not “this guidance is
 stale” or “this invariant is false.” Semantic truth remains a human or agent judgment backed by
 the evidence and checks named in the report.
+
+The source file's layer kind or a curation record's `target_scope` is not semantic confinement.
+Root list subjects (`pillars`, `search_policy`, `operating_rules`, `stop_and_ask`, and
+`done_criteria`) and checks affect the root map and therefore every active chain. Scope-local
+judgments retain focused routing. Exact curation routing is derived from the prospective rendered
+map diff; changed-path routing is conservative when only a synchronized source path is available.
+
+Workspace source routing first intersects drift with maps contributed by that source, rather than
+attributing every dirty generated map to every source path. The compile lock's per-source hashes
+identify which sources changed; a missing expected generated map is drift, not absence of evidence.
+A source synchronized with the lock retains its global-list/check routing even when one of its
+generated maps has unrelated output-only drift. When more than one source is stale, Murlocs uses a
+Git blob matching the locked source hash, when available, to distinguish local-only edits from
+root-render changes.
+If no safe baseline exists, it fails closed for ambiguous root drift and reports that the root map
+cannot be attributed more narrowly. This is routing evidence, not a claim that one source caused an
+unrelated dirty map.
 
 ## Structured output
 

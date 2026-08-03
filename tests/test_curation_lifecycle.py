@@ -13,6 +13,69 @@ from murlocs.errors import MurlocsError
 from murlocs.lockfile import sha256_bytes
 from murlocs.serialization import render_manifest_data
 
+CROSS_SCOPE_MANIFEST = """schema_version = 1
+network = "Cross-scope curation"
+protocol = ".murlocs/PROTOCOL.md"
+max_active_bytes = 24576
+owners = ["@root"]
+pillars = []
+search_policy = []
+operating_rules = []
+stop_and_ask = []
+done_criteria = []
+
+[coverage]
+roots = []
+source_suffixes = [".py"]
+
+[coverage.exemptions]
+
+[policies]
+require_layer_owners = true
+validate_codeowners = true
+
+[[layers]]
+id = "app"
+kind = "domain"
+path = ".murlocs/layers/app.toml"
+owners = ["@app"]
+
+[[layers]]
+id = "tests"
+kind = "domain"
+path = ".murlocs/layers/tests.toml"
+owners = ["@test"]
+
+[[scopes]]
+id = "root"
+path = "."
+map = "AGENTS.md"
+point_of_view = "Repository."
+owns = []
+guardrails = []
+edges = []
+"""
+
+CROSS_SCOPE_APP = """[[scopes]]
+id = "app"
+path = "src/app"
+map = "src/app/AGENTS.md"
+point_of_view = "Application."
+owns = ["src/app"]
+guardrails = []
+edges = []
+"""
+
+CROSS_SCOPE_TESTS = """[[scopes]]
+id = "tests"
+path = "tests"
+map = "tests/AGENTS.md"
+point_of_view = "Tests."
+owns = ["tests"]
+guardrails = []
+edges = []
+"""
+
 
 def invoke(*argv: str):
     return build_cli().invoke(list(argv))
@@ -32,6 +95,125 @@ def initialize(root: Path) -> None:
         encoding="utf-8",
     )
     assert invoke("compile", "--repo", str(root)).exit_code == 0
+
+
+def initialize_cross_scope(root: Path, *, compile: bool = True) -> None:
+    for directory in (".murlocs/layers", ".github", "src/app", "tests"):
+        (root / directory).mkdir(parents=True, exist_ok=True)
+    (root / ".murlocs/manifest.toml").write_text(CROSS_SCOPE_MANIFEST, encoding="utf-8")
+    (root / ".murlocs/layers/app.toml").write_text(CROSS_SCOPE_APP, encoding="utf-8")
+    (root / ".murlocs/layers/tests.toml").write_text(CROSS_SCOPE_TESTS, encoding="utf-8")
+    (root / ".murlocs/PROTOCOL.md").write_text("# Protocol\n", encoding="utf-8")
+    (root / ".github/CODEOWNERS").write_text(
+        "/.murlocs/manifest.toml @root\n"
+        "/.murlocs/layers/app.toml @app\n"
+        "/.murlocs/layers/tests.toml @test\n",
+        encoding="utf-8",
+    )
+    if compile:
+        assert invoke("compile", "--repo", str(root)).exit_code == 0
+
+
+def cross_action(root: Path, name: str, proposal_id: str):
+    return invoke(
+        "curate",
+        name,
+        proposal_id,
+        "--actor",
+        "@app",
+        "--at",
+        "2026-08-03T16:00:00Z",
+        "--rationale",
+        f"{name} after cross-scope owner routing.",
+        "--repo",
+        str(root),
+        "--format",
+        "json",
+    )
+
+
+def cross_structured_proposal(
+    root: Path,
+    proposal_id: str,
+    *,
+    intent: str,
+    subject_kind: str,
+    target_key: str,
+    payload: dict | None,
+    target_scope: str | None,
+):
+    args = [
+        "curate",
+        "propose",
+        proposal_id,
+        "--intent",
+        intent,
+        "--subject-kind",
+        subject_kind,
+        "--target-source",
+        ".murlocs/layers/app.toml",
+        "--target-key",
+        target_key,
+        "--origin",
+        "issue-49",
+        "--rationale",
+        "Exercise persisted cross-scope routing.",
+        "--proposer",
+        "@author",
+        "--evidence-kind",
+        "issue",
+        "--evidence-reference",
+        "issue-49",
+        "--evidence-summary",
+        "Terminal routing must remain stable.",
+        "--at",
+        "2026-08-03T14:00:00Z",
+        "--repo",
+        str(root),
+        "--format",
+        "json",
+    ]
+    if target_scope is not None:
+        args.extend(["--target-scope", target_scope])
+    if payload is not None:
+        args.extend(["--payload-json", json.dumps(payload)])
+    return invoke(*args)
+
+
+def cross_global_proposal(root: Path, proposal_id: str):
+    return invoke(
+        "curate",
+        "propose",
+        proposal_id,
+        "--intent",
+        "add",
+        "--subject-kind",
+        "operating_rule",
+        "--target-source",
+        ".murlocs/layers/app.toml",
+        "--target-scope",
+        "app",
+        "--origin",
+        "issue-49",
+        "--rationale",
+        "Exercise legacy terminal routing.",
+        "--proposer",
+        "@author",
+        "--evidence-kind",
+        "issue",
+        "--evidence-reference",
+        "issue-49",
+        "--evidence-summary",
+        "Global list guidance changes every chain.",
+        "--at",
+        "2026-08-03T14:00:00Z",
+        "--value",
+        "Legacy-compatible global rule.",
+        "--repo",
+        str(root),
+        "--format",
+        "json",
+    )
 
 
 def propose(root: Path, proposal_id: str, *, intent: str = "add", value: str = "Curated rule."):
@@ -915,3 +1097,653 @@ def test_apply_never_executes_registered_checks(tmp_path):
     assert action(root, "accept", "no-check-execution").exit_code == 0
     assert action(root, "promote", "no-check-execution").exit_code == 0
     assert not marker.exists()
+
+
+def test_global_domain_proposal_routes_every_affected_chain_owner(tmp_path):
+    root = tmp_path / "repo"
+    initialize_cross_scope(root)
+    proposed = invoke(
+        "curate",
+        "propose",
+        "global-app-rule",
+        "--intent",
+        "add",
+        "--subject-kind",
+        "operating_rule",
+        "--target-source",
+        ".murlocs/layers/app.toml",
+        "--target-scope",
+        "app",
+        "--origin",
+        "issue-49",
+        "--rationale",
+        "Exercise cross-scope routing.",
+        "--proposer",
+        "@author",
+        "--evidence-kind",
+        "issue",
+        "--evidence-reference",
+        "issue-49",
+        "--evidence-summary",
+        "Global list guidance changes every active chain.",
+        "--at",
+        "2026-08-03T14:00:00Z",
+        "--value",
+        "Global rule contributed by the app layer.",
+        "--repo",
+        str(root),
+        "--format",
+        "json",
+    )
+    assert proposed.exit_code == 0, proposed.stderr
+    report = json.loads(proposed.output)["review"]
+    assert report["owners"] == {
+        "recorded": ["@app", "@root", "@test"],
+        "current": ["@app", "@root", "@test"],
+    }
+    assert {item["scope"] for item in report["affected_chains"]} == {
+        "root",
+        "app",
+        "tests",
+    }
+    record = load_record(root / ".murlocs/curation/global-app-rule.toml")
+    assert record.target_scope == "app"
+    assert record.required_owners == ("@app", "@root", "@test")
+    assert record.required_scopes == ("app", "root", "tests")
+
+    accepted = invoke(
+        "curate",
+        "accept",
+        "global-app-rule",
+        "--actor",
+        "@app",
+        "--at",
+        "2026-08-03T15:00:00Z",
+        "--rationale",
+        "Route all affected owners; actor strings are attribution only.",
+        "--repo",
+        str(root),
+    )
+    assert accepted.exit_code == 0, accepted.stderr
+
+    codeowners = root / ".github/CODEOWNERS"
+    original_codeowners = codeowners.read_text(encoding="utf-8")
+    codeowners.write_text(
+        original_codeowners.replace("@test", "@test @security"), encoding="utf-8"
+    )
+    before = snapshot(root)
+    stale = invoke(
+        "curate",
+        "promote",
+        "global-app-rule",
+        "--actor",
+        "@app",
+        "--at",
+        "2026-08-03T16:00:00Z",
+        "--rationale",
+        "Promotion must recheck policy.",
+        "--repo",
+        str(root),
+    )
+    assert stale.exit_code == 1
+    assert "owners" in stale.stderr
+    assert snapshot(root) == before
+
+    codeowners.write_text(original_codeowners, encoding="utf-8")
+    promoted = invoke(
+        "curate",
+        "promote",
+        "global-app-rule",
+        "--actor",
+        "@app",
+        "--at",
+        "2026-08-03T16:00:00Z",
+        "--rationale",
+        "Apply after the routing contract is revalidated.",
+        "--repo",
+        str(root),
+    )
+    assert promoted.exit_code == 0, promoted.stderr
+    terminal = json.loads(
+        invoke(
+            "curate",
+            "review",
+            "global-app-rule",
+            "--repo",
+            str(root),
+            "--format",
+            "json",
+        ).output
+    )
+    assert terminal["owners"]["current"] == ["@app", "@root", "@test"]
+    assert terminal["required_scopes"] == {
+        "recorded": ["app", "root", "tests"],
+        "current": ["app", "root", "tests"],
+    }
+
+    codeowners.write_text(
+        original_codeowners.replace("@test", "@test @security"), encoding="utf-8"
+    )
+    changed_owners = json.loads(
+        invoke(
+            "curate",
+            "review",
+            "global-app-rule",
+            "--repo",
+            str(root),
+            "--format",
+            "json",
+        ).output
+    )
+    assert changed_owners["owners"]["current"] == [
+        "@app",
+        "@root",
+        "@security",
+        "@test",
+    ]
+
+
+def test_scope_local_judgment_keeps_focused_curation_owners(tmp_path):
+    root = tmp_path / "repo"
+    initialize_cross_scope(root)
+    proposed = invoke(
+        "curate",
+        "propose",
+        "local-app-judgment",
+        "--intent",
+        "add",
+        "--subject-kind",
+        "judgment",
+        "--target-source",
+        ".murlocs/layers/app.toml",
+        "--target-scope",
+        "app",
+        "--target-key",
+        "app.advocate",
+        "--origin",
+        "issue-49",
+        "--rationale",
+        "Exercise focused routing.",
+        "--proposer",
+        "@author",
+        "--evidence-kind",
+        "issue",
+        "--evidence-reference",
+        "issue-49",
+        "--evidence-summary",
+        "A scope-local judgment changes only the app map.",
+        "--at",
+        "2026-08-03T14:00:00Z",
+        "--payload-json",
+        '{"values":["Prefer explicit application boundaries."]}',
+        "--repo",
+        str(root),
+        "--format",
+        "json",
+    )
+    assert proposed.exit_code == 0, proposed.stderr
+    report = json.loads(proposed.output)["review"]
+    assert report["owners"] == {"recorded": ["@app"], "current": ["@app"]}
+    assert [item["scope"] for item in report["affected_chains"]] == ["app"]
+
+    record_path = root / ".murlocs/curation/local-app-judgment.toml"
+    record_path.write_text(
+        record_path.read_text(encoding="utf-8").replace(
+            'target_scope = "app"', 'target_scope = "tests"'
+        ),
+        encoding="utf-8",
+    )
+    mismatched = json.loads(
+        invoke(
+            "curate",
+            "review",
+            "local-app-judgment",
+            "--repo",
+            str(root),
+            "--format",
+            "json",
+        ).output
+    )
+    assert any(
+        item["code"] == "target_scope" and "not a rendered-effect boundary" in item["message"]
+        for item in mismatched["findings"]
+    )
+
+
+def test_required_scopes_recompute_terminal_owners_across_topology_changes(tmp_path):
+    root = tmp_path / "repo"
+    initialize_cross_scope(root, compile=False)
+    proposal = cross_structured_proposal(
+        root,
+        "add-nested-scope",
+        intent="add",
+        subject_kind="scope",
+        target_key="nested",
+        target_scope=None,
+        payload={
+            "id": "nested",
+            "path": "src/app/nested",
+            "map": "src/app/nested/AGENTS.md",
+            "point_of_view": "Nested application.",
+            "owns": ["src/app/nested"],
+        },
+    )
+    assert proposal.exit_code == 0, proposal.stderr
+    proposed = json.loads(proposal.output)["review"]
+    assert proposed["required_scopes"] == {
+        "recorded": ["app", "nested", "root", "tests"],
+        "current": ["app", "nested", "root", "tests"],
+    }
+    assert cross_action(root, "accept", "add-nested-scope").exit_code == 0
+    assert cross_action(root, "promote", "add-nested-scope").exit_code == 0
+
+    manifest = root / ".murlocs/manifest.toml"
+    extra_declaration = (
+        '\n[[layers]]\nid = "extra"\nkind = "domain"\n'
+        'path = ".murlocs/layers/extra.toml"\nowners = ["@extra"]\n'
+    )
+    manifest.write_text(
+        manifest.read_text(encoding="utf-8") + extra_declaration, encoding="utf-8"
+    )
+    (root / ".murlocs/layers/extra.toml").write_text(
+        '[[scopes]]\nid = "extra"\npath = "extra"\nmap = "extra/AGENTS.md"\n'
+        'point_of_view = "Extra."\nowns = ["extra"]\nguardrails = []\nedges = []\n',
+        encoding="utf-8",
+    )
+    codeowners = root / ".github/CODEOWNERS"
+    codeowners.write_text(
+        codeowners.read_text(encoding="utf-8")
+        + "/.murlocs/layers/extra.toml @extra\n",
+        encoding="utf-8",
+    )
+    expanded = json.loads(
+        invoke(
+            "curate",
+            "review",
+            "add-nested-scope",
+            "--repo",
+            str(root),
+            "--format",
+            "json",
+        ).output
+    )
+    assert expanded["required_scopes"] == {
+        "recorded": ["app", "nested", "root", "tests"],
+        "current": ["app", "extra", "nested", "root", "tests"],
+    }
+    assert expanded["owners"]["current"] == ["@app", "@extra", "@root", "@test"]
+
+    manifest.write_text(
+        manifest.read_text(encoding="utf-8").removesuffix(extra_declaration),
+        encoding="utf-8",
+    )
+    contracted = json.loads(
+        invoke(
+            "curate",
+            "review",
+            "add-nested-scope",
+            "--repo",
+            str(root),
+            "--format",
+            "json",
+        ).output
+    )
+    assert contracted["required_scopes"]["current"] == ["app", "nested", "root", "tests"]
+    assert contracted["owners"]["current"] == ["@app", "@root", "@test"]
+
+
+def test_terminal_required_scope_tampering_cannot_reduce_safe_owner_routing(tmp_path):
+    root = tmp_path / "repo"
+    initialize_cross_scope(root, compile=False)
+    proposal = cross_structured_proposal(
+        root,
+        "tamper-scope-routing",
+        intent="add",
+        subject_kind="scope",
+        target_key="nested",
+        target_scope=None,
+        payload={
+            "id": "nested",
+            "path": "src/app/nested",
+            "map": "src/app/nested/AGENTS.md",
+            "point_of_view": "Nested application.",
+            "owns": ["src/app/nested"],
+        },
+    )
+    assert proposal.exit_code == 0, proposal.stderr
+    assert cross_action(root, "accept", "tamper-scope-routing").exit_code == 0
+    assert cross_action(root, "promote", "tamper-scope-routing").exit_code == 0
+    record = root / ".murlocs/curation/tamper-scope-routing.toml"
+    record.write_text(
+        record.read_text(encoding="utf-8").replace(
+            'required_scopes = ["app", "nested", "root", "tests"]',
+            'required_scopes = ["app", "nested"]',
+        ),
+        encoding="utf-8",
+    )
+
+    terminal = json.loads(
+        invoke(
+            "curate",
+            "review",
+            "tamper-scope-routing",
+            "--repo",
+            str(root),
+            "--format",
+            "json",
+        ).output
+    )
+
+    assert terminal["ok"] is False
+    assert terminal["required_scopes"]["current"] == ["app", "nested", "root", "tests"]
+    assert terminal["owners"]["current"] == ["@app", "@root", "@test"]
+    assert any(item["code"] == "routing_evidence" for item in terminal["findings"])
+
+
+def test_local_scope_replace_without_target_scope_tracks_current_descendants(tmp_path):
+    root = tmp_path / "repo"
+    initialize_cross_scope(root, compile=False)
+    proposal = cross_structured_proposal(
+        root,
+        "replace-app-view",
+        intent="replace",
+        subject_kind="scope",
+        target_key="app",
+        target_scope=None,
+        payload={
+            "id": "app",
+            "path": "src/app",
+            "map": "src/app/AGENTS.md",
+            "point_of_view": "Application boundaries.",
+            "owns": ["src/app"],
+            "guardrails": [],
+            "edges": [],
+        },
+    )
+    assert proposal.exit_code == 0, proposal.stderr
+    report = json.loads(proposal.output)["review"]
+    assert report["required_scopes"] == {"recorded": ["app"], "current": ["app"]}
+    assert report["owners"] == {"recorded": ["@app"], "current": ["@app"]}
+    assert cross_action(root, "accept", "replace-app-view").exit_code == 0
+    assert cross_action(root, "promote", "replace-app-view").exit_code == 0
+
+    layer = root / ".murlocs/layers/app.toml"
+    layer.write_text(
+        layer.read_text(encoding="utf-8")
+        + '\n[[scopes]]\nid = "nested"\npath = "src/app/nested"\n'
+        + 'map = "src/app/nested/AGENTS.md"\npoint_of_view = "Nested."\n'
+        + 'owns = ["src/app/nested"]\nguardrails = []\nedges = []\n',
+        encoding="utf-8",
+    )
+    terminal = json.loads(
+        invoke(
+            "curate",
+            "review",
+            "replace-app-view",
+            "--repo",
+            str(root),
+            "--format",
+            "json",
+        ).output
+    )
+    assert terminal["ok"] is True
+    assert terminal["required_scopes"] == {
+        "recorded": ["app"],
+        "current": ["app", "nested"],
+    }
+    assert terminal["owners"]["current"] == ["@app"]
+
+
+def test_local_invariant_statement_replace_keeps_terminal_routing_focused(tmp_path):
+    root = tmp_path / "repo"
+    initialize_cross_scope(root, compile=False)
+    (root / "README.md").write_text("# Evidence\n", encoding="utf-8")
+    layer = root / ".murlocs/layers/app.toml"
+    layer.write_text(
+        layer.read_text(encoding="utf-8")
+        + '\n[[invariants]]\nid = "app-invariant"\nscope = "app"\n'
+        + 'statement = "Original statement."\nseverity = "important"\n'
+        + 'verification = "manual"\nevidence_file = "README.md"\n'
+        + 'anchor = "Evidence"\n',
+        encoding="utf-8",
+    )
+    proposal = cross_structured_proposal(
+        root,
+        "replace-invariant-statement",
+        intent="replace",
+        subject_kind="invariant",
+        target_key="app-invariant",
+        target_scope="app",
+        payload={
+            "id": "app-invariant",
+            "scope": "app",
+            "statement": "Revised statement.",
+            "severity": "important",
+            "verification": "manual",
+            "evidence_file": "README.md",
+            "anchor": "Evidence",
+        },
+    )
+    assert proposal.exit_code == 0, proposal.stderr
+    report = json.loads(proposal.output)["review"]
+    assert report["required_scopes"] == {"recorded": ["app"], "current": ["app"]}
+    assert cross_action(root, "accept", "replace-invariant-statement").exit_code == 0
+    assert cross_action(root, "promote", "replace-invariant-statement").exit_code == 0
+
+    terminal = json.loads(
+        invoke(
+            "curate",
+            "review",
+            "replace-invariant-statement",
+            "--repo",
+            str(root),
+            "--format",
+            "json",
+        ).output
+    )
+    assert terminal["ok"] is True
+    assert terminal["required_scopes"] == report["required_scopes"]
+    assert terminal["owners"] == report["owners"]
+
+
+def test_legacy_scope_removal_terminal_fails_closed_and_reports_current_owners(tmp_path):
+    root = tmp_path / "repo"
+    initialize_cross_scope(root, compile=False)
+    proposal = cross_structured_proposal(
+        root,
+        "remove-app-scope",
+        intent="remove",
+        subject_kind="scope",
+        target_key="app",
+        target_scope="app",
+        payload=None,
+    )
+    assert proposal.exit_code == 0, proposal.stderr
+    record_path = root / ".murlocs/curation/remove-app-scope.toml"
+    text = record_path.read_text(encoding="utf-8")
+    record_path.write_text(
+        "\n".join(
+            line for line in text.splitlines() if not line.startswith("required_scopes =")
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    assert load_record(record_path).required_scopes == ()
+    assert cross_action(root, "accept", "remove-app-scope").exit_code == 0
+    assert cross_action(root, "prune", "remove-app-scope").exit_code == 0
+
+    manifest = root / ".murlocs/manifest.toml"
+    manifest.write_text(
+        manifest.read_text(encoding="utf-8")
+        .replace('owners = ["@root"]', 'owners = ["@new-root"]')
+        .replace('owners = ["@test"]', 'owners = ["@new-test"]'),
+        encoding="utf-8",
+    )
+    codeowners = root / ".github/CODEOWNERS"
+    codeowners.write_text(
+        codeowners.read_text(encoding="utf-8")
+        .replace("@root", "@new-root")
+        .replace("@test", "@new-test"),
+        encoding="utf-8",
+    )
+    terminal = json.loads(
+        invoke(
+            "curate",
+            "review",
+            "remove-app-scope",
+            "--repo",
+            str(root),
+            "--format",
+            "json",
+        ).output
+    )
+    assert terminal["required_scopes"] == {
+        "recorded": [],
+        "current": ["root", "tests"],
+    }
+    assert terminal["owners"]["recorded"] == ["@app", "@root", "@test"]
+    assert terminal["owners"]["current"] == ["@app", "@new-root", "@new-test"]
+    assert "@root" not in terminal["owners"]["current"]
+    assert "@test" not in terminal["owners"]["current"]
+
+
+def test_legacy_promoted_invariant_routes_all_current_owners(tmp_path):
+    root = tmp_path / "repo"
+    initialize_cross_scope(root, compile=False)
+    (root / "README.md").write_text("# Evidence\n", encoding="utf-8")
+    proposal = cross_structured_proposal(
+        root,
+        "legacy-invariant",
+        intent="add",
+        subject_kind="invariant",
+        target_key="legacy-invariant",
+        target_scope="app",
+        payload={
+            "id": "legacy-invariant",
+            "scope": "app",
+            "statement": "Legacy invariant routing remains safe.",
+            "severity": "important",
+            "verification": "manual",
+            "evidence_file": "README.md",
+            "anchor": "Evidence",
+        },
+    )
+    assert proposal.exit_code == 0, proposal.stderr
+    record_path = root / ".murlocs/curation/legacy-invariant.toml"
+    record_path.write_text(
+        "\n".join(
+            line
+            for line in record_path.read_text(encoding="utf-8").splitlines()
+            if not line.startswith("required_scopes =")
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    assert cross_action(root, "accept", "legacy-invariant").exit_code == 0
+    assert cross_action(root, "promote", "legacy-invariant").exit_code == 0
+
+    terminal = json.loads(
+        invoke(
+            "curate",
+            "review",
+            "legacy-invariant",
+            "--repo",
+            str(root),
+            "--format",
+            "json",
+        ).output
+    )
+
+    assert terminal["required_scopes"] == {
+        "recorded": [],
+        "current": ["app", "root", "tests"],
+    }
+    assert terminal["owners"]["current"] == ["@app", "@root", "@test"]
+
+
+@pytest.mark.parametrize(
+    ("intent", "proposal_id", "target_key", "operation"),
+    [
+        ("add", "add-app-invariant", "new-app-invariant", "promote"),
+        ("replace", "replace-app-invariant", "app-invariant", "promote"),
+        ("remove", "remove-app-invariant", "app-invariant", "prune"),
+    ],
+)
+def test_invariant_terminal_routing_matches_prospective_cross_scope_effect(
+    tmp_path, intent, proposal_id, target_key, operation
+):
+    root = tmp_path / "repo"
+    initialize_cross_scope(root, compile=False)
+    (root / "README.md").write_text("# Evidence\n", encoding="utf-8")
+    manifest = root / ".murlocs/manifest.toml"
+    manifest.write_text(
+        manifest.read_text(encoding="utf-8")
+        + '\n[checks.proof]\ninvoke = "pytest"\nlocation = "README.md"\n'
+        + 'proof_contains = "Evidence"\ndescription = "Invariant proof."\n',
+        encoding="utf-8",
+    )
+    layer = root / ".murlocs/layers/app.toml"
+    if intent != "add":
+        layer.write_text(
+            layer.read_text(encoding="utf-8")
+            + '\n[[invariants]]\nid = "app-invariant"\nscope = "app"\n'
+            + 'statement = "The app invariant is reviewed."\nseverity = "important"\n'
+            + 'verification = "manual"\nevidence_file = "README.md"\n'
+            + 'anchor = "Evidence"\n',
+            encoding="utf-8",
+        )
+    payload = None
+    if intent == "add":
+        payload = {
+            "id": target_key,
+            "scope": "app",
+            "statement": "The new app invariant is reviewed.",
+            "severity": "important",
+            "verification": "manual",
+            "evidence_file": "README.md",
+            "anchor": "Evidence",
+        }
+    elif intent == "replace":
+        payload = {
+            "id": target_key,
+            "scope": "app",
+            "statement": "The app invariant is command verified.",
+            "severity": "critical",
+            "verification": "command",
+            "enforced_by": "proof",
+        }
+    proposal = cross_structured_proposal(
+        root,
+        proposal_id,
+        intent=intent,
+        subject_kind="invariant",
+        target_key=target_key,
+        target_scope="app",
+        payload=payload,
+    )
+    assert proposal.exit_code == 0, proposal.stderr
+    report = json.loads(proposal.output)["review"]
+    assert report["owners"] == {
+        "recorded": ["@app", "@root", "@test"],
+        "current": ["@app", "@root", "@test"],
+    }
+    assert report["required_scopes"] == {
+        "recorded": ["app", "root", "tests"],
+        "current": ["app", "root", "tests"],
+    }
+    assert cross_action(root, "accept", proposal_id).exit_code == 0
+    applied = cross_action(root, operation, proposal_id)
+    assert applied.exit_code == 0, applied.stderr
+    terminal = json.loads(
+        invoke(
+            "curate",
+            "review",
+            proposal_id,
+            "--repo",
+            str(root),
+            "--format",
+            "json",
+        ).output
+    )
+    assert terminal["owners"] == report["owners"]
+    assert terminal["required_scopes"] == report["required_scopes"]
