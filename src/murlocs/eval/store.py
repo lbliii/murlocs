@@ -9,6 +9,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
+from murlocs.eval._atomic import atomic_write_text
 from murlocs.eval.model import (
     ARMS,
     ComparisonSummary,
@@ -67,9 +68,15 @@ def load_task(path: Path) -> TaskDefinition:
                 any_of=candidates,
             )
         )
+    if not facts:
+        raise ValueError(
+            f"{path}: expected_facts must contain at least one objectively checkable fact"
+        )
     threshold = _number(data.get("correctness_threshold", 1.0), f"{path}: correctness_threshold")
-    if not 0 <= threshold <= 1:
-        raise ValueError(f"{path}: correctness_threshold must be between 0 and 1")
+    if not 0 < threshold <= 1:
+        raise ValueError(
+            f"{path}: correctness_threshold must be greater than 0 and at most 1"
+        )
     return TaskDefinition(
         id=_task_id(_nonempty_string(data, "id", str(path)), f"{path}: id"),
         prompt=_nonempty_string(data, "prompt", str(path)),
@@ -166,7 +173,7 @@ def load_runs(path: Path, task: TaskDefinition) -> list[RunRecord]:
     missing = [arm for arm in ARMS if arm not in seen_arms]
     if missing:
         raise ValueError(f"{path}: missing recorded runs for arms: {', '.join(missing)}")
-    return records
+    return sorted(records, key=lambda record: ARMS.index(record.arm))
 
 
 def save_results(
@@ -177,18 +184,16 @@ def save_results(
 ) -> Path:
     """Write the comparison summary and raw evidence deterministically as JSON."""
     _task_id(task.id, "task id")
-    directory.mkdir(parents=True, exist_ok=True)
     payload = {
         "schema_version": SCHEMA_VERSION,
         "task": asdict(task),
         "summary": asdict(summary),
-        "records": [asdict(record) for record in records],
+        "records": [
+            asdict(record) for record in sorted(records, key=lambda item: ARMS.index(item.arm))
+        ],
     }
     target = directory / f"{task.id}.json"
-    target.write_text(
-        json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-    )
-    return target
+    return atomic_write_text(target, json.dumps(payload, indent=2, sort_keys=True) + "\n")
 
 
 def _schema_version(data: dict[str, Any], path: Path) -> None:

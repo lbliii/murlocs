@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
+import murlocs.eval._atomic as eval_atomic
 from murlocs.cli import build_cli
 from murlocs.eval import (
     METRIC_DEFINITIONS,
@@ -63,6 +65,31 @@ def test_fixture_task_is_objectively_checkable():
         "depends-on-render",
         "depends-on-store",
     }
+
+
+def test_versioned_task_requires_objective_correctness_facts(tmp_path):
+    text = (
+        TASK_FIXTURE.read_text(encoding="utf-8").split("[[expected_facts]]", 1)[0]
+        + "expected_facts = []\n"
+    )
+    candidate = tmp_path / "empty-facts.toml"
+    candidate.write_text(text, encoding="utf-8")
+
+    with pytest.raises(ValueError, match="expected_facts must contain at least one"):
+        load_task(candidate)
+
+
+def test_versioned_task_rejects_zero_correctness_threshold(tmp_path):
+    candidate = tmp_path / "zero-threshold.toml"
+    candidate.write_text(
+        TASK_FIXTURE.read_text(encoding="utf-8").replace(
+            "correctness_threshold = 1.0", "correctness_threshold = 0.0"
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="must be greater than 0 and at most 1"):
+        load_task(candidate)
 
 
 @pytest.mark.parametrize(
@@ -235,15 +262,60 @@ def test_save_results_preserves_evidence_and_summary(tmp_path):
     assert payload["records"][0]["answer"] == "app.render and app.store"
 
 
+@pytest.mark.parametrize("link_kind", ["symlink", "hardlink"])
+def test_save_results_replaces_links_without_mutating_external_target(tmp_path, link_kind):
+    task = load_task(TASK_FIXTURE)
+    records = [make_record("murlocs", "app.render and app.store", steps=12)]
+    summary = compare_runs(task, records)
+    output = tmp_path / "results"
+    output.mkdir()
+    victim = tmp_path / "external.json"
+    victim.write_text("external content\n", encoding="utf-8")
+    target = output / "import-graph.json"
+    if link_kind == "symlink":
+        target.symlink_to(victim)
+    else:
+        os.link(victim, target)
+
+    assert save_results(output, task, summary, records) == target
+
+    assert victim.read_text(encoding="utf-8") == "external content\n"
+    assert not target.is_symlink()
+    assert target.is_file()
+    assert target.stat().st_ino != victim.stat().st_ino
+    assert json.loads(target.read_text(encoding="utf-8"))["task"]["id"] == "import-graph"
+
+
+def test_save_results_cleans_temporary_file_when_replace_fails(tmp_path, monkeypatch):
+    task = load_task(TASK_FIXTURE)
+    records = [make_record("murlocs", "app.render and app.store", steps=12)]
+    summary = compare_runs(task, records)
+    output = tmp_path / "results"
+
+    def fail_replace(_source, _target):
+        raise OSError("forced replace failure")
+
+    monkeypatch.setattr(eval_atomic.os, "replace", fail_replace)
+    with pytest.raises(OSError, match="forced replace failure"):
+        save_results(output, task, summary, records)
+
+    assert output.is_dir()
+    assert list(output.iterdir()) == []
+
+
 def test_eval_cli_ingests_files_and_writes_reproducible_results(tmp_path, capsys):
     first = tmp_path / "first"
     second = tmp_path / "second"
+    reordered_runs = tmp_path / "reordered-runs.json"
+    reordered_payload = json.loads(RUNS_FIXTURE.read_text(encoding="utf-8"))
+    reordered_payload["runs"].reverse()
+    reordered_runs.write_text(json.dumps(reordered_payload), encoding="utf-8")
     assert eval_main(
         ["--task", str(TASK_FIXTURE), "--runs", str(RUNS_FIXTURE), "--output", str(first)]
     ) == 0
     assert "most efficient correct arm: murlocs" in capsys.readouterr().out
     assert eval_main(
-        ["--task", str(TASK_FIXTURE), "--runs", str(RUNS_FIXTURE), "--output", str(second)]
+        ["--task", str(TASK_FIXTURE), "--runs", str(reordered_runs), "--output", str(second)]
     ) == 0
     capsys.readouterr()
     assert (first / "import-graph.json").read_bytes() == (

@@ -5,6 +5,7 @@ from __future__ import annotations
 from math import ceil
 
 from murlocs.eval.model import (
+    ARMS,
     ComparisonSummary,
     CorrectnessResult,
     Efficiency,
@@ -79,7 +80,10 @@ def _efficiency_key(score: RunScore) -> tuple[int, int, int, int]:
 
 def compare_runs(task: TaskDefinition, records: list[RunRecord]) -> ComparisonSummary:
     """Score every arm and pick the most efficient among those that met correctness."""
-    scores = [score_run(task, record) for record in records]
+    scores = [
+        score_run(task, record)
+        for record in sorted(records, key=lambda item: ARMS.index(item.arm))
+    ]
     correct = [score for score in scores if score.efficiency is not None]
     most_efficient = min(correct, key=_efficiency_key).arm if correct else None
     return ComparisonSummary(
