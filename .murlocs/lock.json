@@ -1,13 +1,13 @@
 {
   "generated": {
     "AGENTS.md": {
-      "sha256": "63b26f35bf3d7d6af6587c265c556cbfaebeb789432acefab15adce86ab8184c"
+      "sha256": "2bd7d0b644655d2c67037dee45f37f36f8ec197acd1ed74646fb5f64e9c0c9fd"
     },
     "skills/bootstrap-murlocs/AGENTS.md": {
       "sha256": "9de83a38841174543541174e011676bc28dd9b39099bf1e5bb4402aeb2d316ca"
     },
     "src/murlocs/AGENTS.md": {
-      "sha256": "68b148bdaec1f6d1797f1e9583c59f3daee8d6c46bcd091b5dc6921698c5686d"
+      "sha256": "0109c7b114572d2edca2d54f602c90731909f52ba47fc66817348810439fcd15"
     },
     "tests/AGENTS.md": {
       "sha256": "aadbf79013fba4bdc88052b304e5df85b4f5c3dfcd543a87cb4f3b537b400048"
@@ -33,7 +33,7 @@
       "id": "core",
       "kind": "domain",
       "path": ".murlocs/layers/core.toml",
-      "sha256": "e2424eb396fe20e5f5a3f9f79248f93ff28ce0a21461b79fe7c9b2165c2b37c3"
+      "sha256": "f668c79676ca133631aee2a279487d8b489ab9330c71f6599b1ec010bf27e33d"
     },
     {
       "id": "tests",

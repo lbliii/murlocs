@@ -215,6 +215,28 @@ def test_mixed_check_findings_bind_each_finding_to_its_own_resolution(tmp_path: 
     } == {"inspect_findings", "request_authority"}
 
 
+def test_repeated_check_codes_form_one_valid_outcome_finding(tmp_path: Path):
+    root = tmp_path / "repo"
+    build(root)
+    manifest = root / ".murlocs/manifest.toml"
+    manifest.write_text(
+        manifest.read_text(encoding="utf-8").replace(
+            "pillars = []", 'pillars = ["Changed"]'
+        ),
+        encoding="utf-8",
+    )
+
+    outcome = structured("check", root)["outcome"]
+
+    drift = [
+        finding
+        for finding in outcome["findings"]
+        if finding["code"] == "MURLOCS_CHECK_DRIFT"
+    ]
+    assert len(drift) == 1
+    assert len(drift[0]["evidence"]) > 1
+
+
 def test_impact_agent_and_authority_outcomes_name_exact_routing(tmp_path: Path):
     root = tmp_path / "repo"
     build(root)

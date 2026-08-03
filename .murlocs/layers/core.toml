@@ -55,3 +55,11 @@ statement = "Adoption backs up exact legacy maps and rollback refuses modified a
 severity = "critical"
 verification = "command"
 enforced_by = "pytest"
+
+[[invariants]]
+id = "passive-hook-safety"
+scope = "core"
+statement = "Passive Git hooks use bounded exact views, never execute repository commands, and preserve existing hook managers."
+severity = "critical"
+verification = "command"
+enforced_by = "pytest"

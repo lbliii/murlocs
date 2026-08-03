@@ -24,6 +24,7 @@ Do not open `.murlocs/PROTOCOL.md` or `.murlocs/manifest.toml` unless the task i
 - **typed-surface-parity** (important): One typed Milo registry defines terminal, programmatic, MCP, and discovery surfaces. Verify with `milo verify src/murlocs/cli.py` (`milo-verify`).
 - **legacy-migration-parity** (critical): Known legacy steward fields translate deterministically or fail visibly without repository writes. Verify with `pytest` (`pytest`).
 - **migration-rollback-safety** (critical): Adoption backs up exact legacy maps and rollback refuses modified adopted output. Verify with `pytest` (`pytest`).
+- **passive-hook-safety** (critical): Passive Git hooks use bounded exact views, never execute repository commands, and preserve existing hook managers. Verify with `pytest` (`pytest`).
 
 ## Edges
 
