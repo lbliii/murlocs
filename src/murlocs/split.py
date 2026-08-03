@@ -365,22 +365,20 @@ def apply_split_layers(root: Path, plan: SplitPlan) -> list[str]:
         raise MurlocsError("manifest changed since the split plan was created")
     if plan.semantic_changes:
         raise MurlocsError("refusing to apply a split with semantic changes")
-    if plan.blocking_findings:
-        raise MurlocsError(
-            "proposed split is not valid: "
-            + "; ".join(str(item) for item in plan.blocking_findings)
-        )
-    unsatisfied = [item for item in plan.codeowners_requirements if not item.satisfied]
+    current_codeowners = codeowners_requirements_for(plan.manifest)
+    unsatisfied = [item for item in current_codeowners if not item.satisfied]
     if unsatisfied:
         raise MurlocsError(
             "CODEOWNERS requirements are not satisfied: "
             + "; ".join(item.entry for item in unsatisfied)
         )
-    ownership = [item for item in validate(plan.manifest) if item.code == "ownership"]
-    if ownership:
+    current_findings = [
+        item for item in validate(plan.manifest) if item.code not in {"drift", "lock"}
+    ]
+    if current_findings:
         raise MurlocsError(
-            "source ownership requirements are not satisfied: "
-            + "; ".join(str(item) for item in ownership)
+            "proposed split is not valid against the current repository: "
+            + "; ".join(str(item) for item in current_findings)
         )
     for relative in plan.layer_toml:
         if repo_path(root, relative, field="layer path").exists():

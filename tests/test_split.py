@@ -260,6 +260,50 @@ def test_shared_controls_move_only_with_explicit_assignments(tmp_path):
     assert "coverage-root:src/core explicitly assigned to root" in plan.decisions
 
 
+def test_apply_recomputes_codeowners_after_planning(tmp_path):
+    root = repository(tmp_path)
+    manifest = root / ".murlocs" / "manifest.toml"
+    manifest.write_text(
+        manifest.read_text(encoding="utf-8").replace(
+            "require_scope_invariants = true",
+            "require_scope_invariants = true\nvalidate_codeowners = true",
+        ),
+        encoding="utf-8",
+    )
+    codeowners = root / ".github" / "CODEOWNERS"
+    codeowners.parent.mkdir()
+    codeowners.write_text(
+        "/.murlocs/manifest.toml @platform\n"
+        "/.murlocs/layers/core.toml @core\n"
+        "/.murlocs/layers/docs.toml @docs\n",
+        encoding="utf-8",
+    )
+    plan = plan_split_layers(root, specs(), root_owners=("@platform",))
+    assert all(item.satisfied for item in plan.codeowners_requirements)
+    codeowners.write_text(
+        codeowners.read_text(encoding="utf-8").replace(
+            "/.murlocs/layers/docs.toml @docs",
+            "/.murlocs/layers/docs.toml @wrong-owner",
+        ),
+        encoding="utf-8",
+    )
+    mutated = {
+        path.relative_to(root): path.read_bytes()
+        for path in root.rglob("*")
+        if path.is_file()
+    }
+
+    with pytest.raises(MurlocsError, match="CODEOWNERS requirements are not satisfied"):
+        apply_split_layers(root, plan)
+
+    assert {
+        path.relative_to(root): path.read_bytes()
+        for path in root.rglob("*")
+        if path.is_file()
+    } == mutated
+    assert not (root / ".murlocs" / "layers").exists()
+
+
 def test_conflicts_and_modified_outputs_cause_no_source_writes(tmp_path):
     root = repository(tmp_path)
     (root / "src" / "core" / "AGENTS.md").write_text("modified\n", encoding="utf-8")
@@ -319,4 +363,34 @@ def test_transaction_restores_every_file_when_replace_fails(tmp_path, monkeypatc
         path.relative_to(root): path.read_bytes() for path in root.rglob("*") if path.is_file()
     }
     assert after == before
+    assert not (root / ".murlocs" / "layers").exists()
+
+
+@pytest.mark.parametrize("mutation", ["remove-proof", "add-uncovered-source"])
+def test_apply_revalidates_current_filesystem_and_writes_nothing(tmp_path, mutation):
+    root = repository(tmp_path)
+    plan = plan_split_layers(root, specs())
+    if mutation == "remove-proof":
+        (root / ".murlocs" / "PROTOCOL.md").unlink()
+        expected = "manual evidence was not found"
+    else:
+        new_unit = root / "src" / "core" / "new-unit"
+        new_unit.mkdir()
+        (new_unit / "feature.py").write_text("VALUE = 3\n", encoding="utf-8")
+        expected = "source-bearing unit has no map: src/core/new-unit"
+    mutated = {
+        path.relative_to(root): path.read_bytes()
+        for path in root.rglob("*")
+        if path.is_file()
+    }
+
+    with pytest.raises(MurlocsError, match=expected):
+        apply_split_layers(root, plan)
+
+    after = {
+        path.relative_to(root): path.read_bytes()
+        for path in root.rglob("*")
+        if path.is_file()
+    }
+    assert after == mutated
     assert not (root / ".murlocs" / "layers").exists()
