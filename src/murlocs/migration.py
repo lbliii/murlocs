@@ -69,7 +69,9 @@ def inventory_repository(root: Path) -> dict[str, Any]:
         names[:] = sorted(
             name
             for name in names
-            if name not in SKIP_DIRS and not (current / name / ".git").exists()
+            if name not in SKIP_DIRS
+            and current / name != root / BACKUP_ROOT
+            and not (current / name / ".git").exists()
         )
         for filename in sorted(files):
             path = Path(directory) / filename

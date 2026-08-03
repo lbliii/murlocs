@@ -44,6 +44,11 @@ Murlocs also installs `mrr` as a short alias. It exposes the same commands and s
 `murlocs init` refuses to overwrite an existing `AGENTS.md`. Migration is deliberately explicit:
 read the existing guidance, represent it in the manifest, and only then hand ownership to Murlocs.
 
+The bundled `bootstrap-murlocs` skill inventories the repository before writing and selects one of
+four routes: greenfield initialization, recognized steward migration, review of unmanaged guidance,
+or maintenance of an existing Murlocs network. It never treats hand-authored guidance as safely
+importable or bypasses generated-file ownership checks.
+
 ## Migrating a legacy steward network
 
 Migration separates inspection, candidate creation, ownership transfer, and cleanup:

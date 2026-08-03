@@ -1,4 +1,4 @@
 interface:
   display_name: "Bootstrap Murlocs"
-  short_description: "Bootstrap repository guidance networks"
-  default_prompt: "Use $bootstrap-murlocs to map this repository into a verified Murlocs guidance network."
+  short_description: "Safely bootstrap or migrate repo guidance"
+  default_prompt: "Use $bootstrap-murlocs to classify this repository and follow the safe path to a verified guidance network."
