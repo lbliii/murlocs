@@ -14,8 +14,10 @@ agent-assisted discovery ──> .murlocs/manifest.toml ──> deterministic co
 
 The bootstrap skill may inspect a repository and propose scopes, invariants, edges, and evidence.
 Those proposals become reviewable only when written to the manifest. The CLI does not call a model,
-use the network, or execute commands recorded in the manifest. Milo derives terminal, programmatic,
-MCP, and agent-discovery surfaces from the same typed handlers.
+use the network, or execute commands recorded in the manifest. Changed-path impact reporting reads
+Git metadata only when given an explicit revision expression and reports review need without
+asserting that guidance is semantically stale. Milo derives terminal, programmatic, MCP, and
+agent-discovery surfaces from the same typed handlers.
 
 The lockfile records the exact hash of every generated map. Compilation will write a missing map or
 replace an unchanged map it already owns. It refuses unmanaged files, modified generated files, path

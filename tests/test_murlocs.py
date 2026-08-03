@@ -267,12 +267,13 @@ def test_milo_agent_surface_is_read_only_by_default():
     tools = {tool.name for tool in MCPClient(app).list_tools()}
     discovery = generate_llms_txt(app)
 
-    assert tools == {"check", "diff", "explain", "inventory", "status"}
+    assert tools == {"check", "diff", "explain", "impact", "inventory", "status"}
     assert "**check**" in discovery
     assert "**explain**" in discovery
     assert "**inventory**" in discovery
     assert "**status**" in discovery
     assert "**diff**" in discovery
+    assert "**impact**" in discovery
     assert "**init**" not in discovery
     assert "**compile**" not in discovery
     assert "**import**" not in discovery
@@ -285,6 +286,7 @@ def test_milo_agent_surface_is_read_only_by_default():
         "openWorldHint": True,
     }
     assert app.commands["status"].annotations == app.commands["check"].annotations
+    assert app.commands["impact"].annotations == app.commands["check"].annotations
 
 
 def test_mcp_check_and_explain_return_structured_results(tmp_path):
