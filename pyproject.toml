@@ -9,7 +9,7 @@ description = "Raise and verify repository-local guidance networks for coding ag
 readme = "README.md"
 requires-python = ">=3.14"
 license = { text = "MIT" }
-authors = [{ name = "Luke Lane" }]
+authors = [{ name = "Lawrence Lane" }]
 keywords = ["agents", "AGENTS.md", "repository", "governance", "coding-agents"]
 classifiers = [
   "Development Status :: 3 - Alpha",
