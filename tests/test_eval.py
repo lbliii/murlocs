@@ -65,6 +65,18 @@ def test_fixture_task_is_objectively_checkable():
     }
 
 
+def test_versioned_task_requires_objective_correctness_facts(tmp_path):
+    text = (
+        TASK_FIXTURE.read_text(encoding="utf-8").split("[[expected_facts]]", 1)[0]
+        + "expected_facts = []\n"
+    )
+    candidate = tmp_path / "empty-facts.toml"
+    candidate.write_text(text, encoding="utf-8")
+
+    with pytest.raises(ValueError, match="expected_facts must contain at least one"):
+        load_task(candidate)
+
+
 @pytest.mark.parametrize(
     "task_id",
     ["../escape", "nested/task", r"nested\task", "..", ".hidden", "trailing.", "a..b"],
@@ -255,7 +267,10 @@ def test_eval_cli_requires_explicit_demo_or_inputs(capsys):
     with pytest.raises(SystemExit) as missing:
         eval_main([])
     assert missing.value.code == 2
-    assert "one of the arguments --demo --task is required" in capsys.readouterr().err
+    assert (
+        "one of the arguments --demo --task --longitudinal is required"
+        in capsys.readouterr().err
+    )
 
     assert eval_main(["--demo"]) == 0
     assert "illustrative-model / illustrative-ade" in capsys.readouterr().out

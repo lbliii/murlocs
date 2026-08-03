@@ -67,6 +67,10 @@ def load_task(path: Path) -> TaskDefinition:
                 any_of=candidates,
             )
         )
+    if not facts:
+        raise ValueError(
+            f"{path}: expected_facts must contain at least one objectively checkable fact"
+        )
     threshold = _number(data.get("correctness_threshold", 1.0), f"{path}: correctness_threshold")
     if not 0 <= threshold <= 1:
         raise ValueError(f"{path}: correctness_threshold must be between 0 and 1")

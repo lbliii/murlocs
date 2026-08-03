@@ -369,8 +369,9 @@ decision. Correctness remains the gate before efficiency comparisons. Evaluation
 runs and curation metadata; curation never runs a model or treats an evaluation score as permission
 to promote or prune.
 
-The recorded-run input work tracked in issue #15 is a prerequisite for a useful end-to-end
-longitudinal workflow.
+The separate evaluation harness accepts a versioned longitudinal link manifest that cross-validates
+these curation facts against issue #15's recorded-run inputs. It remains read-only and reports
+correlation for owner review, never causal proof or permission to apply a proposal.
 
 ## Compatibility and rollout
 
@@ -411,7 +412,7 @@ The accepted design is intentionally split into independently testable work:
    rejection, withdrawal, promotion, supersession, and pruning transactions with owner and
    stale-base enforcement.
 3. [Issue #27](https://github.com/lbliii/murlocs/issues/27) extends recorded-run evaluation with
-   longitudinal curation and guidance-growth summaries after issue #15 provides external ingestion.
+   longitudinal curation and guidance-growth summaries joined to issue #15's external ingestion.
 
 Each slice must preserve the model-free compiler, generated-file ownership protections, and the
 rule that no proposal affects active output before an explicit owner decision and apply operation.

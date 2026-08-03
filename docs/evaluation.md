@@ -43,6 +43,11 @@ python -m murlocs.eval \
   --task ./evaluation/import-graph.toml \
   --runs ./evaluation/import-graph-runs.json \
   --output ./eval-results
+
+# Join curation history to pinned before/after recorded runs.
+python -m murlocs.eval \
+  --longitudinal ./evaluation/curation-series.json \
+  --output ./eval-results
 ```
 
 The bundled `import-graph` task ships with a small fixture repository whose import graph is
@@ -56,7 +61,8 @@ Task definitions are TOML. They pin the prompt and repository revision and defin
 that the answer must contain. Fact alternatives are matched case-insensitively; the threshold is a
 fraction from `0` through `1`. A task id is also its result filename, so version 1 restricts it to
 1–128 ASCII letters, digits, dots, underscores, or hyphens; it must begin and end with a letter or
-digit and cannot contain `..`.
+digit and cannot contain `..`. At least one expected fact is required; an empty fact set cannot make
+an otherwise wrong recorded answer pass correctness vacuously.
 
 ```toml
 schema_version = 1
@@ -107,6 +113,110 @@ unknown arms, missing fields, unsupported schema versions, negative counts, and 
 mismatches fail with an actionable error before any output is written. Unknown fields are rejected
 so schema evolution remains explicit through `schema_version`.
 
+## Longitudinal curation outcomes
+
+`--longitudinal` accepts a versioned JSON link manifest. It references checked-in curation TOML
+records and ordinary task/run files instead of copying or weakening either schema. Each proposal
+link supplies facts that curation schema version 1 does not store: repository and compiled-guidance
+revisions, affected scope/chain snapshots, and active bytes for each chain. Source revisions come
+from the lifecycle and must match the record's base and apply-event hashes.
+
+When a curation record has `target_scope`, that scope must appear in the supplied affected-chain
+snapshots. Other affected scopes and chain identities are versioned evidence supplied by the pilot,
+not independently reconstructed truth: schema version 1 does not retain the historical manifest
+checkout needed to recompute them. The evaluator does cross-check each snapshot's exact byte count
+against the linked Murlocs run's guidance text and preserves the supplied evidence for review.
+
+Every observation names a proposal, `before` or `after` phase, affected scope, exact guidance
+chain, source revision, task file, and recorded-run file. Murlocs rejects the series before
+producing a summary when:
+
+- a proposal, related supersession proposal, before/after observation, or referenced file is
+  missing;
+- a proposal or observation identity is duplicated and therefore ambiguous;
+- the source, repository, or Murlocs guidance revision differs from the selected lifecycle phase;
+- an observation relabels a scope or chain not declared by that proposal;
+- before/after task definitions, models, or agent environments are incompatible; or
+- the Murlocs run's exact guidance bytes differ from the affected-chain byte snapshot.
+
+Version 1 is deliberately a **single-source linear series**, not a general revision graph. Applied
+proposals are ordered by their apply-event times. Repository, source, and guidance revisions must
+connect exactly from each after boundary to the next before boundary. Byte counts for every
+overlapping affected scope/chain must also connect. Equal apply times, cross-source series, branch
+joins, disconnected histories, and byte jumps are ambiguous and rejected instead of being added
+into a misleading cumulative total.
+
+Rejected, withdrawn, proposed, and accepted-but-unapplied records do not advance the history or add
+an active-byte delta. Their before revisions must match the active boundary at their proposal time.
+A canonical recorded-run evidence fingerprint is attributed once by default, so path aliases,
+hardlinks, or copied JSON cannot double-count one snapshot. The only reuse allowed is the identical
+after snapshot of one applied proposal as the before snapshot of the immediately adjacent applied
+proposal, with the same revision, task, scope, and chain. Result evidence retains both run-only and
+task-plus-run fingerprints.
+
+References are safe paths relative to the link manifest. Absolute paths, parent traversal,
+symlinks, unknown fields, and unsupported versions are rejected. Loading and analysis are
+read-only. As with single-revision evaluation, `--output` is an explicit request to write only the
+deterministic result artifact.
+
+An abbreviated proposal and observation look like:
+
+```json
+{
+  "schema_version": 1,
+  "series_id": "curation-pilot-1",
+  "proposals": [
+    {
+      "record": "curation/replace-core-rule.toml",
+      "revisions": {
+        "repository_before": "repo-a",
+        "repository_after": "repo-b",
+        "source_before": "<record base source sha256>",
+        "source_after": "<apply-event source sha256>",
+        "guidance_before": "lock-a",
+        "guidance_after": "lock-b"
+      },
+      "affected_chains": [
+        {
+          "scope": "core",
+          "chain": ["root", "core"],
+          "active_bytes_before": 4200,
+          "active_bytes_after": 3980
+        }
+      ]
+    }
+  ],
+  "observations": [
+    {
+      "proposal_id": "replace-core-rule",
+      "phase": "before",
+      "scope": "core",
+      "chain": ["root", "core"],
+      "source_revision": "<record base source sha256>",
+      "task": "tasks/import-before.toml",
+      "runs": "runs/import-before.json"
+    }
+  ]
+}
+```
+
+Applied proposals require matching before and after observations for every task/scope/chain
+identity. Rejected, withdrawn, proposed, or accepted-but-unapplied records require a before
+observation and cannot claim an after promotion revision.
+
+The deterministic result distinguishes proposal state and intent, accepted proposals, applied
+additions and replacements, supersessions, rejections, and pruning. Its active-byte timeline shows
+per-chain before/after/delta snapshots, acceptance rate, replacement-to-addition ratio, and seconds
+from proposal to the first acceptance, rejection, or withdrawal. RFC 3339 event times with offsets
+are required so decision latency is portable.
+
+Before/after search and action deltas are emitted only when both Murlocs runs pass the same task's
+correctness threshold. If either side fails, both sides' efficiency values, every efficiency delta,
+and all efficiency aggregates are withheld from the comparison. Raw task definitions, run records,
+transcripts, lifecycle events, revisions, affected chains, and byte snapshots remain in
+`raw_evidence`, with metric definitions beside them, so reviewers can independently reproduce the
+summary.
+
 ## Pilot workflow
 
 1. Pin the repository revision and write a task with facts that can be verified without model
@@ -133,3 +243,10 @@ across tasks or models, or that lower cost is always preferable when it sacrific
 token estimate is a heuristic, not a billed count, and a single fixture is an existence proof, not a
 benchmark. Treat results as evidence about a concrete case, and grow the task set before drawing
 broad conclusions.
+
+Longitudinal correlation is not a causal claim. A better recorded outcome after a proposal does not
+show that the proposal caused the change, will help another task, model, or repository, or should be
+promoted elsewhere. Evaluation remains evidence for owner judgment and never accepts, promotes,
+supersedes, or prunes a proposal automatically. The evaluator is not imported by `compile`,
+`check`, or curation apply operations, does not invoke a model, and does not execute registered
+checks.
