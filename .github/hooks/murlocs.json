@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {"type": "command", "command": "murlocs-copilot-adapter task-start", "timeoutSec": 10}
+    ],
+    "postToolUse": [
+      {"type": "command", "matcher": "create|edit|str_replace_editor|apply_patch", "command": "murlocs-copilot-adapter post-edit", "timeoutSec": 10}
+    ],
+    "preToolUse": [
+      {"type": "command", "matcher": "create|edit|str_replace_editor|apply_patch", "command": "murlocs-copilot-adapter prospective-impact", "timeoutSec": 10},
+      {"type": "command", "matcher": "bash|powershell", "command": "murlocs-copilot-adapter pre-commit", "timeoutSec": 15}
+    ],
+    "agentStop": [
+      {"type": "command", "command": "murlocs-copilot-adapter pre-completion", "timeoutSec": 15}
+    ]
+  }
+}
