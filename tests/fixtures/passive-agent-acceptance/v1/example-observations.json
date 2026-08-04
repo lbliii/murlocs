@@ -1,0 +1,115 @@
+{
+  "contract": "io.murlocs.passive-agent-acceptance",
+  "schema_version": 1,
+  "observations": [
+    {
+      "scenario": "ordinary-code",
+      "session": {
+        "id": "fresh-ordinary-a1",
+        "fresh": true,
+        "discovered_guidance": true,
+        "host": {"adapter": "generated-guidance", "capability": "guidance-fallback"}
+      },
+      "expectation": {
+        "commitment": "0d676c66e0036282335f7614f586c309ddbcf12906ec48dca6c60ea5821a4af5",
+        "recorded_before_session": true
+      },
+      "calls": [{"event": "task-start", "operation": "check", "result": "pass"}],
+      "outcomes": [{"code": "MURLOCS_OUTCOME_PASS", "resolution": "pass", "silent": true}],
+      "latency_ms": {"total": 0, "operations": {"check": 0}},
+      "remediation": null,
+      "escalation": null,
+      "status": "pass",
+      "failure": null
+    },
+    {
+      "scenario": "generated-drift",
+      "session": {
+        "id": "fresh-drift-a1",
+        "fresh": true,
+        "discovered_guidance": true,
+        "host": {"adapter": "generated-guidance", "capability": "guidance-fallback"}
+      },
+      "expectation": {
+        "commitment": "9dc7f26ece9bed003a62014d2616e5e0f171407d00e6f9f68091152c6e72c09a",
+        "recorded_before_session": true
+      },
+      "calls": [
+        {"event": "task-start", "operation": "check", "result": "finding"},
+        {"event": "remediation", "operation": "repair", "result": "pass"},
+        {"event": "revalidation", "operation": "check", "result": "pass"}
+      ],
+      "outcomes": [
+        {"code": "MURLOCS_GENERATED_DRIFT", "resolution": "deterministic_repair", "silent": false},
+        {"code": "MURLOCS_OUTCOME_PASS", "resolution": "pass", "silent": true}
+      ],
+      "latency_ms": {"total": 0, "operations": {"check": 0, "repair": 0}},
+      "remediation": {"deterministic": true, "revalidated": true, "changed_paths": ["AGENTS.md"]},
+      "escalation": null,
+      "status": "pass",
+      "failure": null
+    },
+    {
+      "scenario": "semantic-local-guidance",
+      "session": {
+        "id": "fresh-local-a1",
+        "fresh": true,
+        "discovered_guidance": true,
+        "host": {"adapter": "generated-guidance", "capability": "guidance-fallback"}
+      },
+      "expectation": {
+        "commitment": "fe667311fb286939e27c2296a9b8f5e8d48abed758ece0479f5e7d5feb59ca9a",
+        "recorded_before_session": true
+      },
+      "calls": [{"event": "impact", "operation": "impact", "result": "finding"}],
+      "outcomes": [{"code": "MURLOCS_AGENT_ACTION", "resolution": "agent_action", "silent": false}],
+      "latency_ms": {"total": 0, "operations": {"impact": 0}},
+      "remediation": {"evidence_count": 1, "policy_mutated": false, "affected_scope": "tests"},
+      "escalation": null,
+      "status": "pass",
+      "failure": null
+    },
+    {
+      "scenario": "cross-scope-global-guidance",
+      "session": {
+        "id": "fresh-global-a1",
+        "fresh": true,
+        "discovered_guidance": true,
+        "host": {"adapter": "generated-guidance", "capability": "guidance-fallback"}
+      },
+      "expectation": {
+        "commitment": "5ddcf4e6e8cfd653479710fffd3c50c9d8a2de12a119218224e33d72cbf657ff",
+        "recorded_before_session": true
+      },
+      "calls": [{"event": "impact", "operation": "impact", "result": "finding"}],
+      "outcomes": [{"code": "MURLOCS_AGENT_ACTION", "resolution": "agent_action", "silent": false}],
+      "latency_ms": {"total": 0, "operations": {"impact": 0}},
+      "remediation": {"evidence_count": 1, "policy_mutated": false, "affected_scope": "root"},
+      "escalation": null,
+      "status": "pass",
+      "failure": null
+    },
+    {
+      "scenario": "authority-required-exception",
+      "session": {
+        "id": "fresh-authority-a1",
+        "fresh": true,
+        "discovered_guidance": true,
+        "host": {"adapter": "generated-guidance", "capability": "guidance-fallback"}
+      },
+      "expectation": {
+        "commitment": "9e925e9347809304f59c4232ac22c3fe80c23c15d449593460126287a72a7b7b",
+        "recorded_before_session": true
+      },
+      "calls": [{"event": "pre-completion", "operation": "impact", "result": "finding"}],
+      "outcomes": [
+        {"code": "MURLOCS_AUTHORITY_REQUIRED", "resolution": "authority_required", "silent": false}
+      ],
+      "latency_ms": {"total": 0, "operations": {"impact": 0}},
+      "remediation": {"blocked_without_authority": true},
+      "escalation": {"count": 1, "compact": true, "owner": "@lbliii"},
+      "status": "pass",
+      "failure": null
+    }
+  ]
+}
