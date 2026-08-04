@@ -15,6 +15,8 @@ from murlocs.outcome import (
     outcome_json_bytes,
     parse_outcome,
     parse_outcome_json,
+    reconcile_external_authority_evidence,
+    render_compact_outcome,
 )
 
 MANIFEST = """schema_version = 1
@@ -24,7 +26,9 @@ max_active_bytes = 24576
 owners = ["@platform"]
 pillars = []
 search_policy = []
-operating_rules = []
+operating_rules = [
+  "For an active agent, use compact Murlocs outcome text; integrations use structured JSON.",
+]
 stop_and_ask = []
 done_criteria = []
 
@@ -130,6 +134,110 @@ def test_v1_conformance_goldens_are_canonical_and_malformed_fixtures_fail():
             parse_outcome_json(path.read_bytes())
 
 
+def test_compact_rendering_goldens_are_derived_from_v1_outcomes():
+    outcomes = json.loads((FIXTURE_ROOT / "conformance.json").read_text(encoding="utf-8"))
+    compact = json.loads(
+        (FIXTURE_ROOT / "compact-rendering.json").read_text(encoding="utf-8")
+    )
+    assert compact["contract"] == "io.murlocs.outcome.compact-rendering"
+    by_id = {case["id"]: case["outcome"] for case in outcomes["cases"]}
+
+    for case in compact["cases"]:
+        rendered = render_compact_outcome(by_id[case["id"]])
+        assert rendered == case["expected"]
+        assert "provenance" not in rendered
+        assert "MURLOCS_" not in rendered
+
+
+def test_authority_review_requires_matching_trusted_adapter_evidence():
+    outcomes = json.loads((FIXTURE_ROOT / "conformance.json").read_text(encoding="utf-8"))
+    authority = next(
+        case["outcome"] for case in outcomes["cases"] if case["id"] == "authority-required"
+    )
+    evidence = {
+        "adapter_id": "fixture-adapter",
+        "adapter_version": "1",
+        "session_id": "session-a",
+        "review_id": "review-17",
+        "reviewed_state_id": "state-7",
+        "owners": ["@api"],
+    }
+
+    satisfied = reconcile_external_authority_evidence(
+        authority, evidence, gated_boundary="completion", task_authorized=True
+    )
+    assert satisfied["decision"]["task_authorization"] == "externally_attested"
+    assert satisfied["decision"]["agent_acknowledgement"] == "not_recorded"
+    assert satisfied["decision"]["authority_state"] == "externally_satisfied"
+    assert satisfied["decision"]["gated_boundary"] == "completion"
+    assert satisfied["decision"]["review_evidence"] == evidence
+    satisfied_text = render_compact_outcome(satisfied)
+    assert "@api review satisfies the completion gate" in satisfied_text
+    assert "completion may proceed while evidence remains valid" in satisfied_text
+
+    authorized_unresolved = reconcile_external_authority_evidence(
+        authority, None, task_authorized=True
+    )
+    assert authorized_unresolved["decision"]["task_authorization"] == "externally_attested"
+    assert authorized_unresolved["decision"]["authority_state"] == "unresolved"
+    unresolved_text = render_compact_outcome(authorized_unresolved)
+    assert "implementation may continue; @api review gates merge" in unresolved_text
+    assert "obtain @api review before merge" in unresolved_text
+
+    unavailable_integration = reconcile_external_authority_evidence(authority, None)
+    assert unavailable_integration["decision"]["authority_state"] == "unresolved"
+    assert unavailable_integration["decision"]["review_evidence"] is None
+
+    stale = dict(evidence, reviewed_state_id="state-older")
+    assert reconcile_external_authority_evidence(satisfied, stale)["decision"][
+        "authority_state"
+    ] == "unresolved"
+    assert reconcile_external_authority_evidence(satisfied, None)["decision"][
+        "authority_state"
+    ] == "unresolved"
+    forged = copy.deepcopy(satisfied)
+    forged["decision"]["agent_acknowledgement"] = "claimed"
+    with pytest.raises(MurlocsError, match="agent acknowledgement"):
+        parse_outcome(forged)
+
+
+def test_parser_rejects_forged_mismatched_stale_and_removed_review_evidence():
+    outcomes = json.loads((FIXTURE_ROOT / "conformance.json").read_text(encoding="utf-8"))
+    authority = next(
+        case["outcome"] for case in outcomes["cases"] if case["id"] == "authority-required"
+    )
+    evidence = {
+        "adapter_id": "fixture-adapter",
+        "adapter_version": "1",
+        "session_id": "session-a",
+        "review_id": "review-17",
+        "reviewed_state_id": "state-7",
+        "owners": ["@api"],
+    }
+    satisfied = reconcile_external_authority_evidence(authority, evidence)
+
+    forged = copy.deepcopy(satisfied)
+    forged["correlation"] = {
+        "correlation_id": "fixture-authority",
+        "state_id": None,
+        "dependency_id": None,
+        "token_source": "none",
+        "token_scope": None,
+    }
+    mismatched = copy.deepcopy(satisfied)
+    mismatched["decision"]["review_evidence"]["session_id"] = "session-b"
+    stale = copy.deepcopy(satisfied)
+    stale["decision"]["review_evidence"]["reviewed_state_id"] = "state-older"
+    missing_owner = copy.deepcopy(satisfied)
+    missing_owner["decision"]["review_evidence"]["owners"] = []
+    removed = copy.deepcopy(satisfied)
+    removed["decision"]["review_evidence"] = None
+
+    for value in (forged, mismatched, stale, missing_owner, removed):
+        with pytest.raises(MurlocsError, match="current matching integration review evidence"):
+            parse_outcome(value)
+
+
 def test_check_pass_and_safe_drift_are_versioned_read_only_outcomes(tmp_path: Path):
     root = tmp_path / "repo"
     build(root)
@@ -152,6 +260,18 @@ def test_check_pass_and_safe_drift_are_versioned_read_only_outcomes(tmp_path: Pa
         "token_scope": None,
     }
     assert snapshot(root) == before
+
+
+def test_generated_fallback_guidance_recommends_compact_for_agents_and_json_for_integrations(
+    tmp_path: Path,
+):
+    root = tmp_path / "repo"
+    build(root)
+
+    rendered = (root / "AGENTS.md").read_text(encoding="utf-8")
+
+    assert "active agent, use compact Murlocs outcome text" in rendered
+    assert "integrations use structured JSON" in rendered
 
     manifest = root / ".murlocs/manifest.toml"
     manifest.write_text(
@@ -262,6 +382,18 @@ def test_impact_agent_and_authority_outcomes_name_exact_routing(tmp_path: Path):
     assert affected["scopes"] == ["api"]
     assert "src/api/AGENTS.md" in affected["maps"]
     assert affected["owners"] == ["@api"]
+
+
+def test_terminal_uses_compact_outcome_rendering(tmp_path: Path):
+    root = tmp_path / "repo"
+    build(root)
+
+    result = invoke("impact", "--repo", str(root), "--path", "src/api/app/service.py")
+
+    assert result.exit_code == 0
+    assert "status: advisory; scopes: api; owners: @api" in result.output
+    assert "lifecycle: implementation may continue; @api review gates merge" in result.output
+    assert "provenance" not in result.output
 
 
 @pytest.mark.parametrize(

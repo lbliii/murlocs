@@ -169,6 +169,14 @@ integration and remain opaque within its adapter/session scope. An aggregate sid
 for a multi-operation event whose exact required receipts were validated; finding provenance must
 name only those receipt operations, and impact dependency evidence must still match.
 
+Hosts MAY render a nonhealthy sidecar with its compact agent-facing rendering. For an
+authority-required result, that rendering distinguishes the still-unattested task and agent state
+from unresolved or externally evidenced owner review, says whether implementation may continue,
+and names the gated boundary. Only a trusted adapter or repository integration may reconcile review
+evidence; an agent message, local acknowledgement, or sidecar supplied by the agent is never review
+evidence. A satisfied compact result names the reviewing owners and says the gated boundary may
+proceed only while their externally evidenced review remains valid for the current state.
+
 Each next action has `operation`, object-valued `arguments`, `effect` (`read_repository` or
 `request_authority`), and `authority` (`integration`, `agent`, or `human`). Lifecycle v1 rejects
 non-empty `writes`, `propose_write`, opaque command/argv/shell fields, invented fallback values, and

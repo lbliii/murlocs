@@ -40,6 +40,7 @@ from murlocs.manifest import load_manifest
 from murlocs.outcome import (
     bind_integration_tokens,
     merge_outcomes,
+    render_compact_outcome,
     validate_correlation_id,
 )
 
@@ -434,7 +435,7 @@ def _run_snapshot(
             "silent": not blocking,
             "operations": operations,
             "outcome": outcome,
-            "summary": outcome["summary"],
+            "summary": render_compact_outcome(outcome) or outcome["summary"],
             "metrics": {
                 **metrics,
                 "git_subprocesses": deadline.git_calls,
@@ -446,13 +447,7 @@ def _run_snapshot(
     )
     text = ""
     if blocking:
-        findings = check_payload.get("findings", [])
-        messages = [
-            f"{item.get('code', 'check')}: {item.get('message', 'Murlocs check failed')}"
-            for item in findings
-            if isinstance(item, dict)
-        ]
-        text = "\n".join([*messages, outcome["summary"]])
+        text = render_compact_outcome(outcome)
     return HookResult(payload, 1 if blocking else 0, text)
 
 
