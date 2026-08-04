@@ -81,3 +81,18 @@ murlocs impact --correlation-id "$RUN_ID" --revision-range HEAD --format json \
 Treat both files as untrusted until an integration validates the versioned envelopes and binds its
 own fresh state evidence. Do not infer trusted tokens from their contents, and do not execute an
 action by translating arbitrary envelope data into a command.
+
+## Executing an authorized repair
+
+`compile_managed_guidance` is an allowlisted integration action, not an instruction to run arbitrary
+shell text. An integration that has explicit write authority may invoke `murlocs repair`; the
+command accepts only a preflight-safe set of `drift` and `lock` findings, names every changed map
+and lockfile path, and reports whether Git callers must re-stage and re-run their gate. Its
+`--dry-run` update list, including before/after SHA-256 values, is identical to the subsequent
+stable apply. Semantic, unmanaged, or modified-output findings keep their read-only agent or
+authority envelope and are never repaired automatically.
+
+Repair occurs outside the lifecycle operation itself. An integration must obtain a new post-edit
+assessment and fresh cache-forbidden pre-completion receipts after repair. Interrupted multi-file
+repairs retain a checked journal and are handled with `murlocs repair --recover`; recovery only
+finalizes an already-complete plan or restores exact pre-repair bytes.

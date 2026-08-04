@@ -304,9 +304,10 @@ repository policy may define an authenticated human-authority bypass, but that e
 - **Humans and repository identity systems** own policy authorship, CODEOWNERS enforcement, and
   authority-required decisions. Murlocs reports routing evidence without claiming approval.
 
-Mechanical repair, if later offered by #60, MUST be an allowlisted operation outside this lifecycle
-invocation, run under explicit integration authority, followed by a new `post-edit` and fresh
-completion evidence. No response may contain an arbitrary shell command as a safe next action.
+Mechanical repair is an allowlisted operation outside this lifecycle invocation, run under explicit
+integration authority, followed by a new `post-edit` and fresh completion evidence. Murlocs
+exposes it as the bounded `repair` operation, never as arbitrary shell text; hooks themselves stay
+read-only. A Git integration must re-stage repaired paths and re-run its gate before completion.
 
 ## Concrete examples and conformance fixtures
 

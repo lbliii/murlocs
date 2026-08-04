@@ -56,6 +56,9 @@ murlocs hook status
 murlocs curate check
 # Preview compilation without changing files. It identifies planned writes and unchanged outputs.
 murlocs --dry-run compile
+# Repair only preflight-safe generated guidance drift, then re-stage and re-run a gate if needed.
+murlocs --dry-run repair
+murlocs repair
 ```
 
 Murlocs also installs `mrr` as a short alias. It exposes the same commands and surfaces, so
@@ -68,6 +71,10 @@ The bundled `bootstrap-murlocs` skill inventories the repository before writing 
 four routes: greenfield initialization, recognized steward migration, review of unmanaged guidance,
 or maintenance of an existing Murlocs network. It never treats hand-authored guidance as safely
 importable or bypasses generated-file ownership checks.
+
+`repair` is deliberately narrower than `compile`: it writes only the rendered managed maps and
+lockfile in a preflighted drift plan. It refuses semantic findings, unmanaged output, and edited
+generated maps; those remain agent or owner work rather than automatic writes.
 
 The starter manifest leaves source coverage unconfigured for compatibility. The init and check
 results say so explicitly: a passing check with no declared coverage roots did not evaluate source

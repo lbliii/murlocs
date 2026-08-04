@@ -590,6 +590,7 @@ def test_typed_outcomes_remain_read_only_and_bound_to_receipts(tmp_path: Path):
     by_id = {item["id"]: item for item in report["scenarios"]}
     for scenario in (
         "task-start-deterministic-repair",
+        "pre-completion-deterministic-repair-blocks",
         "prospective-impact-agent-action",
         "prospective-impact-authority-required",
     ):
