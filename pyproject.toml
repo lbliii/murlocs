@@ -5,12 +5,12 @@ build-backend = "hatchling.build"
 [project]
 name = "murlocs"
 version = "0.1.0"
-description = "Raise and verify repository-local guidance networks for coding agents."
+description = "Compile and verify repository-local guidance maps for coding agents."
 readme = "README.md"
 requires-python = ">=3.14"
 license = { text = "MIT" }
 authors = [{ name = "Lawrence Lane" }]
-keywords = ["agents", "AGENTS.md", "repository", "governance", "coding-agents"]
+keywords = ["coding-agents", "AGENTS.md", "repository-guidance", "verification", "developer-tools"]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "License :: OSI Approved :: MIT License",
