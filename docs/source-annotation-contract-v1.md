@@ -2,16 +2,17 @@
 
 Status: version 1.0. This is the grammar and conformance baseline for
 [#84](https://github.com/lbliii/murlocs/issues/84). It is deliberately narrower than a resolver:
-it neither adds a manifest field nor discovers or activates source annotations in Murlocs. The
+It defines the grammar used by the additive, inert manifest/resolver implementation; it does not
+activate source annotations in Murlocs. The
 [authority model](source-annotation-authority.md) remains controlling: a parsed marker is an
 untrusted attachment candidate, never guidance, proof, approval, ownership, a suppression, or a
 command.
 
 ## 1. Terms and compatibility
 
-A **declaration** is a future reviewed manifest/layer relationship with a stable identifier. An
+A **declaration** is a reviewed manifest/layer relationship with a stable identifier. An
 **annotation** is a source comment that names that identifier. A **binding** is the resolver's
-pairing of one declaration and one annotation location. No binding exists in this release.
+pairing of one declaration and one annotation location. A v1 binding remains inert evidence only.
 
 Version 1 has exactly one relationship kind: `evidence`. It means that a reviewed declaration may
 point to a source location as inspectable evidence. It is not semantic proof: marker presence does

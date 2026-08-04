@@ -56,6 +56,17 @@ class Invariant:
     enforced_by: str | None = None
     evidence_file: str | None = None
     anchor: str | None = None
+    annotation: SourceAnnotation | None = None
+
+
+@dataclass(frozen=True)
+class SourceAnnotation:
+    """A reviewed declaration for one inert source-annotation attachment."""
+
+    identifier: str
+    kind: str
+    file: str
+    version: str
 
 
 @dataclass(frozen=True)

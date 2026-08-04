@@ -110,6 +110,7 @@ statement = "Core uses the shared check."
 severity = "important"
 verification = "command"
 enforced_by = "shared"
+annotation = { id = "core.shared", kind = "evidence", file = "src/core/app.py", version = "v1" }
 
 [[invariants]]
 id = "docs-shared"
@@ -205,6 +206,9 @@ def test_apply_recompiles_deterministically_and_supports_read_flows(tmp_path):
     assert result.exit_code == 0, result.stderr
     assert (root / ".murlocs" / "layers" / "core.toml").is_file()
     assert (root / ".murlocs" / "layers" / "docs.toml").is_file()
+    layer = (root / ".murlocs" / "layers" / "core.toml").read_text(encoding="utf-8")
+    assert 'annotation = { id = "core.shared", kind = "evidence", ' in layer
+    assert 'file = "src/core/app.py", version = "v1" }' in layer
     assert invoke("check", "--repo", str(root)).exit_code == 0
     snapshot = {
         path.relative_to(root): path.read_bytes() for path in root.rglob("*") if path.is_file()

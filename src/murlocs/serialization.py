@@ -114,6 +114,7 @@ def render_manifest_data(data: dict[str, Any]) -> str:
         for optional in ("enforced_by", "evidence_file", "anchor"):
             if invariant.get(optional) is not None:
                 lines.append(f"{optional} = {_quote(invariant[optional])}")
+        _append_annotation(lines, invariant.get("annotation"))
         lines.append("")
     return "\n".join(lines).rstrip() + "\n"
 
@@ -193,6 +194,7 @@ def render_fragment_data(fragment: dict[str, Any]) -> str:
         for optional in ("enforced_by", "evidence_file", "anchor"):
             if invariant.get(optional) is not None:
                 lines.append(f"{optional} = {_quote(invariant[optional])}")
+        _append_annotation(lines, invariant.get("annotation"))
         lines.append("")
 
     return "\n".join(lines).rstrip() + "\n"
@@ -211,6 +213,14 @@ def _quote(value: Any) -> str:
 
 def _array(values: list[str]) -> str:
     return "[" + ", ".join(_quote(value) for value in values) + "]"
+
+
+def _append_annotation(lines: list[str], annotation: Any) -> None:
+    if annotation is None:
+        return
+    lines.append("annotation = { " + ", ".join(
+        f"{key} = {_quote(annotation[key])}" for key in ("id", "kind", "file", "version")
+    ) + " }")
 
 
 def _bare_key(value: str) -> str:

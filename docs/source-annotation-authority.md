@@ -22,9 +22,8 @@ Version 1 therefore has these non-negotiable semantics:
   outcome, prompt, command, or URL.
 - Source attachment is evidence, not semantic proof. A present marker does not establish that an
   invariant is true, that a check passed, or that an actor is authorized.
-- The current release does not parse source annotations at all. It remains conformant only by
-  ignoring them; the fixture below locks that behavior. A future parser must not silently change
-  this safety property.
+- The current resolver parses only reviewed, finite declared-file relationships under contract v1.
+  Undeclared source content remains ignored; parsing must not silently change this safety property.
 
 ## Authority and trust matrix
 
@@ -70,7 +69,7 @@ existing stale-proof behavior; it does not define a universal Git snapshot algor
 ## Content and path threat handling
 
 The following rules are conformance expectations for any implementation that follows this model.
-Until an implementation exists, all of these inputs remain ignored rather than interpreted.
+The resolver treats all of these inputs as unavailable rather than interpreted.
 
 | Threat or ambiguous input | Required treatment |
 | --- | --- |

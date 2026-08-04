@@ -17,6 +17,7 @@ from murlocs.model import (
     Ownership,
     OwnershipGroup,
     Scope,
+    SourceAnnotation,
 )
 
 MANIFEST_TEMPLATE = """schema_version = 1
@@ -154,6 +155,7 @@ def parse_manifest_data(
                 enforced_by=_optional_string(item.get("enforced_by")),
                 evidence_file=_optional_string(item.get("evidence_file")),
                 anchor=_optional_string(item.get("anchor")),
+                annotation=_parse_annotation(item.get("annotation")),
             )
             for item in data.get("invariants", [])
         )
@@ -207,6 +209,30 @@ def parse_manifest_data(
 
 def _optional_string(value: Any) -> str | None:
     return None if value is None else str(value)
+
+
+def _parse_annotation(value: Any) -> SourceAnnotation | None:
+    """Parse the additive, reviewed annotation declaration without scanning source."""
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise TypeError("invariants[].annotation must be a table")
+    fields = {"id", "kind", "file", "version"}
+    unknown = sorted(set(value) - fields)
+    if unknown:
+        raise ValueError(
+            "invariants[].annotation contains unsupported fields: " + ", ".join(unknown)
+        )
+    missing = sorted(fields - set(value))
+    if missing:
+        raise ValueError(
+            "invariants[].annotation is missing fields: " + ", ".join(missing)
+        )
+    if not all(isinstance(value[field], str) for field in fields):
+        raise TypeError("invariants[].annotation fields must be strings")
+    return SourceAnnotation(
+        identifier=value["id"], kind=value["kind"], file=value["file"], version=value["version"]
+    )
 
 
 def _boolean(value: Any, context: str) -> bool:

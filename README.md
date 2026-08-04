@@ -198,8 +198,8 @@ decisions, and recoverable source-plus-record apply transactions. Apply never ru
 registered check, or implicit compile. See [Architecture](docs/architecture.md) for trust boundaries and
 [Roadmap](docs/roadmap.md) for planned ecosystem work.
 
-Source-linked evidence is not yet a parser surface. The [source annotation authority model](docs/source-annotation-authority.md)
-records the pre-implementation trust boundary: arbitrary
+Source-linked evidence has an inert, declared-file-only resolver. The [source annotation authority model](docs/source-annotation-authority.md)
+records the governing trust boundary: arbitrary
 comments remain inert and never enter generated guidance.
 
 ## Status
