@@ -325,6 +325,7 @@ def plan_split_layers(
         layered=True,
         sources=resolved.sources,
         scope_layers=resolved.scope_layers,
+        invariant_layers=resolved.invariant_layers,
         overrides=resolved.overrides,
     )
     semantic_changes, order_only = _semantic_comparison(original_manifest, candidate)
@@ -527,7 +528,15 @@ def _semantic_comparison(
 
 def _strip_provenance(text: str) -> str:
     marker = "\n## Provenance\n"
-    return text.split(marker, 1)[0].rstrip() + "\n"
+    guidance = text.split(marker, 1)[0]
+    # Annotation bindings are generated, reviewed attachment metadata just like
+    # the source-layer footer. They do not change an invariant's statement.
+    guidance = "\n".join(
+        line
+        for line in guidance.splitlines()
+        if not line.startswith("  - Evidence provenance: ")
+    )
+    return guidance.rstrip() + "\n"
 
 
 def _rendered_changes(before: dict[str, str], after: dict[str, str]) -> tuple[RenderedChange, ...]:

@@ -8,7 +8,8 @@ from murlocs.errors import MurlocsError
 from murlocs.lockfile import LOCK_PATH
 from murlocs.manifest import load_manifest
 from murlocs.migration import MIGRATION_STATE, inventory_repository
-from murlocs.verify import Finding, validate
+from murlocs.source_annotations import annotation_provenance_payload
+from murlocs.verify import Finding, annotation_findings, validate
 
 
 def adoption_status(root: Path) -> dict[str, Any]:
@@ -77,13 +78,15 @@ def adoption_status(root: Path) -> dict[str, Any]:
             migration_error = str(exc)
 
     findings: list[Finding] = []
+    annotations: list[dict[str, object]] = []
     manifest_error: str | None = None
     coverage_roots: list[str] = []
     if manifest_exists:
         try:
             manifest = load_manifest(root)
             coverage_roots = list(manifest.coverage_roots)
-            findings = validate(manifest)
+            findings = [*validate(manifest), *annotation_findings(manifest)]
+            annotations = annotation_provenance_payload(manifest)
         except (MurlocsError, OSError, ValueError) as exc:
             manifest_error = str(exc)
 
@@ -303,6 +306,7 @@ def adoption_status(root: Path) -> dict[str, Any]:
             "roots": coverage_roots,
         },
         "semantic_correctness": "not_evaluated",
+        "annotations": annotations,
     }
 
 
