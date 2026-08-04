@@ -38,8 +38,8 @@ false receipt for them.
 
 `SessionStart` runs typed `check`. `PreToolUse` runs prospective `impact` only
 when Claude supplied an in-root edit path. `PostToolUse` runs `check` and
-`impact` for the normalized in-root path. Parent, absolute, NUL-containing,
-and symlink-escape paths never reach Murlocs operations. The Bash pre-commit
+`impact` for the normalized in-root path. Parent escapes, out-of-root absolute
+paths, NUL-containing paths, and symlink escapes never reach Murlocs operations. The Bash pre-commit
 bridge shell-parses direct Git invocations, including global Git options and
 shell segments; inert text such as `echo git commit` is not treated as a gate.
 
