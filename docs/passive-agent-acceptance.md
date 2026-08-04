@@ -22,6 +22,10 @@ record only lifecycle event and operation names, typed outcome code/resolution/s
 milliseconds, remediation facts, and the compact escalation facts. The agent must discover the
 checked-in guidance without evaluator-provided product context.
 
+`latency_ms.wall_clock` measures from disposable-worktree provisioning through blind reveal. It
+captures comparable end-to-end latency even when the host does not expose per-operation timing;
+those unavailable samples are represented as `null`, never as fabricated zero-duration calls.
+
 | Journey | Required observation |
 | --- | --- |
 | Ordinary code-only work | Fresh discovery, healthy silent result, and no Murlocs-related user interruption. |

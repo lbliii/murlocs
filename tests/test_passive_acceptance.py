@@ -57,6 +57,14 @@ def test_ordinary_journey_requires_silent_outcomes():
         validate_observations(evidence)
 
 
+def test_observation_rejects_sensitive_text_smuggled_through_an_allowed_field():
+    evidence = observations()
+    evidence["observations"][0]["calls"][0]["operation"] = "private task text"
+
+    with pytest.raises(PassiveAcceptanceError, match="safe identifier|allowlisted"):
+        validate_observations(evidence)
+
+
 @pytest.mark.parametrize("forbidden", ["prompt", "task", "transcript", "command"])
 def test_observation_rejects_prompt_and_tool_argument_content(forbidden: str):
     evidence = observations()

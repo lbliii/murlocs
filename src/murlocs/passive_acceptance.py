@@ -10,6 +10,7 @@ commitment plus bounded lifecycle facts.
 from __future__ import annotations
 
 import hashlib
+import re
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -37,11 +38,36 @@ FAILURE_OBSERVATIONS = frozenset(
         "missing_owner_packet",
     }
 )
+CALL_EVENTS = frozenset(
+    {
+        "task-start",
+        "prospective-impact",
+        "post-edit",
+        "pre-commit",
+        "pre-completion",
+        "impact",
+        "remediation",
+        "revalidation",
+    }
+)
+CALL_OPERATIONS = frozenset({"check", "impact", "repair"})
+OUTCOME_CODES = frozenset(
+    {
+        "MURLOCS_OUTCOME_PASS",
+        "MURLOCS_GENERATED_DRIFT",
+        "MURLOCS_AGENT_ACTION",
+        "MURLOCS_AUTHORITY_REQUIRED",
+    }
+)
+OUTCOME_RESOLUTIONS = frozenset(
+    {"pass", "deterministic_repair", "agent_action", "authority_required"}
+)
 FORBIDDEN_KEYS = frozenset(
     {"prompt", "task", "request", "transcript", "message", "arguments", "command"}
 )
 MAX_COLLECTION = 32
 MAX_TEXT = 280
+SAFE_TOKEN = re.compile(r"[A-Za-z0-9@._/-]+")
 
 
 class PassiveAcceptanceError(ValueError):
@@ -171,7 +197,7 @@ def _session(value: object) -> None:
         {"id", "fresh", "discovered_guidance", "user_interrupted", "host"},
         "session",
     )
-    _token(session["id"], "session id")
+    _safe_token(session["id"], "session id")
     if (
         not isinstance(session["fresh"], bool)
         or not isinstance(session["discovered_guidance"], bool)
@@ -180,7 +206,7 @@ def _session(value: object) -> None:
         raise PassiveAcceptanceError("session facts must be booleans")
     host = _mapping(session["host"], "session host")
     _exact_keys(host, {"adapter", "capability"}, "session host")
-    _token(host["adapter"], "host adapter")
+    _safe_token(host["adapter"], "host adapter")
     if host["capability"] not in {"native", "guidance-fallback", "unavailable"}:
         raise PassiveAcceptanceError("host capability is invalid")
 
@@ -206,8 +232,10 @@ def _calls(value: object) -> None:
     for call in calls:
         item = _mapping(call, "call")
         _exact_keys(item, {"event", "operation", "result"}, "call")
-        _token(item["event"], "call event")
-        _token(item["operation"], "call operation")
+        event = _safe_token(item["event"], "call event")
+        operation = _safe_token(item["operation"], "call operation")
+        if event not in CALL_EVENTS or operation not in CALL_OPERATIONS:
+            raise PassiveAcceptanceError("call event or operation is not allowlisted")
         if item["result"] not in {"pass", "finding", "error"}:
             raise PassiveAcceptanceError("call result is invalid")
 
@@ -219,24 +247,28 @@ def _outcomes(value: object) -> None:
     for outcome in outcomes:
         item = _mapping(outcome, "outcome")
         _exact_keys(item, {"code", "resolution", "silent"}, "outcome")
-        _token(item["code"], "outcome code")
-        _token(item["resolution"], "outcome resolution")
+        code = _safe_token(item["code"], "outcome code")
+        resolution = _safe_token(item["resolution"], "outcome resolution")
+        if code not in OUTCOME_CODES or resolution not in OUTCOME_RESOLUTIONS:
+            raise PassiveAcceptanceError("outcome code or resolution is not allowlisted")
         if not isinstance(item["silent"], bool):
             raise PassiveAcceptanceError("outcome silence must be boolean")
 
 
 def _latency(value: object) -> None:
     latency = _mapping(value, "latency")
-    _exact_keys(latency, {"total", "operations"}, "latency")
-    if not isinstance(latency["total"], int) or latency["total"] < 0:
-        raise PassiveAcceptanceError("total latency must be a nonnegative integer")
+    _exact_keys(latency, {"wall_clock", "basis", "operations"}, "latency")
+    if not isinstance(latency["wall_clock"], int) or latency["wall_clock"] < 0:
+        raise PassiveAcceptanceError("wall-clock latency must be a nonnegative integer")
+    if latency["basis"] != "provision-to-reveal":
+        raise PassiveAcceptanceError("latency basis must be provision-to-reveal")
     operations = _mapping(latency["operations"], "operation latency")
     if not operations or len(operations) > MAX_COLLECTION:
         raise PassiveAcceptanceError("operation latency must be bounded and nonempty")
     for name, duration in operations.items():
         _token(name, "operation latency name")
-        if not isinstance(duration, int) or duration < 0:
-            raise PassiveAcceptanceError("operation latency must be a nonnegative integer")
+        if duration is not None and (not isinstance(duration, int) or duration < 0):
+            raise PassiveAcceptanceError("operation latency must be null or a nonnegative integer")
 
 
 def _remediation(value: object, scenario: str) -> None:
@@ -259,14 +291,14 @@ def _remediation(value: object, scenario: str) -> None:
         ):
             raise PassiveAcceptanceError("drift remediation booleans are invalid")
         paths = _list(remediation["changed_paths"], "changed paths")
-        if not paths or any(not isinstance(path, str) for path in paths):
+        if not paths or any(_repository_path(path) is None for path in paths):
             raise PassiveAcceptanceError("drift remediation needs changed paths")
     elif scenario in {"semantic-local-guidance", "cross-scope-global-guidance"}:
         if not isinstance(remediation["evidence_count"], int) or remediation["evidence_count"] < 0:
             raise PassiveAcceptanceError("semantic evidence count is invalid")
         if not isinstance(remediation["policy_mutated"], bool):
             raise PassiveAcceptanceError("semantic policy mutation must be boolean")
-        _token(remediation["affected_scope"], "affected scope")
+        _safe_token(remediation["affected_scope"], "affected scope")
     elif remediation["blocked_without_authority"] is not True:
         raise PassiveAcceptanceError("authority remediation must stay blocked")
 
@@ -282,7 +314,7 @@ def _escalation(value: object, scenario: str) -> None:
         raise PassiveAcceptanceError("escalation count is invalid")
     if not isinstance(escalation["compact"], bool):
         raise PassiveAcceptanceError("escalation compactness must be boolean")
-    _token(escalation["owner"], "escalation owner")
+    _safe_token(escalation["owner"], "escalation owner")
 
 
 def _reject_sensitive_keys(value: object) -> None:
@@ -319,3 +351,16 @@ def _token(value: object, label: str) -> str:
     if not isinstance(value, str) or not value or len(value) > MAX_TEXT:
         raise PassiveAcceptanceError(f"{label} must be bounded nonempty text")
     return value
+
+
+def _safe_token(value: object, label: str) -> str:
+    token = _token(value, label)
+    if SAFE_TOKEN.fullmatch(token) is None:
+        raise PassiveAcceptanceError(f"{label} must be a safe identifier")
+    return token
+
+
+def _repository_path(value: object) -> str | None:
+    if not isinstance(value, str) or not value or value.startswith("/") or ".." in value:
+        return None
+    return value if SAFE_TOKEN.fullmatch(value) is not None else None
