@@ -22,6 +22,7 @@ dependencies = ["milo-cli>=0.4.2,<0.5"]
 [project.scripts]
 murlocs = "murlocs.cli:main"
 mrr = "murlocs.cli:mrr"
+murlocs-copilot-adapter = "murlocs.copilot_adapter:main"
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "ruff>=0.9"]
