@@ -122,12 +122,11 @@ def validate(manifest: Manifest) -> list[Finding]:
 
     findings.extend(_coverage_findings(manifest))
     findings.extend(_ownership_findings(manifest))
-    findings.extend(_annotation_findings(manifest))
     findings.extend(_drift_findings(manifest))
     return findings
 
 
-def _annotation_findings(manifest: Manifest) -> list[Finding]:
+def annotation_findings(manifest: Manifest) -> list[Finding]:
     """Convert bounded inert annotation diagnostics into check findings.
 
     Resolution deliberately never selects a partial binding.  This layer only
@@ -197,7 +196,8 @@ def _annotation_finding(
     invariant_text = ", ".join(invariant_ids) or "<unknown>"
     scope_text = ", ".join(scopes) or "<unknown>"
     source_text = ", ".join(declaration_sources) or "<unknown>"
-    boundary_text = f"; boundary={finding.boundary}" if finding.boundary is not None else ""
+    boundary = _annotation_boundary(finding, related)
+    boundary_text = f"; boundary={boundary}" if boundary is not None else ""
     return Finding(
         finding.code,
         (
@@ -210,8 +210,27 @@ def _annotation_finding(
         locations=locations,
         declaration_sources=declaration_sources,
         source_paths=source_paths,
-        annotation_boundary=finding.boundary,
+        annotation_boundary=boundary,
     )
+
+
+def _annotation_boundary(
+    finding: AnnotationResolverFinding, related: list[Invariant]
+) -> str | None:
+    """Name the finite exclusion category without exposing source contents."""
+    if finding.code != "annotation.excluded":
+        return None
+    parts = {
+        part.casefold()
+        for item in related
+        if item.annotation is not None
+        for part in Path(item.annotation.file).parts
+    }
+    if parts & {"vendor", "vendors", "third_party", "third-party"}:
+        return "vendored"
+    if parts & {"build", "dist", "gen", "generated"}:
+        return "generated"
+    return "excluded"
 
 
 def _ownership_findings(manifest: Manifest) -> list[Finding]:

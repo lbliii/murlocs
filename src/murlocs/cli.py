@@ -71,7 +71,7 @@ from murlocs.split import (
     parse_split_targets,
     plan_split_layers,
 )
-from murlocs.verify import Finding, validate
+from murlocs.verify import Finding, annotation_findings, validate
 
 
 def _normalize_repeatable_options(
@@ -1425,7 +1425,7 @@ def check_command(
     try:
         correlation_id = validate_correlation_id(correlation_id)
         manifest = load_manifest(_root(repo))
-        findings = validate(manifest)
+        findings = [*validate(manifest), *annotation_findings(manifest)]
         if transaction_pending(manifest.root):
             findings.append(
                 Finding(

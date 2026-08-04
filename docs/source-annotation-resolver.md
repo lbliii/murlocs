@@ -49,3 +49,11 @@ Excluded findings distinguish generated and vendored paths in their bounded
 boundary context. A successful attachment remains inspectable evidence only; it
 does not establish semantic truth or authorize an action. `explain`, rendered-map,
 impact, lifecycle, and transport integrations remain separate changes.
+
+V1 has no separate `annotation.conflicting` code because a source marker names
+only one identifier. A conflicting candidate is therefore classified by the
+contract's more precise relationship state: competing declarations or matching
+locations are `annotation.duplicate`; a known identifier found in another
+declared file is `annotation.misplaced`; and an identifier with no declaration is
+`annotation.orphaned`. This deterministic partition leaves no first-match or
+last-write-wins fallback.

@@ -13,7 +13,7 @@ from murlocs.manifest import parse_manifest_data
 from murlocs.outcome import build_check_outcome
 from murlocs.serialization import render_manifest_data
 from murlocs.source_annotations import AnnotationResolverFinding, resolve_annotations
-from murlocs.verify import validate
+from murlocs.verify import annotation_findings
 
 CORPUS = Path(__file__).parent / "fixtures" / "source-annotation-contract" / "v1"
 
@@ -369,7 +369,7 @@ def test_validation_reports_stable_annotation_context_and_outcome_parity(tmp_pat
         encoding="utf-8",
     )
     parsed = manifest(tmp_path, [annotation("same.marker", "source.py")])
-    findings = validate(parsed)
+    findings = annotation_findings(parsed)
     duplicate = [item for item in findings if item.code == "annotation.duplicate"]
     assert [(item.annotation_id, item.invariant_ids, item.scopes) for item in duplicate] == [
         ("same.marker", ("invariant-0",), ("root",)),
@@ -429,6 +429,13 @@ def test_validation_reports_stable_annotation_context_and_outcome_parity(tmp_pat
             "annotation.excluded",
             "generated",
         ),
+        (
+            "unsupported.marker",
+            "source.md",
+            '# murlocs:annotation/v1 evidence "unsupported.marker"\n',
+            "annotation.unsupported",
+            None,
+        ),
         ("binary.marker", "source.py", b"\xff", "annotation.undecodable", None),
     ],
 )
@@ -439,15 +446,28 @@ def test_validation_covers_contract_states(tmp_path, identifier, path, content, 
         target.write_bytes(content)
     else:
         target.write_text(content, encoding="utf-8")
-    findings = validate(manifest(tmp_path, [annotation(identifier, path)]))
+    findings = annotation_findings(manifest(tmp_path, [annotation(identifier, path)]))
     matched = [item for item in findings if item.code == code]
     assert matched
     assert all(item.annotation_id == identifier for item in matched)
+    outcome = build_check_outcome(manifest(tmp_path, [annotation(identifier, path)]), findings)
+    payload = next(
+        item
+        for item in outcome["findings"]
+        if item["code"]
+        == f"MURLOCS_CHECK_{code.replace('.', '_').replace('-', '_').upper()}"
+    )
+    assert (payload["status"], payload["severity"], payload["resolution_class"]) == (
+        "blocking",
+        "important",
+        "agent_action",
+    )
+    assert payload["action_ids"] == ["outcome.inspect-findings"]
     if boundary is not None:
         assert all(f"boundary={boundary}" in item.message for item in matched)
 
 
-def test_validation_reports_orphaned_and_misplaced_without_a_binding(tmp_path):
+def test_validation_maps_conflicting_candidates_to_precise_v1_codes(tmp_path):
     (tmp_path / "one.py").write_text(
         '# murlocs:annotation/v1 evidence "two.marker"\n', encoding="utf-8"
     )
@@ -463,6 +483,28 @@ def test_validation_reports_orphaned_and_misplaced_without_a_binding(tmp_path):
         "annotation.misplaced",
         "annotation.missing",
     }
+
+    conflict_manifest = manifest(
+        tmp_path,
+        [annotation("one.marker", "one.py"), annotation("two.marker", "two.py")],
+    )
+    conflict = next(
+        item
+        for item in annotation_findings(conflict_manifest)
+        if item.code == "annotation.misplaced"
+    )
+    assert conflict.annotation_id == "two.marker"
+    assert conflict.invariant_ids == ("invariant-1",)
+    conflict_outcome = build_check_outcome(
+        conflict_manifest, annotation_findings(conflict_manifest)
+    )
+    for payload in conflict_outcome["findings"]:
+        assert (payload["status"], payload["severity"], payload["resolution_class"]) == (
+            "blocking",
+            "important",
+            "agent_action",
+        )
+        assert payload["action_ids"] == ["outcome.inspect-findings"]
 
     (tmp_path / "one.py").write_text(
         '# murlocs:annotation/v1 evidence "orphan.marker"\n', encoding="utf-8"
@@ -506,13 +548,24 @@ def test_resolver_rejects_duplicate_declarations_and_symlinks(tmp_path):
 
 
 def test_resolver_enforces_file_byte_and_candidate_limits(tmp_path):
-    many_files = resolve_annotations(
-        manifest(
-            tmp_path,
-            [annotation(f"marker-{number}", f"file-{number}.py") for number in range(257)],
-        )
+    limited_manifest = manifest(
+        tmp_path,
+        [annotation(f"marker-{number}", f"file-{number}.py") for number in range(257)],
     )
+    many_files = resolve_annotations(limited_manifest)
     assert many_files.findings[0].code == "annotation.resource-limit"
+    limit_outcome = build_check_outcome(limited_manifest, annotation_findings(limited_manifest))
+    payload = next(
+        item
+        for item in limit_outcome["findings"]
+        if item["code"] == "MURLOCS_CHECK_ANNOTATION_RESOURCE_LIMIT"
+    )
+    assert (payload["status"], payload["severity"], payload["resolution_class"]) == (
+        "blocking",
+        "important",
+        "agent_action",
+    )
+    assert payload["action_ids"] == ["outcome.inspect-findings"]
     (tmp_path / "large.py").write_bytes(b"#" * (64 * 1024 + 1))
     too_large = resolve_annotations(manifest(tmp_path, [annotation("large.marker", "large.py")]))
     assert too_large.findings[0].code == "annotation.resource-limit"
@@ -611,5 +664,7 @@ def test_layered_annotation_declarations_render_and_override_deterministically(t
     assert parsed.source_for_invariant("marker") is not None
     assert parsed.source_for_invariant("marker").id == "overlay"
     (tmp_path / "overlay.py").write_text("VALUE = 1\n", encoding="utf-8")
-    finding = next(item for item in validate(parsed) if item.code == "annotation.missing")
+    finding = next(
+        item for item in annotation_findings(parsed) if item.code == "annotation.missing"
+    )
     assert finding.declaration_sources == ("overlay@.murlocs/layers/overlay.toml",)
