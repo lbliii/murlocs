@@ -164,25 +164,62 @@ def _validate_observation(value: object) -> tuple[str, str | None]:
 
 def _scenario_assertions(item: Mapping[str, Any], scenario: str) -> None:
     session = _mapping(item["session"], "session")
+    calls = {
+        (call["event"], call["operation"], call["result"])
+        for call in _list(item["calls"], "calls")
+    }
+    operation_results = {(operation, result) for _, operation, result in calls}
+    outcomes = {
+        (outcome["resolution"], outcome["silent"])
+        for outcome in _list(item["outcomes"], "outcomes")
+    }
     if session["fresh"] is not True or session["discovered_guidance"] is not True:
         raise PassiveAcceptanceError("passing observation requires fresh automatic discovery")
-    if scenario == "ordinary-code" and (
-        session["user_interrupted"] is not False or item["escalation"] is not None
-    ):
-        raise PassiveAcceptanceError("healthy ordinary work must not interrupt the user")
+    if scenario == "ordinary-code":
+        if session["user_interrupted"] is not False or item["escalation"] is not None:
+            raise PassiveAcceptanceError("healthy ordinary work must not interrupt the user")
+        if not {("check", "pass"), ("impact", "pass")} <= operation_results or outcomes != {
+            ("pass", True)
+        }:
+            raise PassiveAcceptanceError("ordinary work requires silent passing check and impact")
     if scenario == "generated-drift":
         remediation = _mapping(item["remediation"], "remediation")
         if remediation["deterministic"] is not True or remediation["revalidated"] is not True:
             raise PassiveAcceptanceError("generated drift must be repaired and revalidated")
+        if not {
+            ("check", "finding"),
+            ("repair", "pass"),
+            ("check", "pass"),
+        } <= operation_results or not {
+            ("deterministic_repair", False),
+            ("pass", True),
+        } <= outcomes:
+            raise PassiveAcceptanceError(
+                "generated drift requires finding, repair, revalidation, and typed outcomes"
+            )
     if scenario in {"semantic-local-guidance", "cross-scope-global-guidance"}:
         remediation = _mapping(item["remediation"], "remediation")
         if remediation["evidence_count"] < 1 or remediation["policy_mutated"] is not False:
             raise PassiveAcceptanceError(
                 "semantic guidance needs evidence and no silent policy mutation"
             )
+        if ("impact", "finding") not in operation_results or not any(
+            resolution in {"agent_action", "authority_required"} and silent is False
+            for resolution, silent in outcomes
+        ):
+            raise PassiveAcceptanceError(
+                "semantic guidance requires a typed nonpassing impact finding"
+            )
     if scenario == "authority-required-exception":
+        remediation = _mapping(item["remediation"], "remediation")
         escalation = _mapping(item["escalation"], "escalation")
-        if escalation["count"] != 1 or escalation["compact"] is not True:
+        if (
+            remediation["blocked_without_authority"] is not True
+            or escalation["count"] != 1
+            or escalation["compact"] is not True
+            or ("impact", "finding") not in operation_results
+            or ("authority_required", False) not in outcomes
+        ):
             raise PassiveAcceptanceError("authority work needs exactly one compact decision packet")
 
 
@@ -249,6 +286,14 @@ def _outcomes(value: object) -> None:
             raise PassiveAcceptanceError("outcome code or resolution is not allowlisted")
         if not isinstance(item["silent"], bool):
             raise PassiveAcceptanceError("outcome silence must be boolean")
+        expected = {
+            "MURLOCS_OUTCOME_PASS": ("pass", True),
+            "MURLOCS_OUTCOME_DETERMINISTIC_REPAIR": ("deterministic_repair", False),
+            "MURLOCS_OUTCOME_AGENT_ACTION": ("agent_action", False),
+            "MURLOCS_OUTCOME_AUTHORITY_REQUIRED": ("authority_required", False),
+        }[code]
+        if (resolution, item["silent"]) != expected:
+            raise PassiveAcceptanceError("outcome code, resolution, and silence disagree")
 
 
 def _latency(value: object) -> None:

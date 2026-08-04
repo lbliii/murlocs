@@ -15,7 +15,10 @@
         "commitment": "0d676c66e0036282335f7614f586c309ddbcf12906ec48dca6c60ea5821a4af5",
         "recorded_before_session": true
       },
-      "calls": [{"event": "task-start", "operation": "check", "result": "pass"}],
+      "calls": [
+        {"event": "task-start", "operation": "check", "result": "pass"},
+        {"event": "pre-completion", "operation": "impact", "result": "pass"}
+      ],
       "outcomes": [{"code": "MURLOCS_OUTCOME_PASS", "resolution": "pass", "silent": true}],
       "latency_ms": {
         "wall_clock": 0,

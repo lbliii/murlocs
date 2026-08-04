@@ -101,3 +101,58 @@ def test_failure_records_are_attributed_to_one_boundary_without_falsely_passing(
 
     assert report["passed"] is False
     assert report["failures"] == [{"scenario": "ordinary-code", "cause": "host_capability"}]
+
+
+@pytest.mark.parametrize(
+    ("scenario", "mutation", "message"),
+    [
+        (
+            "ordinary-code",
+            lambda item: item.__setitem__("outcomes", []),
+            "bounded nonempty list",
+        ),
+        (
+            "generated-drift",
+            lambda item: item.__setitem__(
+                "calls", [call for call in item["calls"] if call["operation"] != "repair"]
+            ),
+            "requires finding, repair, revalidation",
+        ),
+        (
+            "semantic-local-guidance",
+            lambda item: item.__setitem__(
+                "calls", [call for call in item["calls"] if call["operation"] != "impact"]
+            ),
+            "typed nonpassing impact finding",
+        ),
+        (
+            "authority-required-exception",
+            lambda item: item.__setitem__(
+                "outcomes",
+                [
+                    outcome
+                    for outcome in item["outcomes"]
+                    if outcome["resolution"] != "authority_required"
+                ],
+            ),
+            "exactly one compact decision packet",
+        ),
+    ],
+)
+def test_passing_scenarios_require_their_claimed_calls_and_outcomes(
+    scenario: str, mutation, message: str
+):
+    evidence = pilot()
+    item = next(entry for entry in evidence["observations"] if entry["scenario"] == scenario)
+    mutation(item)
+
+    with pytest.raises(PassiveAcceptanceError, match=message):
+        validate_observations(evidence)
+
+
+def test_outcome_code_resolution_and_silence_cannot_disagree():
+    evidence = observations()
+    evidence["observations"][0]["outcomes"][0]["resolution"] = "agent_action"
+
+    with pytest.raises(PassiveAcceptanceError, match="disagree"):
+        validate_observations(evidence)
