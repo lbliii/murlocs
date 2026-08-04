@@ -49,6 +49,14 @@ def test_expectation_commitment_is_stable_and_retains_no_task_text():
     )
 
 
+def test_ordinary_journey_requires_silent_outcomes():
+    evidence = observations()
+    evidence["observations"][0]["outcomes"][0]["silent"] = False
+
+    with pytest.raises(PassiveAcceptanceError, match="must have silent outcomes"):
+        validate_observations(evidence)
+
+
 @pytest.mark.parametrize("forbidden", ["prompt", "task", "transcript", "command"])
 def test_observation_rejects_prompt_and_tool_argument_content(forbidden: str):
     evidence = observations()

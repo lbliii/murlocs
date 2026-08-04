@@ -144,6 +144,10 @@ def _scenario_assertions(item: Mapping[str, Any], scenario: str) -> None:
         session["user_interrupted"] is not False or item["escalation"] is not None
     ):
         raise PassiveAcceptanceError("healthy ordinary work must not interrupt the user")
+    if scenario == "ordinary-code" and any(
+        outcome["silent"] is not True for outcome in item["outcomes"]
+    ):
+        raise PassiveAcceptanceError("healthy ordinary work must have silent outcomes")
     if scenario == "generated-drift":
         remediation = _mapping(item["remediation"], "remediation")
         if remediation["deterministic"] is not True or remediation["revalidated"] is not True:
