@@ -134,7 +134,9 @@ def repository(tmp_path: Path) -> Path:
     root = tmp_path / "repo"
     (root / ".murlocs").mkdir(parents=True)
     (root / "src" / "core" / "generated").mkdir(parents=True)
-    (root / "src" / "core" / "app.py").write_text("VALUE = 1\n", encoding="utf-8")
+    (root / "src" / "core" / "app.py").write_text(
+        '# murlocs:annotation/v1 evidence "core.shared"\nVALUE = 1\n', encoding="utf-8"
+    )
     (root / "docs").mkdir()
     (root / "docs" / "example.py").write_text("VALUE = 2\n", encoding="utf-8")
     (root / "pyproject.toml").write_text(

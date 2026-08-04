@@ -125,6 +125,7 @@ class Manifest:
     layered: bool = False
     sources: tuple[LayerSource, ...] = ()
     scope_layers: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    invariant_layers: dict[str, str] = field(default_factory=dict)
     overrides: tuple[Override, ...] = ()
 
     @property
@@ -145,3 +146,8 @@ class Manifest:
             # The root map summarizes the complete guidance network.
             return tuple(source.id for source in self.sources)
         return self.scope_layers.get(scope_id, ())
+
+    def source_for_invariant(self, invariant_id: str) -> LayerSource | None:
+        """Return the reviewed source that declares an invariant when known."""
+        layer_id = self.invariant_layers.get(invariant_id)
+        return self.source(layer_id) if layer_id is not None else None

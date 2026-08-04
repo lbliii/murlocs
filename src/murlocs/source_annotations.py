@@ -329,12 +329,14 @@ def resolve_annotations(manifest: Manifest) -> AnnotationResolution:
                     )
                 )
         elif len(matches) > 1:
-            findings.append(
+            findings.extend(
                 AnnotationResolverFinding(
                     code="annotation.duplicate",
                     identifier=annotation.identifier,
                     invariant=invariant.id,
+                    location=match.location,
                 )
+                for match in matches
             )
 
     if findings:
