@@ -3,11 +3,14 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
 from milo import generate_llms_txt
 from milo.testing import MCPClient
 
 from murlocs.cli import build_cli
+from murlocs.errors import MurlocsError
 from murlocs.manifest import load_manifest
+from murlocs.outcome import merge_outcomes
 from murlocs.render import render_outputs
 
 
@@ -109,3 +112,36 @@ def test_invalid_annotation_is_only_a_check_finding_not_active_provenance(tmp_pa
         item["code"] for item in payload["findings"]
     }
     assert "Evidence provenance" not in render_outputs(load_manifest(root))["AGENTS.md"]
+
+
+def test_compile_rejects_invalid_annotation_without_rewriting_existing_provenance(
+    tmp_path: Path,
+):
+    root = tmp_path / "repo"
+    root.mkdir()
+    _repo(root)
+    agents_before = (root / "AGENTS.md").read_bytes()
+    lock_before = (root / ".murlocs" / "lock.json").read_bytes()
+    (root / "src" / "proof.py").write_text(
+        "# murlocs:annotation/v1 evidence \"other.marker\"\nVALUE = 1\n",
+        encoding="utf-8",
+    )
+
+    result = invoke("compile", "--repo", str(root))
+
+    assert result.exit_code == 1
+    assert "annotation.missing" in (result.output or result.stderr)
+    assert (root / "AGENTS.md").read_bytes() == agents_before
+    assert (root / ".murlocs" / "lock.json").read_bytes() == lock_before
+
+
+def test_outcome_merge_rejects_conflicting_annotation_metadata(tmp_path: Path):
+    root = tmp_path / "repo"
+    root.mkdir()
+    _repo(root)
+    checked = build_cli().call("check", repo=str(root))["outcome"]
+    conflicting = json.loads(json.dumps(checked))
+    conflicting["annotations"][0]["owners"] = ["@other"]
+
+    with pytest.raises(MurlocsError, match="annotations disagree"):
+        merge_outcomes([checked, conflicting])

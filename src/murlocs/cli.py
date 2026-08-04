@@ -1432,7 +1432,8 @@ def _render_add_scope(plan: ScopePlan, dry_run: bool) -> str:
 
 
 def _precompile_findings(manifest: Manifest) -> list[Finding]:
-    return [item for item in validate(manifest) if item.code not in {"drift", "lock"}]
+    findings = [*validate(manifest), *annotation_findings(manifest)]
+    return [item for item in findings if item.code not in {"drift", "lock"}]
 
 
 def check_command(

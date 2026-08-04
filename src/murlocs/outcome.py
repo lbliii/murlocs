@@ -1006,8 +1006,10 @@ def _dedupe_annotations(
     ordered = sorted(annotations, key=_annotation_key)
     result: list[OutcomeAnnotationPayload] = []
     for item in ordered:
-        if not result or item != result[-1]:
+        if not result or _annotation_key(item) != _annotation_key(result[-1]):
             result.append(item)
+        elif item != result[-1]:
+            raise MurlocsError("outcome annotations disagree for one binding")
     return result
 
 
