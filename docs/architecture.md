@@ -12,6 +12,8 @@ agent-assisted discovery ──> .murlocs/manifest.toml ──> deterministic co
 
 ## Trust boundaries
 
+<!-- murlocs:evidence no-command-execution -->
+
 The bootstrap skill may inspect a repository and propose scopes, invariants, edges, and evidence.
 Those proposals become reviewable only when written to the manifest. The CLI does not call a model,
 use the network, or execute commands recorded in the manifest. Changed-path impact reporting reads

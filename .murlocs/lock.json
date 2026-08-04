@@ -7,7 +7,7 @@
       "sha256": "9de83a38841174543541174e011676bc28dd9b39099bf1e5bb4402aeb2d316ca"
     },
     "src/murlocs/AGENTS.md": {
-      "sha256": "0109c7b114572d2edca2d54f602c90731909f52ba47fc66817348810439fcd15"
+      "sha256": "efd68d0bb8e478ef36f0a9281c9b2a19a7f3b46918ff824b72f2aa58de99a86a"
     },
     "tests/AGENTS.md": {
       "sha256": "aadbf79013fba4bdc88052b304e5df85b4f5c3dfcd543a87cb4f3b537b400048"
@@ -33,7 +33,7 @@
       "id": "core",
       "kind": "domain",
       "path": ".murlocs/layers/core.toml",
-      "sha256": "f668c79676ca133631aee2a279487d8b489ab9330c71f6599b1ec010bf27e33d"
+      "sha256": "995c7bff3ea56c3e93962886238573733aaad179f3be3cd777cf838078920af8"
     },
     {
       "id": "tests",
