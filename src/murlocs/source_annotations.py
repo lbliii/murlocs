@@ -8,9 +8,14 @@ portable contract without making source comments authoritative.
 
 from __future__ import annotations
 
+import io
+import os
 import re
+import stat
 import time
+import tokenize
 from dataclasses import dataclass
+from fnmatch import fnmatchcase
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -33,35 +38,6 @@ MAX_CANDIDATE_COMMENTS = 1024
 MAX_RESOLUTION_SECONDS = 2.0
 _IDENTIFIER = re.compile(r"[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*\Z")
 
-_LINE_WRAPPERS = {
-    ".py": "#",
-    ".sh": "#",
-    ".bash": "#",
-    ".zsh": "#",
-    ".yaml": "#",
-    ".yml": "#",
-    ".toml": "#",
-    ".go": "//",
-    ".js": "//",
-    ".jsx": "//",
-    ".ts": "//",
-    ".tsx": "//",
-    ".rs": "//",
-    ".c": "//",
-    ".h": "//",
-    ".cc": "//",
-    ".cpp": "//",
-    ".java": "//",
-    ".sql": "--",
-    ".ini": ";",
-    ".cfg": ";",
-}
-_BLOCK_WRAPPERS = {
-    ".css": ("/*", "*/"),
-    ".html": ("<!--", "-->"),
-    ".htm": ("<!--", "-->"),
-    ".xml": ("<!--", "-->"),
-}
 _EXCLUDED_PARTS = frozenset(
     {
         ".git",
@@ -75,6 +51,9 @@ _EXCLUDED_PARTS = frozenset(
         "vendor",
         "vendors",
     }
+)
+_C_STYLE_SUFFIXES = frozenset(
+    {".go", ".js", ".jsx", ".ts", ".tsx", ".rs", ".c", ".h", ".cc", ".cpp", ".java"}
 )
 
 
@@ -245,35 +224,21 @@ def resolve_annotations(manifest: Manifest) -> AnnotationResolution:
             )
             continue
         assert candidate is not None
-        try:
-            size = candidate.stat().st_size
-        except OSError:
+        raw, boundary = _read_declared_file(candidate)
+        if boundary is not None:
             findings.extend(
                 AnnotationResolverFinding(
-                    code="annotation.excluded",
+                    code=boundary,
                     identifier=invariant.annotation.identifier,
                     invariant=invariant.id,
                 )
                 for invariant in files[raw_path]
             )
             continue
-        if size > MAX_FILE_BYTES or total_bytes + size > MAX_TOTAL_BYTES:
+        assert raw is not None
+        if len(raw) > MAX_FILE_BYTES or total_bytes + len(raw) > MAX_TOTAL_BYTES:
             return _limit_resolution()
-        total_bytes += size
-        try:
-            raw = candidate.read_bytes()
-        except OSError:
-            findings.extend(
-                AnnotationResolverFinding(
-                    code="annotation.undecodable",
-                    identifier=invariant.annotation.identifier,
-                    invariant=invariant.id,
-                )
-                for invariant in files[raw_path]
-            )
-            continue
-        if len(raw) != size:
-            return _limit_resolution()
+        total_bytes += len(raw)
         try:
             text = raw.decode("utf-8")
         except UnicodeDecodeError:
@@ -380,14 +345,23 @@ def resolve_annotations(manifest: Manifest) -> AnnotationResolution:
 
 def _declared_file(root: Path, raw: str) -> tuple[Path | None, str | None]:
     path = Path(raw)
-    if path.is_absolute() or ".." in path.parts or len(path.parts) > MAX_PATH_COMPONENTS:
+    if (
+        "\\" in raw
+        or path.is_absolute()
+        or ".." in path.parts
+        or len(path.parts) > MAX_PATH_COMPONENTS
+    ):
         return None, "annotation.excluded"
     if any(part.casefold() in _EXCLUDED_PARTS for part in path.parts):
         return None, "annotation.excluded"
+    if _is_ignored(root, path):
+        return None, "annotation.excluded"
     current = root
-    for part in path.parts:
+    for index, part in enumerate(path.parts):
         current = current / part
         if current.is_symlink():
+            return None, "annotation.excluded"
+        if index < len(path.parts) - 1 and (current / ".git").exists():
             return None, "annotation.excluded"
     try:
         candidate = repo_path(root, raw, field="annotation file")
@@ -398,21 +372,125 @@ def _declared_file(root: Path, raw: str) -> tuple[Path | None, str | None]:
     return candidate, None
 
 
+def _is_ignored(root: Path, path: Path) -> bool:
+    """Apply bounded repository-local ignore files without asking Git to execute.
+
+    This deliberately implements the portable subset needed for a declared-file
+    safety boundary: ordered comments, negation, directory rules, basename rules,
+    and slash paths.  Unknown or unreadable ignore input fails closed.
+    """
+    ignored = False
+    parts = path.parts
+    for depth in range(len(parts)):
+        directory = root.joinpath(*parts[:depth])
+        ignore_file = directory / ".gitignore"
+        if not ignore_file.exists():
+            continue
+        if ignore_file.is_symlink():
+            return True
+        try:
+            raw = ignore_file.read_bytes()
+            if len(raw) > MAX_FILE_BYTES:
+                return True
+            lines = raw.decode("utf-8").splitlines()
+        except (OSError, UnicodeDecodeError):
+            return True
+        relative = "/".join(parts[depth:])
+        for line in lines:
+            if not line or line.startswith("#"):
+                continue
+            negated = line.startswith("!")
+            pattern = line[1:] if negated else line
+            if not pattern or "\\" in pattern:
+                return True
+            if _ignore_pattern_matches(pattern, relative):
+                ignored = not negated
+    return ignored
+
+
+def _ignore_pattern_matches(pattern: str, relative: str) -> bool:
+    anchored = pattern.startswith("/")
+    directory = pattern.endswith("/")
+    pattern = pattern.strip("/")
+    if not pattern:
+        return False
+    if directory:
+        if anchored or "/" in pattern:
+            return relative == pattern or relative.startswith(pattern + "/")
+        return any(
+            fnmatchcase(part, pattern)
+            for part in relative.split("/")[:-1]
+        )
+    if anchored or "/" in pattern:
+        return fnmatchcase(relative, pattern)
+    return any(fnmatchcase(part, pattern) for part in relative.split("/"))
+
+
+def _read_declared_file(candidate: Path) -> tuple[bytes | None, str | None]:
+    """Read one regular file through a no-follow descriptor and recheck its identity.
+
+    Path checks alone cannot close the interval between ``is_file`` and opening the
+    file.  A descriptor pins the object we inspect; ``O_NOFOLLOW`` is used when the
+    platform supplies it, and the post-open lstat comparison is a conservative
+    fallback for platforms that do not.
+    """
+    try:
+        before = candidate.stat(follow_symlinks=False)
+        if not stat.S_ISREG(before.st_mode):
+            return None, "annotation.excluded"
+        flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+        descriptor = os.open(candidate, flags)
+    except OSError:
+        return None, "annotation.excluded"
+    try:
+        with os.fdopen(descriptor, "rb", closefd=True) as handle:
+            opened = os.fstat(handle.fileno())
+            if not stat.S_ISREG(opened.st_mode):
+                return None, "annotation.excluded"
+            if (opened.st_dev, opened.st_ino) != (before.st_dev, before.st_ino):
+                return None, "annotation.resource-limit"
+            raw = handle.read(MAX_FILE_BYTES + 1)
+            after = os.fstat(handle.fileno())
+        current = candidate.stat(follow_symlinks=False)
+    except OSError:
+        return None, "annotation.excluded"
+    if (
+        (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns)
+        != (opened.st_dev, opened.st_ino, opened.st_size, opened.st_mtime_ns)
+        or (current.st_dev, current.st_ino) != (opened.st_dev, opened.st_ino)
+    ):
+        return None, "annotation.resource-limit"
+    return raw, None
+
+
 def _scan_comments(
     raw_path: str, text: str
 ) -> tuple[list[tuple[Annotation, AnnotationLocation]], list[AnnotationResolverFinding], int]:
     suffix = Path(raw_path).suffix.casefold()
-    line_wrapper = _LINE_WRAPPERS.get(suffix)
-    block_wrapper = _BLOCK_WRAPPERS.get(suffix)
-    if line_wrapper is None and block_wrapper is None:
+    if suffix == ".py":
+        bodies = _python_comment_bodies(text)
+    elif suffix in _C_STYLE_SUFFIXES:
+        bodies = _c_style_comment_bodies(text, line_wrapper="//", block_wrapper=("/*", "*/"))
+    elif suffix == ".css":
+        bodies = _c_style_comment_bodies(text, line_wrapper=None, block_wrapper=("/*", "*/"))
+    elif suffix in {".html", ".htm", ".xml"}:
+        bodies = _html_comment_bodies(text)
+    elif suffix in {".sh", ".bash", ".zsh"}:
+        bodies = _shell_comment_bodies(text)
+    elif suffix in {".yaml", ".yml"}:
+        bodies = _yaml_comment_bodies(text)
+    elif suffix == ".toml":
+        bodies = _toml_comment_bodies(text)
+    elif suffix == ".sql":
+        bodies = _sql_comment_bodies(text)
+    elif suffix in {".ini", ".cfg"}:
+        bodies = _indented_comment_bodies(text, ";")
+    else:
         return [], [AnnotationResolverFinding(code="annotation.unsupported")], 0
     found: list[tuple[Annotation, AnnotationLocation]] = []
     findings: list[AnnotationResolverFinding] = []
     candidates = 0
-    for number, line in enumerate(text.splitlines(), start=1):
-        body = _comment_body(line, line_wrapper, block_wrapper)
-        if body is None:
-            continue
+    for number, body in bodies:
         parsed = parse_v1_comment(body)
         if parsed is None:
             continue
@@ -429,20 +507,217 @@ def _scan_comments(
     return found, findings, candidates
 
 
-def _comment_body(
-    line: str, line_wrapper: str | None, block_wrapper: tuple[str, str] | None
-) -> str | None:
-    stripped = line.strip(" \t")
-    if line_wrapper and stripped.startswith(line_wrapper):
-        return stripped[len(line_wrapper) :].removeprefix(" ")
-    if (
-        block_wrapper
-        and stripped.startswith(block_wrapper[0])
-        and stripped.endswith(block_wrapper[1])
-    ):
-        body = stripped[len(block_wrapper[0]) : -len(block_wrapper[1])]
-        return body.removeprefix(" ").removesuffix(" ")
-    return None
+def _python_comment_bodies(text: str) -> list[tuple[int, str]]:
+    """Return actual Python COMMENT tokens, excluding quoted and triple-quoted text."""
+    try:
+        tokens = tokenize.generate_tokens(io.StringIO(text).readline)
+        return [
+            (token.start[0], token.string[1:].removeprefix(" "))
+            for token in tokens
+            if token.type == tokenize.COMMENT
+        ]
+    except (tokenize.TokenError, IndentationError):
+        # An incomplete source file cannot safely establish a comment boundary.
+        return []
+
+
+def _indented_comment_bodies(text: str, wrapper: str) -> list[tuple[int, str]]:
+    """Return comment-only lines, accepting indentation but no inline guessing."""
+    return [
+        (number, stripped[len(wrapper) :].removeprefix(" "))
+        for number, line in enumerate(text.splitlines(), start=1)
+        if (stripped := line.lstrip(" \t")).startswith(wrapper)
+    ]
+
+
+def _shell_comment_bodies(text: str) -> list[tuple[int, str]]:
+    """Recognize indented shell comments while excluding heredoc and quote content."""
+    comments: list[tuple[int, str]] = []
+    heredoc: tuple[str, bool] | None = None
+    quote: str | None = None
+    for number, line in enumerate(text.splitlines(), start=1):
+        stripped = line.lstrip(" \t")
+        if heredoc is not None:
+            terminator, strip_tabs = heredoc
+            candidate = line.lstrip("\t") if strip_tabs else line
+            if candidate == terminator:
+                heredoc = None
+            continue
+        if quote is None and stripped.startswith("#"):
+            comments.append((number, stripped[1:].removeprefix(" ")))
+            continue
+        if quote is None:
+            match = re.search(
+                r"<<(?P<tabs>-)?\s*(?P<quote>['\"]?)(?P<name>[A-Za-z_][A-Za-z0-9_]*)",
+                line,
+            )
+            if match is not None:
+                heredoc = (match.group("name"), bool(match.group("tabs")))
+                continue
+        escaped = False
+        for character in line:
+            if escaped:
+                escaped = False
+                continue
+            if character == "\\" and quote == '"':
+                escaped = True
+                continue
+            if quote is None and character in {"'", '"'}:
+                quote = character
+            elif quote == character:
+                quote = None
+    return comments
+
+
+def _yaml_comment_bodies(text: str) -> list[tuple[int, str]]:
+    """Recognize YAML comment-only lines without treating block scalar text as code."""
+    comments: list[tuple[int, str]] = []
+    scalar_indent: int | None = None
+    for number, line in enumerate(text.splitlines(), start=1):
+        stripped = line.lstrip(" \t")
+        indent = len(line) - len(stripped)
+        if scalar_indent is not None:
+            if stripped and indent <= scalar_indent:
+                scalar_indent = None
+            else:
+                continue
+        if stripped.startswith("#"):
+            comments.append((number, stripped[1:].removeprefix(" ")))
+            continue
+        if re.match(r"^[^#]*:\s*[>|][0-9+\-]*(?:\s+#.*)?$", stripped):
+            scalar_indent = indent
+    return comments
+
+
+def _toml_comment_bodies(text: str) -> list[tuple[int, str]]:
+    """Recognize TOML comment-only lines without accepting multiline string text."""
+    comments: list[tuple[int, str]] = []
+    delimiter: str | None = None
+    for number, line in enumerate(text.splitlines(), start=1):
+        if delimiter is not None:
+            if delimiter in line:
+                delimiter = None
+            continue
+        stripped = line.lstrip(" \t")
+        if stripped.startswith("#"):
+            comments.append((number, stripped[1:].removeprefix(" ")))
+            continue
+        for candidate in ('"""', "'''"):
+            if candidate in line:
+                delimiter = candidate
+                break
+    return comments
+
+
+def _sql_comment_bodies(text: str) -> list[tuple[int, str]]:
+    """Recognize SQL comment-only lines while respecting multiline quoted literals."""
+    comments: list[tuple[int, str]] = []
+    quote: str | None = None
+    for number, line in enumerate(text.splitlines(), start=1):
+        index = 0
+        while index < len(line):
+            if quote is not None:
+                if line[index] == quote:
+                    if index + 1 < len(line) and line[index + 1] == quote:
+                        index += 2
+                        continue
+                    quote = None
+                index += 1
+                continue
+            if line.startswith("--", index):
+                if not line[:index].strip(" \t"):
+                    comments.append((number, line[index + 2 :].removeprefix(" ")))
+                break
+            if line[index] in {"'", '"'}:
+                quote = line[index]
+            index += 1
+    return comments
+
+
+def _c_style_comment_bodies(
+    text: str, *, line_wrapper: str | None, block_wrapper: tuple[str, str]
+) -> list[tuple[int, str]]:
+    """A bounded lexer for real C-style comments, deliberately conservative in strings."""
+    comments: list[tuple[int, str]] = []
+    quote: str | None = None
+    raw_end: str | None = None
+    in_block = False
+    for number, line in enumerate(text.splitlines(), start=1):
+        index = 0
+        while index < len(line):
+            if in_block:
+                end = line.find(block_wrapper[1], index)
+                if end < 0:
+                    break
+                in_block = False
+                index = end + len(block_wrapper[1])
+                continue
+            if raw_end is not None:
+                end = line.find(raw_end, index)
+                if end < 0:
+                    break
+                terminator = raw_end
+                raw_end = None
+                index = end + len(terminator)
+                continue
+            if quote is not None:
+                if line[index] == "\\":
+                    index += 2
+                    continue
+                if line[index] == quote:
+                    quote = None
+                index += 1
+                continue
+            if line_wrapper and line.startswith(line_wrapper, index):
+                comments.append((number, line[index + len(line_wrapper) :].removeprefix(" ")))
+                break
+            if line.startswith(block_wrapper[0], index):
+                end = line.find(block_wrapper[1], index + len(block_wrapper[0]))
+                if end < 0:
+                    in_block = True
+                    break
+                comments.append(
+                    (
+                        number,
+                        line[index + len(block_wrapper[0]) : end]
+                        .removeprefix(" ")
+                        .removesuffix(" "),
+                    )
+                )
+                index = end + len(block_wrapper[1])
+                continue
+            if line[index] in {'"', "'", "`"}:
+                quote = line[index]
+                index += 1
+                continue
+            raw = re.match(r'r(#{0,16})"', line[index:])
+            if raw is not None:
+                raw_end = '"' + raw.group(1)
+                index += len(raw.group(0))
+                continue
+            index += 1
+        if quote in {'"', "'"}:
+            quote = None
+    return comments
+
+
+def _html_comment_bodies(text: str) -> list[tuple[int, str]]:
+    """Recognize standalone HTML/XML comments while ignoring script element text."""
+    comments: list[tuple[int, str]] = []
+    in_script = False
+    for number, line in enumerate(text.splitlines(), start=1):
+        lowered = line.casefold()
+        if "</script" in lowered:
+            in_script = False
+        if not in_script:
+            stripped = line.strip(" \t")
+            if stripped.startswith("<!--") and stripped.endswith("-->"):
+                comments.append(
+                    (number, stripped[4:-3].removeprefix(" ").removesuffix(" "))
+                )
+        if "<script" in lowered and "</script" not in lowered:
+            in_script = True
+    return comments
 
 
 def _limit_resolution() -> AnnotationResolution:

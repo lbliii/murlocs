@@ -434,6 +434,7 @@ def _validate_lossless_shape(data: dict[str, Any]) -> None:
                 "enforced_by",
                 "evidence_file",
                 "anchor",
+                "annotation",
             },
             f"invariants[{index}]",
         )

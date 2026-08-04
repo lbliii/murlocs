@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+import murlocs.source_annotations as source_annotations
 from murlocs.layers import resolve_manifest
 from murlocs.manifest import parse_manifest_data
 from murlocs.serialization import render_manifest_data
@@ -143,6 +144,42 @@ def test_resolver_fails_closed_at_path_and_decode_boundaries(tmp_path, path, con
     assert result.findings[0].code == code
 
 
+def test_resolver_excludes_declared_gitignored_and_submodule_files(tmp_path):
+    (tmp_path / ".gitignore").write_text("ignored.py\ncache/\n", encoding="utf-8")
+    (tmp_path / "ignored.py").write_text(
+        '# murlocs:annotation/v1 evidence "ignored.marker"\n', encoding="utf-8"
+    )
+    nested = tmp_path / "nested"
+    nested.mkdir()
+    (nested / ".git").write_text("gitdir: ../.git/modules/nested\n", encoding="utf-8")
+    (nested / "source.py").write_text(
+        '# murlocs:annotation/v1 evidence "submodule.marker"\n', encoding="utf-8"
+    )
+    cached = tmp_path / "output" / "cache"
+    cached.mkdir(parents=True)
+    (cached / "source.py").write_text(
+        '# murlocs:annotation/v1 evidence "nested-ignore.marker"\n', encoding="utf-8"
+    )
+
+    result = resolve_annotations(
+        manifest(
+            tmp_path,
+            [
+                annotation("ignored.marker", "ignored.py"),
+                annotation("submodule.marker", "nested/source.py"),
+                annotation("nested-ignore.marker", "output/cache/source.py"),
+            ],
+        )
+    )
+
+    assert {finding.code for finding in result.findings} == {"annotation.excluded"}
+    assert {finding.identifier for finding in result.findings} == {
+        "ignored.marker",
+        "submodule.marker",
+        "nested-ignore.marker",
+    }
+
+
 def test_resolver_reports_grammar_and_duplicate_without_source_prose(tmp_path):
     (tmp_path / "source.py").write_text(
         "\n".join(
@@ -161,6 +198,126 @@ def test_resolver_reports_grammar_and_duplicate_without_source_prose(tmp_path):
         "annotation.malformed",
     }
     assert all("unquoted" not in repr(finding) for finding in result.findings)
+
+
+@pytest.mark.parametrize(
+    ("path", "content"),
+    [
+        (
+            "source.py",
+            'payload = """\n# murlocs:annotation/v1 evidence "quoted.marker"\n"""\n',
+        ),
+        (
+            "source.js",
+            '`\n// murlocs:annotation/v1 evidence "quoted.marker"\n`;\n',
+        ),
+        (
+            "source.rs",
+            'let payload = r#"\n// murlocs:annotation/v1 evidence "quoted.marker"\n"#;\n',
+        ),
+    ],
+)
+def test_resolver_never_promotes_markers_inside_multiline_literals(tmp_path, path, content):
+    (tmp_path / path).write_text(content, encoding="utf-8")
+
+    result = resolve_annotations(manifest(tmp_path, [annotation("quoted.marker", path)]))
+
+    assert result.bindings == ()
+    assert result.findings == (
+        AnnotationResolverFinding("annotation.missing", "quoted.marker", "invariant-0"),
+    )
+
+
+@pytest.mark.parametrize(
+    ("path", "content", "identifier"),
+    [
+        (
+            "config.yaml",
+            'service: |\n  # murlocs:annotation/v1 evidence "block.marker"\n',
+            "block.marker",
+        ),
+        (
+            "settings.toml",
+            'value = """\n  # murlocs:annotation/v1 evidence "block.marker"\n"""\n',
+            "block.marker",
+        ),
+        (
+            "query.sql",
+            "select '\n  -- murlocs:annotation/v1 evidence \"block.marker\"\n';\n",
+            "block.marker",
+        ),
+        (
+            "script.sh",
+            "cat <<'EOF'\n  # murlocs:annotation/v1 evidence \"block.marker\"\nEOF\n",
+            "block.marker",
+        ),
+    ],
+)
+def test_resolver_never_promotes_markers_inside_multiline_noncomment_content(
+    tmp_path, path, content, identifier
+):
+    (tmp_path / path).write_text(content, encoding="utf-8")
+
+    result = resolve_annotations(manifest(tmp_path, [annotation(identifier, path)]))
+
+    assert result.bindings == ()
+    assert result.findings == (
+        AnnotationResolverFinding("annotation.missing", identifier, "invariant-0"),
+    )
+
+
+@pytest.mark.parametrize(
+    ("path", "content", "identifier"),
+    [
+        ("config.yaml", '  # murlocs:annotation/v1 evidence "yaml.indented"\n', "yaml.indented"),
+        ("settings.toml", '  # murlocs:annotation/v1 evidence "toml.indented"\n', "toml.indented"),
+        ("query.sql", '  -- murlocs:annotation/v1 evidence "sql.indented"\n', "sql.indented"),
+        ("script.sh", '  # murlocs:annotation/v1 evidence "shell.indented"\n', "shell.indented"),
+        ("settings.ini", '  ; murlocs:annotation/v1 evidence "ini.indented"\n', "ini.indented"),
+    ],
+)
+def test_resolver_accepts_indented_real_comments(tmp_path, path, content, identifier):
+    (tmp_path / path).write_text(content, encoding="utf-8")
+
+    result = resolve_annotations(manifest(tmp_path, [annotation(identifier, path)]))
+
+    assert [(item.identifier, item.location.line) for item in result.bindings] == [(identifier, 1)]
+
+
+def test_resolver_accepts_a_real_inline_python_comment_but_not_a_quoted_prefix(tmp_path):
+    (tmp_path / "source.py").write_text(
+        'value = "# murlocs:annotation/v1 evidence \\\"quoted.marker\\\""\n'
+        'value = 1  # murlocs:annotation/v1 evidence "actual.marker"\n',
+        encoding="utf-8",
+    )
+
+    result = resolve_annotations(manifest(tmp_path, [annotation("actual.marker", "source.py")]))
+
+    assert [(item.identifier, item.location.line) for item in result.bindings] == [
+        ("actual.marker", 2)
+    ]
+
+
+def test_resolver_fails_closed_when_declared_file_changes_during_open(tmp_path, monkeypatch):
+    target = tmp_path / "source.py"
+    outside = tmp_path / "outside.py"
+    target.write_text('# murlocs:annotation/v1 evidence "race.marker"\n', encoding="utf-8")
+    outside.write_text('# murlocs:annotation/v1 evidence "race.marker"\n', encoding="utf-8")
+    real_open = source_annotations.os.open
+
+    def replace_then_open(path, flags):
+        target.unlink()
+        target.symlink_to(outside)
+        return real_open(path, flags)
+
+    monkeypatch.setattr(source_annotations.os, "open", replace_then_open)
+
+    result = resolve_annotations(manifest(tmp_path, [annotation("race.marker", "source.py")]))
+
+    assert result.bindings == ()
+    assert result.findings == (
+        AnnotationResolverFinding("annotation.excluded", "race.marker", "invariant-0"),
+    )
 
 
 def test_resolver_reports_unsupported_declared_file_without_guessing(tmp_path):
