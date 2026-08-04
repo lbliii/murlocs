@@ -14,6 +14,12 @@ equally strict, attributable evidence file. It reproduces the claimed contract, 
 coverage and classification, but cannot reproduce model judgment or assert a host capability that
 was not observed.
 
+The first attributable fresh-session pilot is
+`tests/fixtures/passive-agent-acceptance/v1/pilot-2026-08-03.json`. Its five private expectation
+commitments were created before dispatch and its records were revealed only after each session
+finished. It records the generated-guidance fallback honestly: the host supplied repository
+guidance but no native lifecycle timing, so only provision-to-reveal wall-clock latency is present.
+
 ## Run protocol
 
 For each journey, create a new agent session in an isolated disposable repository. Do not name

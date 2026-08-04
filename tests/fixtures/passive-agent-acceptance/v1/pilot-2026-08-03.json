@@ -1,0 +1,183 @@
+{
+  "contract": "io.murlocs.passive-agent-acceptance",
+  "schema_version": 1,
+  "observations": [
+    {
+      "scenario": "ordinary-code",
+      "session": {
+        "id": "fresh-ordinary-silent-01",
+        "fresh": true,
+        "discovered_guidance": true,
+        "user_interrupted": false,
+        "host": {"adapter": "generated-guidance", "capability": "guidance-fallback"}
+      },
+      "expectation": {
+        "commitment": "d42ea9eeb75b6e06689bcc2b55bcff2800f8bbc6b4905d9b7ee8db19c253a767",
+        "recorded_before_session": true
+      },
+      "calls": [
+        {"event": "pre-completion", "operation": "check", "result": "pass"},
+        {"event": "pre-completion", "operation": "impact", "result": "pass"}
+      ],
+      "outcomes": [
+        {"code": "MURLOCS_OUTCOME_PASS", "resolution": "pass", "silent": true},
+        {"code": "MURLOCS_OUTCOME_PASS", "resolution": "pass", "silent": true}
+      ],
+      "latency_ms": {
+        "wall_clock": 24000,
+        "basis": "provision-to-reveal",
+        "operations": {"check": null, "impact": null}
+      },
+      "remediation": null,
+      "escalation": null,
+      "status": "pass",
+      "failure": null
+    },
+    {
+      "scenario": "generated-drift",
+      "session": {
+        "id": "fresh-drift-01",
+        "fresh": true,
+        "discovered_guidance": true,
+        "user_interrupted": false,
+        "host": {"adapter": "generated-guidance", "capability": "guidance-fallback"}
+      },
+      "expectation": {
+        "commitment": "57aefa8b363bc870f5fca36c2cd17fd3550a3ad74a10ad9906206de0fc4d78e6",
+        "recorded_before_session": true
+      },
+      "calls": [
+        {"event": "remediation", "operation": "check", "result": "finding"},
+        {"event": "remediation", "operation": "repair", "result": "pass"},
+        {"event": "revalidation", "operation": "check", "result": "pass"},
+        {"event": "pre-completion", "operation": "impact", "result": "finding"}
+      ],
+      "outcomes": [
+        {
+          "code": "MURLOCS_OUTCOME_DETERMINISTIC_REPAIR",
+          "resolution": "deterministic_repair",
+          "silent": false
+        },
+        {"code": "MURLOCS_OUTCOME_PASS", "resolution": "pass", "silent": true}
+      ],
+      "latency_ms": {
+        "wall_clock": 70000,
+        "basis": "provision-to-reveal",
+        "operations": {"check": null, "repair": null, "impact": null}
+      },
+      "remediation": {
+        "deterministic": true,
+        "revalidated": true,
+        "changed_paths": [".murlocs/lock.json", "AGENTS.md"]
+      },
+      "escalation": null,
+      "status": "pass",
+      "failure": null
+    },
+    {
+      "scenario": "semantic-local-guidance",
+      "session": {
+        "id": "fresh-local-01",
+        "fresh": true,
+        "discovered_guidance": true,
+        "user_interrupted": false,
+        "host": {"adapter": "generated-guidance", "capability": "guidance-fallback"}
+      },
+      "expectation": {
+        "commitment": "0b68cbd8066bdf0fb2a55ad479316492d6a442ae2c4cee690fa45d86364ff009",
+        "recorded_before_session": true
+      },
+      "calls": [
+        {"event": "pre-completion", "operation": "check", "result": "pass"},
+        {"event": "impact", "operation": "impact", "result": "finding"}
+      ],
+      "outcomes": [
+        {"code": "MURLOCS_OUTCOME_PASS", "resolution": "pass", "silent": true},
+        {
+          "code": "MURLOCS_OUTCOME_AUTHORITY_REQUIRED",
+          "resolution": "authority_required",
+          "silent": false
+        }
+      ],
+      "latency_ms": {
+        "wall_clock": 105000,
+        "basis": "provision-to-reveal",
+        "operations": {"check": null, "impact": null}
+      },
+      "remediation": {"evidence_count": 3, "policy_mutated": false, "affected_scope": "tests"},
+      "escalation": null,
+      "status": "pass",
+      "failure": null
+    },
+    {
+      "scenario": "cross-scope-global-guidance",
+      "session": {
+        "id": "fresh-global-01",
+        "fresh": true,
+        "discovered_guidance": true,
+        "user_interrupted": false,
+        "host": {"adapter": "generated-guidance", "capability": "guidance-fallback"}
+      },
+      "expectation": {
+        "commitment": "09217195b70f3e1280637d44d28b64d3be41e6fa75f7eab1c0899917f7f37ad1",
+        "recorded_before_session": true
+      },
+      "calls": [
+        {"event": "pre-completion", "operation": "check", "result": "pass"},
+        {"event": "impact", "operation": "impact", "result": "finding"}
+      ],
+      "outcomes": [
+        {"code": "MURLOCS_OUTCOME_PASS", "resolution": "pass", "silent": true},
+        {
+          "code": "MURLOCS_OUTCOME_AUTHORITY_REQUIRED",
+          "resolution": "authority_required",
+          "silent": false
+        }
+      ],
+      "latency_ms": {
+        "wall_clock": 131000,
+        "basis": "provision-to-reveal",
+        "operations": {"check": null, "impact": null}
+      },
+      "remediation": {"evidence_count": 4, "policy_mutated": false, "affected_scope": "root"},
+      "escalation": null,
+      "status": "pass",
+      "failure": null
+    },
+    {
+      "scenario": "authority-required-exception",
+      "session": {
+        "id": "fresh-authority-01",
+        "fresh": true,
+        "discovered_guidance": true,
+        "user_interrupted": true,
+        "host": {"adapter": "generated-guidance", "capability": "guidance-fallback"}
+      },
+      "expectation": {
+        "commitment": "6ee1948907d2423c5960d7e6c1da0148dd162a62050cc04d76a6dbe8f5f5ea1f",
+        "recorded_before_session": true
+      },
+      "calls": [
+        {"event": "pre-completion", "operation": "check", "result": "pass"},
+        {"event": "pre-completion", "operation": "impact", "result": "finding"}
+      ],
+      "outcomes": [
+        {"code": "MURLOCS_OUTCOME_PASS", "resolution": "pass", "silent": true},
+        {
+          "code": "MURLOCS_OUTCOME_AUTHORITY_REQUIRED",
+          "resolution": "authority_required",
+          "silent": false
+        }
+      ],
+      "latency_ms": {
+        "wall_clock": 49000,
+        "basis": "provision-to-reveal",
+        "operations": {"check": null, "impact": null}
+      },
+      "remediation": {"blocked_without_authority": true},
+      "escalation": {"count": 1, "compact": true, "owner": "@lbliii"},
+      "status": "pass",
+      "failure": null
+    }
+  ]
+}

@@ -46,7 +46,7 @@
         {"event": "revalidation", "operation": "check", "result": "pass"}
       ],
       "outcomes": [
-        {"code": "MURLOCS_GENERATED_DRIFT", "resolution": "deterministic_repair", "silent": false},
+        {"code": "MURLOCS_OUTCOME_DETERMINISTIC_REPAIR", "resolution": "deterministic_repair", "silent": false},
         {"code": "MURLOCS_OUTCOME_PASS", "resolution": "pass", "silent": true}
       ],
       "latency_ms": {
@@ -73,7 +73,7 @@
         "recorded_before_session": true
       },
       "calls": [{"event": "impact", "operation": "impact", "result": "finding"}],
-      "outcomes": [{"code": "MURLOCS_AGENT_ACTION", "resolution": "agent_action", "silent": false}],
+      "outcomes": [{"code": "MURLOCS_OUTCOME_AGENT_ACTION", "resolution": "agent_action", "silent": false}],
       "latency_ms": {
         "wall_clock": 0,
         "basis": "provision-to-reveal",
@@ -98,7 +98,7 @@
         "recorded_before_session": true
       },
       "calls": [{"event": "impact", "operation": "impact", "result": "finding"}],
-      "outcomes": [{"code": "MURLOCS_AGENT_ACTION", "resolution": "agent_action", "silent": false}],
+      "outcomes": [{"code": "MURLOCS_OUTCOME_AGENT_ACTION", "resolution": "agent_action", "silent": false}],
       "latency_ms": {
         "wall_clock": 0,
         "basis": "provision-to-reveal",
@@ -124,7 +124,7 @@
       },
       "calls": [{"event": "pre-completion", "operation": "impact", "result": "finding"}],
       "outcomes": [
-        {"code": "MURLOCS_AUTHORITY_REQUIRED", "resolution": "authority_required", "silent": false}
+        {"code": "MURLOCS_OUTCOME_AUTHORITY_REQUIRED", "resolution": "authority_required", "silent": false}
       ],
       "latency_ms": {
         "wall_clock": 0,

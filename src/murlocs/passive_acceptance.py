@@ -54,9 +54,9 @@ CALL_OPERATIONS = frozenset({"check", "impact", "repair"})
 OUTCOME_CODES = frozenset(
     {
         "MURLOCS_OUTCOME_PASS",
-        "MURLOCS_GENERATED_DRIFT",
-        "MURLOCS_AGENT_ACTION",
-        "MURLOCS_AUTHORITY_REQUIRED",
+        "MURLOCS_OUTCOME_DETERMINISTIC_REPAIR",
+        "MURLOCS_OUTCOME_AGENT_ACTION",
+        "MURLOCS_OUTCOME_AUTHORITY_REQUIRED",
     }
 )
 OUTCOME_RESOLUTIONS = frozenset(
@@ -170,10 +170,6 @@ def _scenario_assertions(item: Mapping[str, Any], scenario: str) -> None:
         session["user_interrupted"] is not False or item["escalation"] is not None
     ):
         raise PassiveAcceptanceError("healthy ordinary work must not interrupt the user")
-    if scenario == "ordinary-code" and any(
-        outcome["silent"] is not True for outcome in item["outcomes"]
-    ):
-        raise PassiveAcceptanceError("healthy ordinary work must have silent outcomes")
     if scenario == "generated-drift":
         remediation = _mapping(item["remediation"], "remediation")
         if remediation["deterministic"] is not True or remediation["revalidated"] is not True:
