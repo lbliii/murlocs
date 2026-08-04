@@ -10,8 +10,10 @@ import pytest
 import murlocs.source_annotations as source_annotations
 from murlocs.layers import resolve_manifest
 from murlocs.manifest import parse_manifest_data
+from murlocs.outcome import build_check_outcome
 from murlocs.serialization import render_manifest_data
 from murlocs.source_annotations import AnnotationResolverFinding, resolve_annotations
+from murlocs.verify import validate
 
 CORPUS = Path(__file__).parent / "fixtures" / "source-annotation-contract" / "v1"
 
@@ -318,6 +320,159 @@ def test_resolver_fails_closed_when_declared_file_changes_during_open(tmp_path, 
     assert result.findings == (
         AnnotationResolverFinding("annotation.excluded", "race.marker", "invariant-0"),
     )
+def test_resolver_does_not_guess_markers_inside_strings_or_multiline_comments(tmp_path):
+    (tmp_path / "source.py").write_text(
+        "\n".join(
+            [
+                'doc = """',
+                '# murlocs:annotation/v1 evidence "inside.docstring"',
+                '"""',
+                '# murlocs:annotation/v1 evidence "outside.comment"',
+            ]
+        ),
+        encoding="utf-8",
+    )
+    result = resolve_annotations(
+        manifest(tmp_path, [annotation("outside.comment", "source.py")])
+    )
+    assert [(item.identifier, item.location.line) for item in result.bindings] == [
+        ("outside.comment", 4)
+    ]
+
+    (tmp_path / "source.js").write_text(
+        "\n".join(
+            [
+                "/*",
+                '// murlocs:annotation/v1 evidence "inside.block"',
+                "*/",
+                '// murlocs:annotation/v1 evidence "outside.comment"',
+            ]
+        ),
+        encoding="utf-8",
+    )
+    result = resolve_annotations(
+        manifest(tmp_path, [annotation("outside.comment", "source.js")])
+    )
+    assert [(item.identifier, item.location.line) for item in result.bindings] == [
+        ("outside.comment", 4)
+    ]
+
+
+def test_validation_reports_stable_annotation_context_and_outcome_parity(tmp_path):
+    (tmp_path / "source.py").write_text(
+        "\n".join(
+            [
+                '# murlocs:annotation/v1 evidence "same.marker"',
+                '# murlocs:annotation/v1 evidence "same.marker"',
+            ]
+        ),
+        encoding="utf-8",
+    )
+    parsed = manifest(tmp_path, [annotation("same.marker", "source.py")])
+    findings = validate(parsed)
+    duplicate = [item for item in findings if item.code == "annotation.duplicate"]
+    assert [(item.annotation_id, item.invariant_ids, item.scopes) for item in duplicate] == [
+        ("same.marker", ("invariant-0",), ("root",)),
+        ("same.marker", ("invariant-0",), ("root",)),
+    ]
+    assert {item.locations[0].line for item in duplicate} == {1, 2}
+    outcome = build_check_outcome(parsed, findings)
+    payload = next(
+        item for item in outcome["findings"] if item["code"] == "MURLOCS_CHECK_ANNOTATION_DUPLICATE"
+    )
+    assert payload["status"] == "blocking"
+    assert payload["severity"] == "important"
+    assert payload["resolution_class"] == "agent_action"
+    assert payload["action_ids"] == ["outcome.inspect-findings"]
+    assert payload["affected"]["scopes"] == ["root"]
+    assert {(item["reference"], item["detail"]) for item in payload["evidence"]} == {
+        (item.code, item.message) for item in duplicate
+    }
+
+
+@pytest.mark.parametrize(
+    ("identifier", "path", "content", "code", "boundary"),
+    [
+        ("missing.marker", "source.py", "VALUE = 1\n", "annotation.missing", None),
+        (
+            "malformed.marker",
+            "source.py",
+            "# murlocs:annotation/v1 evidence malformed.marker\n",
+            "annotation.malformed",
+            None,
+        ),
+        (
+            "future.marker",
+            "source.py",
+            '# murlocs:annotation/v2 evidence "future.marker"\n',
+            "annotation.unknown-version",
+            None,
+        ),
+        (
+            "kind.marker",
+            "source.py",
+            '# murlocs:annotation/v1 applies "kind.marker"\n',
+            "annotation.unknown-kind",
+            None,
+        ),
+        (
+            "vendored.marker",
+            "vendor/source.py",
+            '# murlocs:annotation/v1 evidence "vendored.marker"\n',
+            "annotation.excluded",
+            "vendored",
+        ),
+        (
+            "generated.marker",
+            "generated/source.py",
+            '# murlocs:annotation/v1 evidence "generated.marker"\n',
+            "annotation.excluded",
+            "generated",
+        ),
+        ("binary.marker", "source.py", b"\xff", "annotation.undecodable", None),
+    ],
+)
+def test_validation_covers_contract_states(tmp_path, identifier, path, content, code, boundary):
+    target = tmp_path / path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if isinstance(content, bytes):
+        target.write_bytes(content)
+    else:
+        target.write_text(content, encoding="utf-8")
+    findings = validate(manifest(tmp_path, [annotation(identifier, path)]))
+    matched = [item for item in findings if item.code == code]
+    assert matched
+    assert all(item.annotation_id == identifier for item in matched)
+    if boundary is not None:
+        assert all(f"boundary={boundary}" in item.message for item in matched)
+
+
+def test_validation_reports_orphaned_and_misplaced_without_a_binding(tmp_path):
+    (tmp_path / "one.py").write_text(
+        '# murlocs:annotation/v1 evidence "two.marker"\n', encoding="utf-8"
+    )
+    (tmp_path / "two.py").write_text("VALUE = 1\n", encoding="utf-8")
+    result = resolve_annotations(
+        manifest(
+            tmp_path,
+            [annotation("one.marker", "one.py"), annotation("two.marker", "two.py")],
+        )
+    )
+    assert result.bindings == ()
+    assert {item.code for item in result.findings} >= {
+        "annotation.misplaced",
+        "annotation.missing",
+    }
+
+    (tmp_path / "one.py").write_text(
+        '# murlocs:annotation/v1 evidence "orphan.marker"\n', encoding="utf-8"
+    )
+    result = resolve_annotations(manifest(tmp_path, [annotation("one.marker", "one.py")]))
+    assert result.bindings == ()
+    assert {item.code for item in result.findings} == {
+        "annotation.missing",
+        "annotation.orphaned",
+    }
 
 
 def test_resolver_reports_unsupported_declared_file_without_guessing(tmp_path):
@@ -441,6 +596,20 @@ def test_layered_annotation_declarations_render_and_override_deterministically(t
         ),
         encoding="utf-8",
     )
-    parsed = parse_manifest_data(tmp_path, resolve_manifest(tmp_path).data)
+    resolved = resolve_manifest(tmp_path)
+    parsed = parse_manifest_data(
+        tmp_path,
+        resolved.data,
+        layered=resolved.layered,
+        sources=resolved.sources,
+        scope_layers=resolved.scope_layers,
+        invariant_layers=resolved.invariant_layers,
+        overrides=resolved.overrides,
+    )
     assert parsed.invariants[0].annotation is not None
     assert parsed.invariants[0].annotation.identifier == "overlay.marker"
+    assert parsed.source_for_invariant("marker") is not None
+    assert parsed.source_for_invariant("marker").id == "overlay"
+    (tmp_path / "overlay.py").write_text("VALUE = 1\n", encoding="utf-8")
+    finding = next(item for item in validate(parsed) if item.code == "annotation.missing")
+    assert finding.declaration_sources == ("overlay@.murlocs/layers/overlay.toml",)

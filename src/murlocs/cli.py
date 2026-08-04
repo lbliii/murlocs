@@ -299,6 +299,12 @@ class InitPayload(CompilePayload):
 class FindingPayload(TypedDict):
     code: str
     message: str
+    annotation_id: NotRequired[str | None]
+    invariant_ids: NotRequired[list[str]]
+    scopes: NotRequired[list[str]]
+    locations: NotRequired[list[dict[str, str | int]]]
+    declaration_sources: NotRequired[list[str]]
+    annotation_boundary: NotRequired[str]
 
 
 class SummaryPayload(TypedDict):
@@ -1458,10 +1464,7 @@ def check_command(
             {
                 "ok": False,
                 "findings": [
-                    {
-                        "code": item.code,
-                        "message": item.message,
-                    }
+                    _finding_payload(item)
                     for item in findings
                 ],
                 "summary": summary,
@@ -1484,6 +1487,27 @@ def check_command(
         },
         terminal_text=terminal,
     )
+
+
+def _finding_payload(item: Finding) -> FindingPayload:
+    """Render stable check diagnostics without retaining source prose."""
+    payload: FindingPayload = {"code": item.code, "message": item.message}
+    if item.annotation_id is not None or item.invariant_ids or item.locations:
+        payload.update(
+            {
+                "annotation_id": item.annotation_id,
+                "invariant_ids": list(item.invariant_ids),
+                "scopes": list(item.scopes),
+                "locations": [
+                    {"file": location.file, "line": location.line}
+                    for location in item.locations
+                ],
+                "declaration_sources": list(item.declaration_sources),
+            }
+        )
+        if item.annotation_boundary is not None:
+            payload["annotation_boundary"] = item.annotation_boundary
+    return payload
 
 
 def explain_command(

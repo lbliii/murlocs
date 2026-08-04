@@ -33,7 +33,19 @@ identity/override rule. A later invariant override replaces the complete reviewe
 declaration. Single-file manifests without `annotation` remain byte-for-byte
 compatible with their existing maps and lockfiles.
 
-This resolver is deliberately not yet a `check`, `explain`, rendered-map, impact,
-or transport surface. Those validation, provenance, and lifecycle integrations are
-separate changes. A successful attachment is inspectable evidence only; it does
-not establish semantic truth or authorize an action.
+`murlocs check` validates every declared annotation relationship without writing
+source or guidance. It reports stable `annotation.*` findings for missing,
+duplicate, malformed, unknown-version, unknown-kind, orphaned, misplaced,
+unsupported, excluded, undecodable, and resource-limit states. Each diagnostic
+names the identifier where known, reviewed invariant and scope where known,
+available normalized source locations, and the declaring layer source. Duplicate
+or conflicting candidates never select a first or last match; any finding leaves
+the whole annotation resolution unbound.
+
+Check findings are blocking and offer only the read-only `inspect_findings`
+action. Human output and the structured outcome carry the same diagnostic code
+and bounded context; neither includes source snippets or a command to run.
+Excluded findings distinguish generated and vendored paths in their bounded
+boundary context. A successful attachment remains inspectable evidence only; it
+does not establish semantic truth or authorize an action. `explain`, rendered-map,
+impact, lifecycle, and transport integrations remain separate changes.

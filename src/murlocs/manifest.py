@@ -99,6 +99,7 @@ def load_manifest(root: Path) -> Manifest:
         layered=resolved.layered,
         sources=resolved.sources,
         scope_layers=resolved.scope_layers,
+        invariant_layers=resolved.invariant_layers,
         overrides=resolved.overrides,
     )
 
@@ -110,6 +111,7 @@ def parse_manifest_data(
     layered: bool = False,
     sources: tuple[LayerSource, ...] = (),
     scope_layers: dict[str, tuple[str, ...]] | None = None,
+    invariant_layers: dict[str, str] | None = None,
     overrides: tuple[Override, ...] = (),
 ) -> Manifest:
     """Parse an already-loaded canonical manifest without reading or writing repository files."""
@@ -201,6 +203,7 @@ def parse_manifest_data(
             layered=layered,
             sources=sources,
             scope_layers=dict(scope_layers or {}),
+            invariant_layers=dict(invariant_layers or {}),
             overrides=overrides,
         )
     except (TypeError, ValueError, AttributeError) as exc:

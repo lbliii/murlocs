@@ -270,6 +270,32 @@ def build_check_outcome(
         item = items[0]
         code = _check_code(item.code)
         item_resolution = _check_resolution(item.code, repairable)
+        annotation_items = [item for item in items if item.annotation_id is not None]
+        finding_source_paths = sorted(
+            {
+                *source_paths,
+                *(path for item in annotation_items for path in item.source_paths),
+            }
+        )
+        finding_scopes = sorted(
+            {scope for item in annotation_items for scope in item.scopes}
+        )
+        finding_maps = sorted(
+            {
+                scope.map
+                for scope in manifest.scopes
+                if scope.id in set(finding_scopes)
+            }
+        )
+        finding_owners = sorted(
+            {
+                owner
+                for item in annotation_items
+                for invariant_id in item.invariant_ids
+                if (source := manifest.source_for_invariant(invariant_id)) is not None
+                for owner in source.owners
+            }
+        )
         evidence = [
             {
                 "kind": cast(Literal["diagnostic", "reason"], "diagnostic"),
@@ -298,12 +324,24 @@ def build_check_outcome(
                 "provenance": {
                     "operation": "check",
                     "source_codes": [item.code],
-                    "source_paths": source_paths,
+                    "source_paths": finding_source_paths,
                 },
                 "affected": {
-                    "scopes": all_scopes if item_resolution != "agent_action" else [],
-                    "maps": all_maps if item_resolution != "agent_action" else [],
-                    "owners": all_owners if item_resolution == "authority_required" else [],
+                    "scopes": (
+                        finding_scopes
+                        if annotation_items
+                        else all_scopes if item_resolution != "agent_action" else []
+                    ),
+                    "maps": (
+                        finding_maps
+                        if annotation_items
+                        else all_maps if item_resolution != "agent_action" else []
+                    ),
+                    "owners": (
+                        finding_owners
+                        if annotation_items
+                        else all_owners if item_resolution == "authority_required" else []
+                    ),
                 },
                 "resolution_class": item_resolution,
                 "action_ids": [actions_by_resolution[item_resolution]["id"]],

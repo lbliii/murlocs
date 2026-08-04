@@ -7,9 +7,14 @@ from pathlib import Path
 from murlocs.codeowners import find_codeowners, normalize_path, parse_codeowners
 from murlocs.errors import MurlocsError
 from murlocs.lockfile import Lock, read_lock, sha256_bytes, sha256_text
-from murlocs.model import LayerSource, Manifest
+from murlocs.model import Invariant, LayerSource, Manifest
 from murlocs.paths import relative_posix, repo_path
 from murlocs.render import render_outputs
+from murlocs.source_annotations import (
+    AnnotationLocation,
+    AnnotationResolverFinding,
+    resolve_annotations,
+)
 
 SEVERITY_EQUIVALENTS = {
     "critical": "critical",
@@ -26,6 +31,13 @@ SEVERITY_EQUIVALENTS = {
 class Finding:
     code: str
     message: str
+    annotation_id: str | None = None
+    invariant_ids: tuple[str, ...] = ()
+    scopes: tuple[str, ...] = ()
+    locations: tuple[AnnotationLocation, ...] = ()
+    declaration_sources: tuple[str, ...] = ()
+    source_paths: tuple[str, ...] = ()
+    annotation_boundary: str | None = None
 
     def __str__(self) -> str:
         return f"[{self.code}] {self.message}"
@@ -110,8 +122,96 @@ def validate(manifest: Manifest) -> list[Finding]:
 
     findings.extend(_coverage_findings(manifest))
     findings.extend(_ownership_findings(manifest))
+    findings.extend(_annotation_findings(manifest))
     findings.extend(_drift_findings(manifest))
     return findings
+
+
+def _annotation_findings(manifest: Manifest) -> list[Finding]:
+    """Convert bounded inert annotation diagnostics into check findings.
+
+    Resolution deliberately never selects a partial binding.  This layer only
+    reports relationship debt: it does not mutate source, reinterpret a marker,
+    or execute a repository-provided command.
+    """
+    resolution = resolve_annotations(manifest)
+    if not resolution.findings:
+        return []
+
+    declarations: dict[str, list[Invariant]] = {}
+    declared_files: dict[str, list[Invariant]] = {}
+    for invariant in manifest.invariants:
+        if invariant.annotation is None:
+            continue
+        declarations.setdefault(invariant.annotation.identifier, []).append(invariant)
+        declared_files.setdefault(invariant.annotation.file, []).append(invariant)
+
+    return [
+        _annotation_finding(manifest, finding, declarations, declared_files)
+        for finding in resolution.findings
+    ]
+
+
+def _annotation_finding(
+    manifest: Manifest,
+    finding: AnnotationResolverFinding,
+    declarations: dict[str, list[Invariant]],
+    declared_files: dict[str, list[Invariant]],
+) -> Finding:
+    related = list(declarations.get(finding.identifier or "", ()))
+    if not related and finding.location is not None:
+        related = list(declared_files.get(finding.location.file, ()))
+    related.sort(key=lambda item: item.id)
+    invariant_ids = tuple(item.id for item in related)
+    scopes = tuple(sorted({item.scope for item in related}))
+    declaration_sources = tuple(
+        sorted(
+            {
+                f"{source.id}@{source.path}"
+                for item in related
+                if (source := manifest.source_for_invariant(item.id)) is not None
+            }
+        )
+    )
+    locations = (finding.location,) if finding.location is not None else ()
+    source_paths = tuple(
+        sorted(
+            {
+                *(location.file for location in locations),
+                *(item.annotation.file for item in related if item.annotation is not None),
+            }
+        )
+    )
+    inferred_identifier = (
+        related[0].annotation.identifier
+        if finding.identifier is None
+        and len(
+            {item.annotation.identifier for item in related if item.annotation is not None}
+        )
+        == 1
+        else None
+    )
+    annotation_id = finding.identifier or inferred_identifier
+    identifier = annotation_id or "<unknown>"
+    location_text = ", ".join(f"{item.file}:{item.line}" for item in locations) or "<none>"
+    invariant_text = ", ".join(invariant_ids) or "<unknown>"
+    scope_text = ", ".join(scopes) or "<unknown>"
+    source_text = ", ".join(declaration_sources) or "<unknown>"
+    boundary_text = f"; boundary={finding.boundary}" if finding.boundary is not None else ""
+    return Finding(
+        finding.code,
+        (
+            f"annotation id={identifier}; invariants={invariant_text}; scopes={scope_text}; "
+            f"locations={location_text}; declarations={source_text}{boundary_text}"
+        ),
+        annotation_id=annotation_id,
+        invariant_ids=invariant_ids,
+        scopes=scopes,
+        locations=locations,
+        declaration_sources=declaration_sources,
+        source_paths=source_paths,
+        annotation_boundary=finding.boundary,
+    )
 
 
 def _ownership_findings(manifest: Manifest) -> list[Finding]:

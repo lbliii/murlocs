@@ -56,6 +56,7 @@ class ResolvedManifest:
     layered: bool
     sources: tuple[LayerSource, ...]
     scope_layers: dict[str, tuple[str, ...]]
+    invariant_layers: dict[str, str]
     overrides: tuple[Override, ...]
 
 
@@ -126,6 +127,11 @@ def resolve_manifest(root: Path) -> ResolvedManifest:
             layered=False,
             sources=(disk.root_source,),
             scope_layers=scope_layers,
+            invariant_layers={
+                str(invariant.get("id", "")): ROOT_SOURCE_ID
+                for invariant in disk.root_data.get("invariants", [])
+                if isinstance(invariant, dict)
+            },
             overrides=(),
         )
     return compose(disk.root_data, disk.sources, disk.fragments)
@@ -162,6 +168,7 @@ def compose(
         layered=len(sources) > 1,
         sources=tuple(sources),
         scope_layers={key: tuple(value) for key, value in state.scope_layers.items()},
+        invariant_layers={key: value[0] for key, value in state.invariants.items()},
         overrides=tuple(state.overrides),
     )
 
