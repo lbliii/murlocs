@@ -128,7 +128,17 @@ def test_clean_installed_wheel_commits_through_generated_dispatcher(tmp_path: Pa
         env=environment,
     )
     hook = repository / ".git" / "hooks" / "pre-commit"
-    assert str(runner) in hook.read_text()
+    dispatcher = hook.read_text()
+    assert str(runner) in dispatcher
+    assert '"build_id":"sha256:' in dispatcher
+    assert '"sha256":"sha256:' in dispatcher
+    assert "--expected-build-id=sha256:" in dispatcher
+    status = run(
+        [str(runner), "hook", "status", "--repo", str(repository)],
+        cwd=repository,
+        env=environment,
+    )
+    assert status.stdout == "pre-commit: installed\npre-push: installed\n"
     (repository / "README.md").write_text("# installed wheel dispatcher smoke\n")
     run(["git", "add", "README.md"], cwd=repository, env=environment)
     run(["git", "commit", "--quiet", "-m", "dispatcher smoke"], cwd=repository, env=environment)

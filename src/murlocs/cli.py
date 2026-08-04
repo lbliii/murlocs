@@ -24,6 +24,7 @@ from murlocs.curation import (
 from murlocs.curation_transaction import transaction_pending
 from murlocs.errors import MurlocsError
 from murlocs.hook_cli import register_hook_commands
+from murlocs.identity import RuntimeIdentity, runtime_identity
 from murlocs.impact import (
     build_impact_report,
     changed_paths_from_revision,
@@ -815,6 +816,28 @@ def _root(path: str) -> Path:
     if not root.is_dir():
         raise MurlocsError(f"repository root is not a directory: {root}")
     return root
+
+
+def version_command() -> RuntimeIdentity:
+    """Report the running package's build and installation identity.
+
+    The result is local inspection only.  ``verification: unverified`` never
+    asserts that a registry artifact or publisher is official.
+    """
+    identity = runtime_identity()
+    build = identity["build"]
+    installation = identity["installation"]
+    lines = [
+        f"{identity['project']} {identity['version']}",
+        f"build: {build['kind']} ({build['id']})",
+        f"verification: {build['verification']}",
+        f"installation: {installation['kind']}",
+    ]
+    if installation["source_revision"] is not None:
+        lines.append(f"source revision: {installation['source_revision']}")
+    if installation["archive_hash"] is not None:
+        lines.append(f"archive hash: {installation['archive_hash']}")
+    return CommandResult(identity, terminal_text="\n".join(lines))
 
 
 def init_command(
@@ -2557,6 +2580,13 @@ def build_cli(*, name: str = "murlocs") -> CLI:
         "idempotentHint": True,
         "openWorldHint": True,
     }
+    app.command(
+        "version",
+        description="Report the running build and installation identity",
+        surfaces=("cli", "mcp", "llms"),
+        annotations=inspection,
+        terminal_renderer=_render_result,
+    )(version_command)
     app.command(
         "inventory",
         description="Inventory repository guidance and ownership conflicts",
