@@ -390,6 +390,156 @@ def test_validation_reports_stable_annotation_context_and_outcome_parity(tmp_pat
     }
 
 
+def test_validation_reports_marker_deletion_without_a_partial_binding(tmp_path):
+    source = tmp_path / "source.py"
+    source.write_text(
+        '# murlocs:annotation/v1 evidence "deletion.marker"\nVALUE = 1\n',
+        encoding="utf-8",
+    )
+    parsed = manifest(tmp_path, [annotation("deletion.marker", "source.py")])
+    assert resolve_annotations(parsed).findings == ()
+
+    source.write_text("VALUE = 1\n", encoding="utf-8")
+
+    resolution = resolve_annotations(parsed)
+    assert resolution.bindings == ()
+    assert resolution.findings == (
+        AnnotationResolverFinding(
+            "annotation.missing", "deletion.marker", "invariant-0"
+        ),
+    )
+    finding = annotation_findings(parsed)[0]
+    assert (finding.code, finding.annotation_id, finding.locations) == (
+        "annotation.missing",
+        "deletion.marker",
+        (),
+    )
+
+
+def test_validation_reports_copy_paste_duplication_at_every_location(tmp_path):
+    source = tmp_path / "source.py"
+    marker = '# murlocs:annotation/v1 evidence "copied.marker"'
+    source.write_text(f"{marker}\nVALUE = 1\n", encoding="utf-8")
+    parsed = manifest(tmp_path, [annotation("copied.marker", "source.py")])
+    assert resolve_annotations(parsed).findings == ()
+
+    source.write_text(f"{marker}\nVALUE = 1\n{marker}\n", encoding="utf-8")
+
+    resolution = resolve_annotations(parsed)
+    assert resolution.bindings == ()
+    assert [
+        (finding.code, finding.identifier, finding.location.line)
+        for finding in resolution.findings
+    ] == [
+        ("annotation.duplicate", "copied.marker", 1),
+        ("annotation.duplicate", "copied.marker", 3),
+    ]
+    assert [finding.locations[0].line for finding in annotation_findings(parsed)] == [1, 3]
+
+
+def test_validation_reports_a_declared_file_rename_as_excluded(tmp_path):
+    source = tmp_path / "source.py"
+    source.write_text(
+        '# murlocs:annotation/v1 evidence "rename.marker"\n', encoding="utf-8"
+    )
+    parsed = manifest(tmp_path, [annotation("rename.marker", "source.py")])
+    assert resolve_annotations(parsed).findings == ()
+
+    source.rename(tmp_path / "renamed.py")
+
+    resolution = resolve_annotations(parsed)
+    assert resolution.bindings == ()
+    assert resolution.findings == (
+        AnnotationResolverFinding(
+            "annotation.excluded", "rename.marker", "invariant-0"
+        ),
+    )
+    finding = annotation_findings(parsed)[0]
+    assert (finding.annotation_id, finding.source_paths, finding.annotation_boundary) == (
+        "rename.marker",
+        ("source.py",),
+        "excluded",
+    )
+
+
+def test_validation_reresolves_formatter_movement_to_the_new_physical_line(tmp_path):
+    source = tmp_path / "source.py"
+    marker = '# murlocs:annotation/v1 evidence "formatter.marker"'
+    source.write_text(f"{marker}\nVALUE = 1\n", encoding="utf-8")
+    parsed = manifest(tmp_path, [annotation("formatter.marker", "source.py")])
+    before = resolve_annotations(parsed)
+    assert annotation_findings(parsed) == []
+    assert [(binding.identifier, binding.location.line) for binding in before.bindings] == [
+        ("formatter.marker", 1)
+    ]
+
+    source.write_text(f"def f():\n    return 1\n\n\n{marker}\n", encoding="utf-8")
+
+    after = resolve_annotations(parsed)
+    assert after.findings == ()
+    assert annotation_findings(parsed) == []
+    assert [(binding.identifier, binding.location.line) for binding in after.bindings] == [
+        ("formatter.marker", 5)
+    ]
+
+
+def test_validation_preserves_location_across_line_ending_conversion(tmp_path):
+    source = tmp_path / "source.py"
+    marker = '# murlocs:annotation/v1 evidence "line-ending.marker"'
+    parsed = manifest(tmp_path, [annotation("line-ending.marker", "source.py")])
+    expected = [("line-ending.marker", "source.py", 3)]
+
+    source.write_bytes(f"VALUE = 1\r\n\r\n{marker}\r\n".encode())
+    crlf = resolve_annotations(parsed)
+    assert crlf.findings == ()
+    assert annotation_findings(parsed) == []
+    assert [
+        (binding.identifier, binding.location.file, binding.location.line)
+        for binding in crlf.bindings
+    ] == expected
+
+    source.write_text(f"VALUE = 1\n\n{marker}\n", encoding="utf-8")
+    lf = resolve_annotations(parsed)
+    assert lf.findings == ()
+    assert annotation_findings(parsed) == []
+    assert [
+        (binding.identifier, binding.location.file, binding.location.line)
+        for binding in lf.bindings
+    ] == expected
+
+
+def test_validation_reresolves_concurrent_manifest_and_source_edits(tmp_path):
+    source = tmp_path / "source.py"
+    source.write_text(
+        '# murlocs:annotation/v1 evidence "before.marker"\n', encoding="utf-8"
+    )
+    before = manifest(tmp_path, [annotation("before.marker", "source.py")])
+    assert resolve_annotations(before).findings == ()
+
+    source.write_text(
+        '# murlocs:annotation/v1 evidence "after.marker"\n', encoding="utf-8"
+    )
+    stale = resolve_annotations(before)
+    assert stale.bindings == ()
+    assert [finding.code for finding in stale.findings] == [
+        "annotation.missing",
+        "annotation.orphaned",
+    ]
+    assert [finding.code for finding in annotation_findings(before)] == [
+        "annotation.missing",
+        "annotation.orphaned",
+    ]
+
+    after = manifest(tmp_path, [annotation("after.marker", "source.py")])
+    refreshed = resolve_annotations(after)
+    assert refreshed.findings == ()
+    assert annotation_findings(after) == []
+    assert [
+        (binding.identifier, binding.location.file, binding.location.line)
+        for binding in refreshed.bindings
+    ] == [("after.marker", "source.py", 1)]
+
+
 @pytest.mark.parametrize(
     ("identifier", "path", "content", "code", "boundary"),
     [
