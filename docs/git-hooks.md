@@ -95,19 +95,24 @@ are measured independently; stale multi-source history uses the conservative #53
 | Peak memory bound | — | — | At most 96 MiB (64 MiB raw-view cap plus margin). |
 
 The structural limits are the primary regression threshold because they are deterministic across
-machines. Latency is intentionally generous and is never the sole CI signal. The benchmark records
-the staged-view entry count as hook files-read; direct operations count their manifest sources.
+machines. Latency is intentionally generous and is never the sole CI signal. The benchmark counts
+each materialized staged/commit entry plus the unique manifest sources, generated maps, lock, and
+proof files consumed by the child operations. Direct operations count their unique structural
+inputs. Completion metrics are aggregated from the batch's per-commit activation results; a
+missing, invalid, or incomplete result fails the benchmark.
 Peak memory is enforced from the raw-view structural cap, rather than `tracemalloc`: check and
 impact run in child interpreters, so a parent-only allocation sample would misrepresent total use.
-The suite configures hooks and text conversion to leave a sentinel if they run, then asserts the
-sentinel is absent. Its registered check exits if executed, so every healthy measurement also
+The suite configures hooks, external diff, and text conversion to leave a sentinel if they run,
+then asserts the sentinel is absent. Its registered check exits if executed, so every healthy measurement also
 proves it stayed inert. It does not install a Murlocs hook, execute a registered check, invoke a
 model, or open the network.
 
 The interactive default is the `pre-commit` staged-index mode. It runs one `check` and one `impact`
 and is the hot path represented by the budget. `pre-push` is a completion gate, not an interactive
 default: it materializes and assesses every non-deletion outgoing commit, so its cost grows with
-the update count. Likewise, ambiguous stale-source attribution is deliberately bounded but too
+the update count. The installer selects both `pre-commit` and `pre-push` when `--event` is omitted;
+“interactive default” here means the latency-sensitive commit boundary. Likewise, ambiguous
+stale-source attribution is deliberately bounded but too
 expensive for a latency-sensitive default: #53 searches at most 64 path-touching commits, reads at
 most 1 MiB per blob and 8 MiB total, and falls back to conservative required routing on any limit,
 malformed response, race, or unavailable Git capability.

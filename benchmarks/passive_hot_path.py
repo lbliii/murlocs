@@ -8,6 +8,7 @@ No registered command is invoked by these probes.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import time
 from collections.abc import Callable
@@ -71,7 +72,7 @@ def _commit(root: Path, message: str) -> None:
         "-c",
         "commit.gpgsign=false",
         "-c",
-        "core.hooksPath=/dev/null",
+        f"core.hooksPath={os.devnull}",
         "commit",
         "--quiet",
         "-m",
@@ -166,16 +167,17 @@ def _install_inert_execution_traps(root: Path) -> Path:
     """Configure commands that would leave evidence if Git escaped its read-only path."""
     sentinel = root / "UNEXPECTED_EXECUTION"
     driver = root / "driver.sh"
-    driver.write_text(f'#!/bin/sh\ntouch "{sentinel}"\n', encoding="utf-8")
+    driver.write_text("#!/bin/sh\nprintf x > UNEXPECTED_EXECUTION\nexit 97\n", encoding="utf-8")
     driver.chmod(0o755)
     hooks = root / "hooks"
     hooks.mkdir()
     for name in ("pre-commit", "pre-push", "post-checkout", "reference-transaction"):
         hook = hooks / name
-        hook.write_text(f'#!/bin/sh\ntouch "{sentinel}"\n', encoding="utf-8")
+        hook.write_text("#!/bin/sh\nprintf x > UNEXPECTED_EXECUTION\nexit 97\n", encoding="utf-8")
         hook.chmod(0o755)
-    _write(root / ".gitattributes", "*.toml diff=trap filter=trap\n")
+    _write(root / ".gitattributes", "*.toml diff=trap\n")
     for key, value in (
+        ("diff.external", str(driver)),
         ("diff.trap.textconv", str(driver)),
         ("core.hooksPath", str(hooks)),
     ):
@@ -205,12 +207,50 @@ def _measure(operation: Callable[[], tuple[dict[str, Any], int, int]]) -> dict[s
     }
 
 
+def _file_inputs(root: Path, operation: str) -> int:
+    """Count unique repository files an operation may read for this fixture."""
+    manifest = load_manifest(root)
+    paths = {source.path for source in manifest.sources}
+    if operation == "check":
+        paths.update(scope.map for scope in manifest.scopes)
+        paths.update(check.location for check in manifest.checks.values())
+        paths.add(".murlocs/lock.json")
+    return len(paths)
+
+
+def _activation_work(payload: dict[str, Any], root: Path) -> tuple[int, int]:
+    if payload.get("execution", {}).get("status") != "completed":
+        raise RuntimeError("measured hook activation did not complete")
+    if [item.get("operation") for item in payload.get("operations", [])] != [
+        "check",
+        "impact",
+    ]:
+        raise RuntimeError("measured hook skipped its check/impact operation pair")
+    metrics = payload.get("metrics")
+    if not isinstance(metrics, dict):
+        raise RuntimeError("measured hook omitted structural metrics")
+    git_calls = metrics.get("git_subprocesses")
+    entries = metrics.get("entries")
+    if not isinstance(git_calls, int) or not isinstance(entries, int):
+        raise RuntimeError("measured hook returned malformed structural metrics")
+    files_read = entries + _file_inputs(root, "check") + _file_inputs(root, "impact")
+    return git_calls, files_read
+
+
 def _hook_operation(event: str, root: Path, update: bytes = b"") -> tuple[dict[str, Any], int, int]:
     result = run_hook(event, root, correlation_id=f"benchmark:{event}", pre_push_input=update)
     if result.exit_code not in {0, 1}:
         raise RuntimeError(f"unexpected hook exit: {result.exit_code}")
-    metrics = result.payload.get("metrics", {})
-    return result.payload, int(metrics.get("git_subprocesses", 0)), int(metrics.get("entries", 0))
+    if event == "pre-commit":
+        git_calls, files_read = _activation_work(result.payload, root)
+        return result.payload, git_calls, files_read
+    results = result.payload.get("results")
+    if not isinstance(results, list) or not results:
+        raise RuntimeError("completion benchmark returned no activation results")
+    work = [_activation_work(payload, root) for payload in results]
+    return result.payload, max(git_calls for git_calls, _ in work), sum(
+        files_read for _, files_read in work
+    )
 
 
 def _task_start(root: Path) -> tuple[dict[str, Any], int, int]:
@@ -219,7 +259,11 @@ def _task_start(root: Path) -> tuple[dict[str, Any], int, int]:
     checked = check_command(repo=str(root))
     if not checked["ok"]:
         raise RuntimeError("task-start check failed")
-    return {"object_format": context.object_format, "check": checked["ok"]}, deadline.git_calls, 4
+    return (
+        {"object_format": context.object_format, "check": checked["ok"]},
+        deadline.git_calls,
+        _file_inputs(root, "check"),
+    )
 
 
 def _explicit_impact(root: Path, target: str) -> tuple[dict[str, Any], int, int]:
