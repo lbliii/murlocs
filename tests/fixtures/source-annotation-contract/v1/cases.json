@@ -1,0 +1,43 @@
+{
+  "contract": "io.murlocs.source-annotation",
+  "version": 1,
+  "comment_wrappers": ["#", "//", "--", ";", "/* */", "<!-- -->"],
+  "cases": [
+    {"id": "python-line", "path": "python.py", "line": 1, "wrapper": "#", "comment": "murlocs:annotation/v1 evidence \"api.contract\"", "expect": {"identifier": "api.contract"}},
+    {"id": "go-line", "path": "go.go", "line": 1, "wrapper": "//", "comment": "murlocs:annotation/v1 evidence \"go.http-handler\"", "expect": {"identifier": "go.http-handler"}},
+    {"id": "javascript-line", "path": "javascript.js", "line": 1, "wrapper": "//", "comment": "murlocs:annotation/v1 evidence \"javascript.module\"", "expect": {"identifier": "javascript.module"}},
+    {"id": "typescript-line", "path": "typescript.ts", "line": 1, "wrapper": "//", "comment": "murlocs:annotation/v1 evidence \"typescript.module\"", "expect": {"identifier": "typescript.module"}},
+    {"id": "rust-line", "path": "rust.rs", "line": 1, "wrapper": "//", "comment": "murlocs:annotation/v1 evidence \"rust.parser\"", "expect": {"identifier": "rust.parser"}},
+    {"id": "shell-line", "path": "script.sh", "line": 1, "wrapper": "#", "comment": "murlocs:annotation/v1 evidence \"shell.entrypoint\"", "expect": {"identifier": "shell.entrypoint"}},
+    {"id": "yaml-line", "path": "config.yaml", "line": 1, "wrapper": "#", "comment": "murlocs:annotation/v1 evidence \"yaml.service\"", "expect": {"identifier": "yaml.service"}},
+    {"id": "html-block", "path": "page.html", "line": 1, "wrapper": "<!-- -->", "comment": "murlocs:annotation/v1 evidence \"html.template\"", "expect": {"identifier": "html.template"}},
+    {"id": "sql-line", "path": "query.sql", "line": 1, "wrapper": "--", "comment": "murlocs:annotation/v1 evidence \"sql.query\"", "expect": {"identifier": "sql.query"}},
+    {"id": "semicolon-line", "path": "settings.ini", "line": 1, "wrapper": ";", "comment": "murlocs:annotation/v1 evidence \"ini.setting\"", "expect": {"identifier": "ini.setting"}},
+    {"id": "c-block", "path": "style.css", "line": 1, "wrapper": "/* */", "comment": "murlocs:annotation/v1 evidence \"css.style\"", "expect": {"identifier": "css.style"}},
+    {"id": "crlf", "path": "crlf.py", "line": 1, "wrapper": "#", "comment": "murlocs:annotation/v1 evidence \"crlf.file\"", "expect": {"identifier": "crlf.file"}},
+    {"id": "unicode-ascii-identifier", "path": "unicode.py", "line": 1, "wrapper": "#", "comment": "murlocs:annotation/v1 evidence \"unicode.safe\"", "expect": {"identifier": "unicode.safe"}},
+    {"id": "unicode-identifier-rejected", "path": "unicode.py", "line": 2, "wrapper": "#", "comment": "murlocs:annotation/v1 evidence \"café\"", "expect": {"finding": "annotation.malformed"}},
+    {"id": "formatter-movement-before", "path": "movement-before.py", "line": 1, "wrapper": "#", "comment": "murlocs:annotation/v1 evidence \"formatter.stable\"", "expect": {"identifier": "formatter.stable"}},
+    {"id": "formatter-movement-after", "path": "movement-after.py", "line": 5, "wrapper": "#", "comment": "murlocs:annotation/v1 evidence \"formatter.stable\"", "expect": {"identifier": "formatter.stable"}},
+    {"id": "string-literal-is-not-a-comment", "path": "python.py", "line": 2, "wrapper": null, "comment": null, "expect": {"inert": true}},
+    {"id": "documentation-code-example-is-not-a-comment", "path": "quoted-examples.md", "line": 2, "wrapper": null, "comment": null, "expect": {"inert": true}},
+    {"id": "unknown-version", "comment": "murlocs:annotation/v2 evidence \"future.contract\"", "expect": {"finding": "annotation.unknown-version"}},
+    {"id": "unknown-kind", "comment": "murlocs:annotation/v1 applies \"not.allowed\"", "expect": {"finding": "annotation.unknown-kind"}},
+    {"id": "case-sensitive", "comment": "Murlocs:annotation/v1 evidence \"case.variant\"", "expect": {"inert": true}},
+    {"id": "unquoted", "comment": "murlocs:annotation/v1 evidence api.contract", "expect": {"finding": "annotation.malformed"}},
+    {"id": "escaped-identifier", "comment": "murlocs:annotation/v1 evidence \"api\\\\.contract\"", "expect": {"finding": "annotation.malformed"}},
+    {"id": "trailing-text", "comment": "murlocs:annotation/v1 evidence \"api.contract\" trailing", "expect": {"finding": "annotation.malformed"}}
+  ],
+  "resolution_cases": [
+    {"id": "missing", "declared": "missing.binding", "comments": [], "expect": "annotation.missing"},
+    {"id": "duplicate", "declared": "duplicate.binding", "comments": ["murlocs:annotation/v1 evidence \"duplicate.binding\"", "murlocs:annotation/v1 evidence \"duplicate.binding\""], "expect": "annotation.duplicate"},
+    {"id": "orphaned", "declared": null, "comments": ["murlocs:annotation/v1 evidence \"orphan.binding\""], "expect": "annotation.orphaned"},
+    {"id": "misplaced", "declared": "misplaced.binding", "declared_paths": ["declared.py"], "path": "other.py", "comments": ["murlocs:annotation/v1 evidence \"misplaced.binding\""], "expect": "annotation.misplaced"},
+    {"id": "unsupported", "declared": "unsupported.wrapper", "wrapper": "unsupported", "comments": ["murlocs:annotation/v1 evidence \"unsupported.wrapper\""], "expect": "annotation.unsupported"},
+    {"id": "generated", "declared": "generated.file", "path_state": "generated", "comments": ["murlocs:annotation/v1 evidence \"generated.file\""], "expect": "annotation.excluded"},
+    {"id": "vendored", "declared": "vendor.file", "path_state": "vendored", "comments": ["murlocs:annotation/v1 evidence \"vendor.file\""], "expect": "annotation.excluded"},
+    {"id": "non-text", "declared": "binary.file", "path_state": "non-text", "comments": [], "expect": "annotation.undecodable"},
+    {"id": "undecodable", "declared": "invalid.utf8", "path_state": "undecodable", "comments": [], "expect": "annotation.undecodable"},
+    {"id": "resource-limit", "declared": "limit.file", "path_state": "byte-limit", "comments": [], "expect": "annotation.resource-limit"}
+  ]
+}

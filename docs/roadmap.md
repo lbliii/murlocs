@@ -63,8 +63,9 @@ semantic preservation, proof integrity, context discipline, and safe ownership t
   versioned parser contract exist.
 - Complete the [authority and threat-model baseline](source-annotation-authority.md) before grammar
   or discovery implementation; preserve its generated-guidance exclusion fixture.
-- Dogfood existing textual anchors, then specify the `evidence`-only contract and conformance corpus
-  before adding typed parsing, provenance, impact, or lifecycle integration.
+- Dogfood existing textual anchors, then complete the [`evidence`-only contract and conformance
+  corpus](source-annotation-contract-v1.md) before adding typed parsing, provenance, impact, or
+  lifecycle integration.
 
 ## v0.3 — ecosystem
 
