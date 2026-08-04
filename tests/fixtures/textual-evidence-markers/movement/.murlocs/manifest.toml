@@ -1,0 +1,22 @@
+schema_version = 1
+network = "textual-evidence-fixture"
+protocol = ".murlocs/PROTOCOL.md"
+max_active_bytes = 4096
+
+[[scopes]]
+id = "root"
+path = "."
+map = "AGENTS.md"
+point_of_view = "Fixture for existing textual evidence semantics."
+
+[[invariants]]
+id = "sample-proof"
+scope = "root"
+statement = "The fixture has a source-local marker."
+severity = "important"
+verification = "manual"
+evidence_file = "evidence.md"
+anchor = "murlocs:evidence sample-proof"
+
+[coverage]
+roots = []

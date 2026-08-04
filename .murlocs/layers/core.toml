@@ -30,7 +30,7 @@ statement = "Validation inspects command proof but never executes registered com
 severity = "critical"
 verification = "manual"
 evidence_file = "docs/architecture.md"
-anchor = "does not call a model"
+anchor = "murlocs:evidence no-command-execution"
 
 [[invariants]]
 id = "typed-surface-parity"
