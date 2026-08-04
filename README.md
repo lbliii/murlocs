@@ -33,6 +33,12 @@ Agent-host integrations can run the installed
 scenarios. The harness checks trusted-token boundaries, freshness, typed outcomes, silence,
 fallbacks, and read-only behavior without standardizing a host's snapshot implementation.
 
+Two independent repository-local adapters exercise that contract: the
+[GitHub Copilot adapter](docs/github-copilot-adapter.md) and the
+[Claude Code adapter](docs/claude-code-adapter.md). Their host-specific hook
+surfaces do not add policy to Murlocs-authored layers; Git hooks and CI remain
+portable enforcement fallbacks.
+
 The Milo-backed CLI is deterministic infrastructure. The bundled `bootstrap-murlocs` skill is the
 optional agent-assisted authoring layer for discovering architecture and drafting a truthful
 manifest. Read-only commands are available as MCP tools and in `llms.txt`; write commands remain
