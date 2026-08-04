@@ -124,6 +124,12 @@ def test_hook_command_registry_contract_is_stable():
                 "description": "Pre-push remote URL, treated only as inert metadata.",
                 "default": None,
             },
+            "expected_build_id": {
+                "type": "string",
+                "x-milo-cli": {"kind": "option", "metavar": "SHA256"},
+                "description": "Exact runtime build identity pinned by a managed dispatcher.",
+                "default": None,
+            },
         },
         "required": ["event"],
     }
@@ -534,6 +540,7 @@ def test_milo_agent_surface_is_read_only_by_default():
         "impact",
         "inventory",
         "status",
+        "version",
     }
     assert "**check**" in discovery
     assert "**explain**" in discovery
@@ -541,6 +548,7 @@ def test_milo_agent_surface_is_read_only_by_default():
     assert "**status**" in discovery
     assert "**diff**" in discovery
     assert "**impact**" in discovery
+    assert "**version**" in discovery
     assert "## Create and inspect inert guidance curation proposals" in discovery
     assert "- **check**: Validate inert curation records" in discovery
     assert "- **review**: Review a proposal" in discovery

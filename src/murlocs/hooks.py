@@ -8,11 +8,14 @@ import os
 import re
 import shlex
 import shutil
+import signal
 import stat
 import subprocess
 import sys
 import tempfile
+import time
 from collections.abc import Mapping
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
@@ -36,6 +39,7 @@ from murlocs.gitview import (
     resolve_commit,
     run_git,
 )
+from murlocs.identity import RuntimeIdentity
 from murlocs.manifest import load_manifest
 from murlocs.outcome import (
     bind_integration_tokens,
@@ -52,6 +56,9 @@ HOOK_ADAPTER_VERSION = "1"
 HOOK_MARKER = "# Managed by Murlocs hook integration v1."
 _RUNNER_PREFIX = "# Murlocs runner: "
 _REF = re.compile(rb"(?:refs/[!-~]+|HEAD)")
+_BUILD_ID = re.compile(r"sha256:[0-9a-f]{64}\Z")
+_MAX_RUNNER_BYTES = 4 * 1024 * 1024
+_MAX_RUNNER_IDENTITY_BYTES = 16 * 1024
 
 
 @dataclass(frozen=True)
@@ -75,6 +82,12 @@ class HookRunner:
 
     path: Path
     version: str
+    build_id: str | None = None
+    sha256: str | None = None
+
+    @property
+    def has_v2_identity(self) -> bool:
+        return self.build_id is not None and self.sha256 is not None
 
 
 def run_hook(
@@ -85,10 +98,25 @@ def run_hook(
     deadline_ms: int = 10_000,
     pre_push_input: bytes = b"",
     explicit_paths: tuple[str, ...] = (),
+    expected_build_id: str | None = None,
 ) -> HookResult:
     """Run a hook against raw Git data under one total fail-closed deadline."""
     try:
         correlation_id = validate_correlation_id(correlation_id)
+        _validate_expected_build_id(expected_build_id)
+        if expected_build_id is not None:
+            from murlocs.identity import runtime_identity
+
+            actual_build_id = runtime_identity()["build"]["id"]
+            if actual_build_id != expected_build_id:
+                return _failed(
+                    event,
+                    correlation_id,
+                    "invalid",
+                    "Murlocs hook runner build identity changed; "
+                    "run 'murlocs hook install' to repair it.",
+                    root,
+                )
     except MurlocsError as exc:
         return _failed(event, None, "invalid", str(exc), root)
     try:
@@ -701,6 +729,43 @@ def _installation_context(root: Path) -> tuple[GitContext, Path]:
 
 
 def _hook_bytes(event: HookEvent, runner: HookRunner) -> bytes:
+    """Render the current v2 byte-owned dispatcher."""
+    if not runner.has_v2_identity:
+        raise ValueError("v2 hook dispatcher requires a complete runner identity")
+    quoted_runner = shlex.quote(str(runner.path))
+    quoted_build_id = shlex.quote(runner.build_id)
+    command = (
+        f'exec {quoted_runner} hook run pre-commit --expected-build-id={quoted_build_id}\n'
+        if event == "pre-commit"
+        else (
+            f'exec {quoted_runner} hook run pre-push --remote-name="$1" --remote-url="$2" '
+            f'--expected-build-id={quoted_build_id}\n'
+        )
+    )
+    metadata = json.dumps(
+        {
+            "path": str(runner.path),
+            "version": runner.version,
+            "build_id": runner.build_id,
+            "sha256": runner.sha256,
+        },
+        separators=(",", ":"),
+        ensure_ascii=True,
+    )
+    return (
+        "#!/bin/sh\n"
+        f"{HOOK_MARKER}\n"
+        f"{_RUNNER_PREFIX}{metadata}\n"
+        f"if [ ! -x {quoted_runner} ]; then\n"
+        "  echo \"Murlocs hook runner is missing; run 'murlocs hook install' to repair it.\" >&2\n"
+        "  exit 1\n"
+        "fi\n"
+        f"{command}"
+    ).encode()
+
+
+def _v1_hook_bytes(event: HookEvent, runner: HookRunner) -> bytes:
+    """Render the exact pinned-runner dispatcher emitted before build identity."""
     quoted_runner = shlex.quote(str(runner.path))
     command = (
         f'exec {quoted_runner} hook run pre-commit\n'
@@ -761,15 +826,32 @@ def _owned_runner(content: bytes, event: HookEvent) -> HookRunner | None:
             return None
         if not lines[2].startswith(_RUNNER_PREFIX):
             return None
-        data = json.loads(lines[2][len(_RUNNER_PREFIX) :])
-        if set(data) != {"path", "version"}:
+        data = json.loads(
+            lines[2][len(_RUNNER_PREFIX) :], object_pairs_hook=_unique_object
+        )
+        if set(data) == {"path", "version"}:
+            schema = "v1"
+        elif set(data) == {"path", "version", "build_id", "sha256"}:
+            schema = "v2"
+        else:
             return None
         path, version = data["path"], data["version"]
         if not isinstance(path, str) or not isinstance(version, str):
             return None
-        runner = HookRunner(Path(path), version)
+        if schema == "v1":
+            runner = HookRunner(Path(path), version)
+            return runner if content == _v1_hook_bytes(event, runner) else None
+        build_id, sha256 = data["build_id"], data["sha256"]
+        if (
+            not isinstance(build_id, str)
+            or _BUILD_ID.fullmatch(build_id) is None
+            or not isinstance(sha256, str)
+            or _BUILD_ID.fullmatch(sha256) is None
+        ):
+            return None
+        runner = HookRunner(Path(path), version, build_id, sha256)
         return runner if content == _hook_bytes(event, runner) else None
-    except (UnicodeDecodeError, TypeError, ValueError, json.JSONDecodeError):
+    except (MurlocsError, UnicodeDecodeError, TypeError, ValueError, json.JSONDecodeError):
         return None
 
 
@@ -782,11 +864,16 @@ def _is_owned_hook(content: bytes, event: HookEvent) -> bool:
 
 
 def _runner_state(runner: HookRunner) -> str:
-    if not runner.path.is_file() or not os.access(runner.path, os.X_OK):
+    runner_hash = _runner_sha256(runner.path)
+    if runner_hash is None or not os.access(runner.path, os.X_OK):
         return "missing runner"
-    reported = _runner_version(runner.path)
-    if reported is not None and reported != runner.version:
-        return "version mismatch"
+    # Hook metadata is mutable local repository state.  Status deliberately
+    # never executes a runner named by it; v1 therefore remains owned but its
+    # build cannot be validated until an explicit reinstall upgrades it.
+    if not runner.has_v2_identity:
+        return "legacy runner identity"
+    if runner_hash != runner.sha256:
+        return "runner changed"
     return "installed"
 
 
@@ -800,53 +887,267 @@ def _resolve_runner(explicit_runner: str | None) -> HookRunner:
                 "or pass --runner /absolute/path/to/murlocs"
             )
         path = Path(candidate).absolute()
-        if _is_virtual_environment_runner(path):
-            raise MurlocsError(
-                "refusing to install a runner from a project virtual environment; install Murlocs "
-                "as a user-level tool or pass --runner /absolute/path/to/murlocs with an explicit "
-                "durability contract"
-            )
     else:
         path = Path(explicit_runner)
         if not path.is_absolute():
             raise MurlocsError("hook runner must be an absolute executable path")
     if "\n" in str(path) or "\r" in str(path):
         raise MurlocsError("hook runner path must not contain a newline")
+    try:
+        # A selected install-time runner is an explicit trust boundary.  Pin
+        # its final regular-file target so later status never has to follow a
+        # symlink named by mutable hook metadata.
+        path = path.resolve(strict=True)
+    except OSError as exc:
+        raise MurlocsError("hook runner could not be resolved") from exc
+    if explicit_runner is None and _is_project_virtual_environment_runner(path):
+        raise MurlocsError(
+            "refusing to install a runner from a project virtual environment; install Murlocs "
+            "as a user-level tool or pass --runner /absolute/path/to/murlocs with an explicit "
+            "durability contract"
+        )
     if not path.is_file() or not os.access(path, os.X_OK):
         raise MurlocsError("hook runner is not an executable file")
-    reported = _runner_version(path)
+    identity = _probe_runner_identity(path)
+    reported = identity["version"]
     if reported != __version__:
         actual = reported or "an unknown version"
         raise MurlocsError(
             f"hook runner must report Murlocs {__version__}, but {path} reports {actual}"
         )
-    return HookRunner(path, reported)
+    if identity["build"]["kind"] == "unknown":
+        raise MurlocsError(
+            "hook runner build identity is unknown; install a packaged or "
+            "development Murlocs build "
+            "whose package contents can be read safely"
+        )
+    runner_hash = _runner_sha256(path)
+    if runner_hash is None:
+        raise MurlocsError("hook runner could not be read safely")
+    return HookRunner(path, reported, identity["build"]["id"], runner_hash)
 
 
-def _is_virtual_environment_runner(path: Path) -> bool:
-    """Treat direct venv executables as ephemeral unless the caller opts in explicitly."""
+def _is_project_virtual_environment_runner(path: Path) -> bool:
+    """Reject conventional project venvs without rejecting detached user tools."""
     try:
         parents = (path.parent, *path.parents)
-        return any(parent.joinpath("pyvenv.cfg").is_file() for parent in parents)
+        for root in parents:
+            if not root.joinpath("pyvenv.cfg").is_file():
+                continue
+            return _is_project_venv_root(root)
+        return False
     except OSError:
         return True
 
 
-def _runner_version(path: Path) -> str | None:
-    try:
-        completed = subprocess.run(
-            [str(path), "--version"],
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=5,
+def _is_project_venv_root(root: Path) -> bool:
+    """Classify only conventional or project-adjacent venv roots as ephemeral."""
+    if root.name.lower() in {".venv", "venv", "env"}:
+        return True
+    parent = root.parent
+    return any(
+        candidate.exists()
+        for candidate in (
+            parent / ".git",
+            parent / "pyproject.toml",
+            parent / "setup.py",
+            parent / "setup.cfg",
         )
-    except (OSError, subprocess.TimeoutExpired):
+    )
+
+
+def _probe_runner_identity(path: Path) -> RuntimeIdentity:
+    """Probe only the runner selected by the caller for this installation.
+
+    This is intentionally not used by status or by inspection of existing hook
+    bytes, where a path is repository-controlled metadata.
+    """
+    output, returncode = _bounded_runner_output(path)
+    if returncode != 0:
+        raise MurlocsError("hook runner did not return a valid build identity")
+    try:
+        data = json.loads(output, object_pairs_hook=_unique_object)
+    except (UnicodeError, json.JSONDecodeError, MurlocsError) as exc:
+        raise MurlocsError("hook runner returned malformed build identity") from exc
+    return _parse_runner_identity(data)
+
+
+def _bounded_runner_output(path: Path) -> tuple[bytes, int]:
+    """Read one selected runner's identity response without unbounded capture.
+
+    The runner is an install-time user-selected executable, never a path read
+    from existing hook bytes.  Its working directory and inherited environment
+    are deliberately not repository-controlled.
+    """
+    try:
+        process = subprocess.Popen(
+            [str(path), "version", "--format", "json"],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            cwd=tempfile.gettempdir(),
+            env={"PATH": os.defpath, "PYTHONNOUSERSITE": "1"},
+            start_new_session=os.name == "posix",
+        )
+    except OSError as exc:
+        raise MurlocsError("hook runner did not return a build identity") from exc
+    assert process.stdout is not None
+    descriptor = process.stdout.fileno()
+    try:
+        os.set_blocking(descriptor, False)
+        deadline = time.monotonic() + 5
+        output = bytearray()
+        eof = False
+        while not eof:
+            if time.monotonic() >= deadline:
+                raise MurlocsError("hook runner build identity timed out")
+            try:
+                chunk = os.read(descriptor, _MAX_RUNNER_IDENTITY_BYTES + 1 - len(output))
+            except BlockingIOError:
+                chunk = None
+            except OSError as exc:
+                raise MurlocsError("hook runner did not return a build identity") from exc
+            if chunk is None:
+                if process.poll() is not None:
+                    # The process may have exited just before the final pipe
+                    # drain; retry once through the regular read path.
+                    time.sleep(0.001)
+                else:
+                    time.sleep(0.005)
+                continue
+            if not chunk:
+                eof = True
+                continue
+            output.extend(chunk)
+            if len(output) > _MAX_RUNNER_IDENTITY_BYTES:
+                raise MurlocsError("hook runner build identity exceeds 16 KiB")
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise MurlocsError("hook runner build identity timed out")
+        try:
+            return bytes(output), process.wait(timeout=remaining)
+        except subprocess.TimeoutExpired as exc:
+            raise MurlocsError("hook runner build identity timed out") from exc
+    finally:
+        _terminate_runner_process_group(process)
+        with suppress(OSError):
+            process.stdout.close()
+
+
+def _terminate_runner_process_group(process: subprocess.Popen[bytes]) -> None:
+    """Kill the selected runner's isolated process group and reap its leader."""
+    if os.name == "posix":
+        with suppress(ProcessLookupError, OSError):
+            os.killpg(process.pid, signal.SIGKILL)
+    elif process.poll() is None:
+        with suppress(OSError):
+            process.kill()
+    with suppress(subprocess.TimeoutExpired, OSError):
+        process.wait(timeout=1)
+
+
+def _parse_runner_identity(value: Any) -> RuntimeIdentity:
+    """Strictly accept the version-1 identity protocol from a chosen runner."""
+    if not isinstance(value, Mapping) or set(value) != {
+        "schema_version", "project", "version", "build", "installation"
+    }:
+        raise MurlocsError("hook runner returned an unsupported build identity schema")
+    if value["schema_version"] != 1 or value["project"] != "murlocs":
+        raise MurlocsError("hook runner returned an unsupported build identity schema")
+    version = value["version"]
+    build = value["build"]
+    installation = value["installation"]
+    if not isinstance(version, str) or not version or len(version) > 128:
+        raise MurlocsError("hook runner returned an invalid build version")
+    if not isinstance(build, Mapping) or set(build) != {"kind", "id", "verification"}:
+        raise MurlocsError("hook runner returned an invalid build identity")
+    if (
+        build.get("kind") not in {"development", "release", "unknown"}
+        or not isinstance(build.get("id"), str)
+        or _BUILD_ID.fullmatch(build["id"]) is None
+        or build.get("verification") != "unverified"
+    ):
+        raise MurlocsError("hook runner returned an invalid build identity")
+    if not isinstance(installation, Mapping) or set(installation) != {
+        "kind", "editable", "source_revision", "archive_hash"
+    }:
+        raise MurlocsError("hook runner returned an invalid installation identity")
+    if (
+        installation.get("kind")
+        not in {"local-directory", "editable", "vcs", "archive", "index-or-unknown", "unknown"}
+        or not isinstance(installation.get("editable"), bool)
+        or installation.get("source_revision") is not None
+        and not isinstance(installation.get("source_revision"), str)
+        or installation.get("archive_hash") is not None
+        and not isinstance(installation.get("archive_hash"), str)
+    ):
+        raise MurlocsError("hook runner returned an invalid installation identity")
+    return {
+        "schema_version": 1,
+        "project": "murlocs",
+        "version": version,
+        "build": {
+            "kind": build["kind"],
+            "id": build["id"],
+            "verification": "unverified",
+        },
+        "installation": {
+            "kind": installation["kind"],
+            "editable": installation["editable"],
+            "source_revision": installation["source_revision"],
+            "archive_hash": installation["archive_hash"],
+        },
+    }
+
+
+def _runner_sha256(path: Path) -> str | None:
+    """Hash one runner as data, bounded and race-checked without executing it."""
+    try:
+        before = path.lstat()
+        if not stat.S_ISREG(before.st_mode) or before.st_size > _MAX_RUNNER_BYTES:
+            return None
+        flags = os.O_RDONLY
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        descriptor = os.open(path, flags)
+    except OSError:
         return None
-    if completed.returncode != 0:
+    try:
+        opened = os.fstat(descriptor)
+        if not stat.S_ISREG(opened.st_mode) or (opened.st_dev, opened.st_ino) != (
+            before.st_dev,
+            before.st_ino,
+        ):
+            return None
+        digest = hashlib.sha256()
+        remaining = _MAX_RUNNER_BYTES + 1
+        while remaining:
+            block = os.read(descriptor, min(64 * 1024, remaining))
+            if not block:
+                break
+            digest.update(block)
+            remaining -= len(block)
+        if remaining == 0:
+            return None
+        after = path.lstat()
+        if (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns) != (
+            before.st_dev,
+            before.st_ino,
+            before.st_size,
+            before.st_mtime_ns,
+        ):
+            return None
+        return "sha256:" + digest.hexdigest()
+    except OSError:
         return None
-    match = re.search(r"\b(\d+(?:\.\d+)+(?:[-+][0-9A-Za-z.-]+)?)\b", completed.stdout)
-    return match.group(1) if match else None
+    finally:
+        with suppress(OSError):
+            os.close(descriptor)
+
+
+def _validate_expected_build_id(value: str | None) -> None:
+    if value is not None and _BUILD_ID.fullmatch(value) is None:
+        raise MurlocsError("expected hook build id must be a SHA-256 identity")
 
 
 def _atomic_hook_write(path: Path, content: bytes) -> None:

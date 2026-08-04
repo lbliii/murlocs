@@ -22,6 +22,7 @@ def hook_run_command(
     path: Annotated[list[str] | None, Option(metavar="PATH")] = None,
     remote_name: Annotated[str | None, Option(metavar="NAME")] = None,
     remote_url: Annotated[str | None, Option(metavar="URL")] = None,
+    expected_build_id: Annotated[str | None, Option(metavar="SHA256")] = None,
 ) -> dict[str, Any]:
     """Run one passive Git hook against the exact selected Git view.
 
@@ -33,6 +34,7 @@ def hook_run_command(
         path: Optional explicit staged path; repeat without changing exact-index coverage.
         remote_name: Pre-push remote name, treated only as inert metadata.
         remote_url: Pre-push remote URL, treated only as inert metadata.
+        expected_build_id: Exact runtime build identity pinned by a managed dispatcher.
     """
     del remote_name, remote_url
 
@@ -48,6 +50,7 @@ def hook_run_command(
         deadline_ms=deadline_ms,
         pre_push_input=pre_push_input,
         explicit_paths=tuple(path or ()),
+        expected_build_id=expected_build_id,
     )
     return CommandResult(
         result.payload,

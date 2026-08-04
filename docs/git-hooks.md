@@ -18,9 +18,12 @@ only byte-exact Murlocs-owned files.
 ## Durable runners
 
 The generated dispatcher pins one verified, absolute `murlocs` executable rather than resolving
-`murlocs` from a later Git process's `PATH`. Installation verifies that executable reports the
-same Murlocs version before it writes any hook. This makes a normal user-level tool install or a
-packaged console script deterministic:
+`murlocs` from a later Git process's `PATH`. Installation asks only the selected runner for its
+structured runtime identity, then records its semantic version, opaque package-content build ID,
+and a SHA-256 digest of the runner file before it writes any hook. At execution, the dispatcher
+passes the expected build ID back to `hook run`; a replacement at the same path and semantic
+version fails closed before repository assessment. This makes a normal user-level tool install or
+a packaged console script deterministic:
 
 ```bash
 python -m pip install --user murlocs
@@ -36,16 +39,21 @@ that contract explicitly:
 murlocs hook install --runner /absolute/path/to/murlocs
 ```
 
-The explicit path is still verified at install time and is recorded verbatim. No virtual
-environment path is inferred or silently retained. A missing or moved pinned runner makes the
+The explicit path is still verified at install time and its final regular-file target is recorded.
+No virtual environment path is inferred or silently retained. A missing or moved pinned runner makes the
 hook fail closed with one repair instruction: run `murlocs hook install` again from the durable
-installation. `murlocs hook status` reports each default slot as `installed`, `missing runner`,
-`version mismatch` (when `--version` is detectable), `modified`, `occupied`, or `absent`.
+installation. `murlocs hook status` never executes a runner named by mutable hook metadata: it
+reports `installed`, `missing runner`, `runner changed` (the runner-file digest differs),
+`legacy runner identity`, `modified`, `occupied`, or `absent`. The actual hook invocation is the
+live build-ID check, so it also catches in-place package replacement when the launcher bytes did
+not change.
 
-Hooks installed by Murlocs before durable runner pinning are reported as `legacy`. They remain
+Hooks installed by Murlocs before durable runner pinning are reported as `legacy`. Hooks with the
+earlier pinned path-and-version metadata are reported as `legacy runner identity`. Both remain
 byte-owned: `murlocs hook uninstall` removes their exact old bytes, while `murlocs hook install`
 replaces those same bytes with the verified dispatcher. A legacy hook is never treated as an
-unmanaged manager or stranded behind an unrepairable status.
+unmanaged manager or stranded behind an unrepairable status. Malformed or extended dispatcher
+metadata is intentionally `modified` and is never executed or replaced automatically.
 
 Select one hook by repeating `--event`:
 
