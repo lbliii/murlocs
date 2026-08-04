@@ -77,8 +77,40 @@ The adapter uses raw `ls-files`, `ls-tree`, and ordered `cat-file` responses. It
 fetching, replacement objects, optional locks, pagers, checkout filters, external diff drivers,
 and text conversion. It does not run models, use the network, execute hooks recursively, execute
 manifest-registered checks, repair guidance, or write the repository. The structured lifecycle
-response includes bounded entry/blob/Git-call counters for observability; performance policy is a
-separate concern.
+response includes bounded entry/blob/Git-call counters for observability.
+
+## Passive hot-path budgets
+
+`benchmarks/passive_hot_path.py` is the repeatable resource suite and
+`tests/test_passive_hot_path.py` is its CI gate. It exercises task-start discovery, explicit and
+staged impact, healthy and drifted pre-commit, and pre-push completion gating over small, layered,
+multi-domain, 65+ history, and 80+ map networks. Healthy code-only hooks and focused local impact
+are measured independently; stale multi-source history uses the conservative #53 fallback.
+
+| Budget | Cold | Warm | Structural CI limit |
+| --- | ---: | ---: | --- |
+| Latency | 8 s | 7 s | Broad watchdog only; it catches stalls, not micro-regressions. |
+| Git subprocesses | — | — | At most 24 per operation (history attribution at most 3). |
+| Files read | — | — | At most 512 raw-view entries/source reads. |
+| Peak memory bound | — | — | At most 96 MiB (64 MiB raw-view cap plus margin). |
+
+The structural limits are the primary regression threshold because they are deterministic across
+machines. Latency is intentionally generous and is never the sole CI signal. The benchmark records
+the staged-view entry count as hook files-read; direct operations count their manifest sources.
+Peak memory is enforced from the raw-view structural cap, rather than `tracemalloc`: check and
+impact run in child interpreters, so a parent-only allocation sample would misrepresent total use.
+The suite configures hooks and text conversion to leave a sentinel if they run, then asserts the
+sentinel is absent. Its registered check exits if executed, so every healthy measurement also
+proves it stayed inert. It does not install a Murlocs hook, execute a registered check, invoke a
+model, or open the network.
+
+The interactive default is the `pre-commit` staged-index mode. It runs one `check` and one `impact`
+and is the hot path represented by the budget. `pre-push` is a completion gate, not an interactive
+default: it materializes and assesses every non-deletion outgoing commit, so its cost grows with
+the update count. Likewise, ambiguous stale-source attribution is deliberately bounded but too
+expensive for a latency-sensitive default: #53 searches at most 64 path-touching commits, reads at
+most 1 MiB per blob and 8 MiB total, and falls back to conservative required routing on any limit,
+malformed response, race, or unavailable Git capability.
 
 ## Existing hook managers
 
