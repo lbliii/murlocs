@@ -3,163 +3,303 @@ from __future__ import annotations
 import json
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
-from test_adapter_conformance import FixtureAdapter
+import pytest
 
+import murlocs.claude_adapter as adapter
 from murlocs.adapter_conformance import (
     ADAPTER_CONTRACT,
     REQUIRED_CAPABILITIES,
     run_adapter_conformance,
 )
-from murlocs.claude_adapter import ADAPTER_ID, _changed_paths, descriptor, handle
-
-
-class ClaudeContractDriver(FixtureAdapter):
-    """Run the portable suite under Claude Code's independent identity.
-
-    The suite models the host-owned trusted context.  Transport-level behavior
-    is separately tested below through the production ``handle`` bridge.
-    """
-
-    def descriptor(self):
-        return descriptor()
-
-    def invoke(self, request, context):
-        return _replace_adapter_id(super().invoke(request, context))
-
-
-def _replace_adapter_id(value):
-    if isinstance(value, dict):
-        return {key: _replace_adapter_id(item) for key, item in value.items()}
-    if isinstance(value, list):
-        return [_replace_adapter_id(item) for item in value]
-    return ADAPTER_ID if value == "fixture-adapter" else value
 
 
 def _repo(tmp_path: Path) -> Path:
-    (tmp_path / ".murlocs").mkdir()
-    (tmp_path / ".murlocs" / "manifest.toml").write_text(
-        "[network]\nname = 'fixture'\nmax_active_bytes = 12000\n", encoding="utf-8"
-    )
+    (tmp_path / ".murlocs").mkdir(parents=True)
+    (tmp_path / ".murlocs" / "manifest.toml").write_text("fixture\n", encoding="utf-8")
     return tmp_path
 
 
-def _silent_result(**_kwargs):
-    return {"outcome": {"silent": True}}
+def _git(root: Path, *arguments: str) -> None:
+    config = ["-c", "commit.gpgsign=false"] if arguments[0] == "commit" else []
+    subprocess.run(
+        ["git", "-C", str(root), *config, *arguments],
+        check=True,
+        capture_output=True,
+    )
+
+
+def _outcome(
+    operation: str,
+    *,
+    code: str = "MURLOCS_OUTCOME_PASS",
+    silent: bool = True,
+    blocking: bool = False,
+) -> dict[str, object]:
+    return {
+        "outcome": {
+            "code": code,
+            "resolution_class": "pass" if silent else "agent_action",
+            "summary": code,
+            "next_actions": [],
+            "source": {"operation": operation},
+            "silent": silent,
+            "blocking": blocking,
+        }
+    }
 
 
 def test_descriptor_honestly_declares_claude_lifecycle_boundaries():
-    value = descriptor()
+    value = adapter.descriptor()
     assert value["contract"] == ADAPTER_CONTRACT
-    assert value["adapter_id"] == ADAPTER_ID
+    assert value["adapter_id"] == adapter.ADAPTER_ID
     assert value["required_capabilities"] == list(REQUIRED_CAPABILITIES)
     assert value["events"]["task-start"] == "host-enforced"
     assert value["events"]["prospective-impact"] == "prompt-mediated"
     assert value["events"]["pre-completion"] == "host-enforced"
 
 
-def test_claude_contract_identity_passes_the_portable_conformance_suite(tmp_path: Path):
-    report = run_adapter_conformance(ClaudeContractDriver(), temporary_parent=tmp_path)
+def test_production_driver_passes_portable_conformance_suite(tmp_path: Path):
+    report = run_adapter_conformance(adapter.ClaudeAdapterDriver(), temporary_parent=tmp_path)
     assert report["passed"] is True, report
-    assert report["adapter_id"] == ADAPTER_ID
+    assert report["adapter_id"] == adapter.ADAPTER_ID
+
+
+def test_production_bridge_exercises_every_configured_lifecycle_event(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    root = _repo(tmp_path)
+    target = root / "src" / "app.py"
+    calls: list[tuple[str, tuple[str, ...]]] = []
+
+    def check_command(**_kwargs):
+        calls.append(("check", ()))
+        return _outcome("check")
+
+    def impact_command(*, path, **_kwargs):
+        calls.append(("impact", tuple(path)))
+        return _outcome("impact")
+
+    monkeypatch.setattr(adapter, "check_command", check_command)
+    monkeypatch.setattr(adapter, "impact_command", impact_command)
+    monkeypatch.setattr(
+        adapter,
+        "run_hook",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            payload={"outcome": _outcome("check")["outcome"]}, exit_code=0
+        ),
+    )
+    monkeypatch.setattr(adapter, "_changed_paths", lambda _root: ["src/app.py"])
+
+    base = {"cwd": str(root), "session_id": "production-session"}
+    assert adapter.handle("task-start", base) == {}
+    assert adapter.handle(
+        "prospective-impact", {**base, "tool_input": {"file_path": str(target)}}
+    ) == {}
+    assert adapter.handle(
+        "post-edit", {**base, "tool_input": {"file_path": str(target)}}
+    ) == {}
+    assert adapter.handle(
+        "pre-commit", {**base, "tool_input": {"command": "git  commit -m safe"}}
+    ) == {}
+    assert adapter.handle("pre-completion", base) == {}
+
+    assert calls == [
+        ("check", ()),
+        ("impact", ("src/app.py",)),
+        ("check", ()),
+        ("impact", ("src/app.py",)),
+        ("check", ()),
+        ("impact", ("src/app.py",)),
+    ]
 
 
 def test_absent_manifest_is_a_silent_no_op(tmp_path: Path):
-    assert handle("task-start", {"cwd": str(tmp_path), "session_id": "one"}) == {}
+    assert adapter.handle("task-start", {"cwd": str(tmp_path), "session_id": "one"}) == {}
 
 
-def test_post_edit_production_bridge_normalizes_an_absolute_path(tmp_path: Path, monkeypatch):
+@pytest.mark.parametrize(
+    ("field", "spelling"),
+    [
+        ("path", "src/../src/app.py"),
+        ("file", "src/app.py"),
+        ("filePath", "ABSOLUTE"),
+        ("file_path", "src/app.py"),
+    ],
+)
+def test_paths_normalize_confined_relative_and_absolute_targets(
+    tmp_path: Path, field: str, spelling: str
+):
     root = _repo(tmp_path)
-    target = root / "src" / "widget.py"
-    target.parent.mkdir()
-    target.write_text("value = 1\n", encoding="utf-8")
-    observed: list[tuple[str, object]] = []
-
-    def check(**kwargs):
-        observed.append(("check", kwargs["repo"]))
-        return _silent_result()
-
-    def impact(**kwargs):
-        observed.append(("impact", kwargs["path"]))
-        return _silent_result()
-
-    monkeypatch.setattr("murlocs.claude_adapter.check_command", check)
-    monkeypatch.setattr("murlocs.claude_adapter.impact_command", impact)
-
-    response = handle(
-        "post-edit",
-        {"cwd": str(root), "session_id": "one", "tool_input": {"file_path": str(target)}},
-    )
-    assert response == {}
-    assert observed == [("check", str(root)), ("impact", ["src/widget.py"])]
+    raw = str(root / "src/app.py") if spelling == "ABSOLUTE" else spelling
+    assert adapter._paths(root, {field: raw}) == ["src/app.py"]
 
 
-def test_external_absolute_path_never_reaches_impact(tmp_path: Path):
-    root = _repo(tmp_path)
-    response = handle(
-        "post-edit",
-        {"cwd": str(root), "session_id": "one", "tool_input": {"file_path": "/tmp/outside.py"}},
-    )
-    packet = json.loads(response["hookSpecificOutput"]["additionalContext"])
-    assert packet["outcomes"][0]["code"] == "MURLOCS_ACTIVATION_UNAVAILABLE"
+def test_paths_reject_parent_absolute_nul_and_symlink_escapes(tmp_path: Path):
+    root = _repo(tmp_path / "repository")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (root / "link").symlink_to(outside, target_is_directory=True)
+
+    assert adapter._paths(root, {"file_path": "../outside/file.py"}) == []
+    assert adapter._paths(root, {"file_path": str(outside / "file.py")}) == []
+    assert adapter._paths(root, {"file_path": "bad\0name.py"}) == []
+    assert adapter._paths(root, {"file_path": "link/file.py"}) == []
 
 
-def test_pre_completion_includes_untracked_paths(tmp_path: Path, monkeypatch):
-    root = _repo(tmp_path)
-    subprocess.run(["git", "init", "-q", str(root)], check=True)
-    subprocess.run(
-        ["git", "-C", str(root), "config", "user.email", "test@example.invalid"], check=True
-    )
-    subprocess.run(["git", "-C", str(root), "config", "user.name", "Test"], check=True)
-    subprocess.run(["git", "-C", str(root), "add", "."], check=True)
-    subprocess.run(
-        ["git", "-C", str(root), "-c", "commit.gpgSign=false", "commit", "-qm", "fixture"],
-        check=True,
-    )
-    (root / "untracked.py").write_text("value = 1\n", encoding="utf-8")
-    assert _changed_paths(root) == ["untracked.py"]
-    observed: list[list[str]] = []
-
-    monkeypatch.setattr("murlocs.claude_adapter.check_command", _silent_result)
-
-    def impact(**kwargs):
-        observed.append(kwargs["path"])
-        return _silent_result()
-
-    monkeypatch.setattr("murlocs.claude_adapter.impact_command", impact)
-    assert handle("pre-completion", {"cwd": str(root), "session_id": "one"}) == {}
-    assert observed == [["untracked.py"]]
-
-
-def test_pre_commit_only_gates_a_real_git_commit(tmp_path: Path, monkeypatch):
-    root = _repo(tmp_path)
-    calls: list[object] = []
-
-    def hook(*args, **kwargs):
-        calls.append((args, kwargs))
-        raise AssertionError("a non-commit command must not run the gate")
-
-    monkeypatch.setattr("murlocs.claude_adapter.run_hook", hook)
-    assert handle(
-        "pre-commit",
-        {"cwd": str(root), "session_id": "one", "tool_input": {"command": "echo git commit"}},
-    ) == {}
-    assert calls == []
-
-
-def test_prospective_impact_is_context_not_a_host_policy_decision(tmp_path: Path, monkeypatch):
-    root = _repo(tmp_path)
-    target = root / "widget.py"
-    target.write_text("value = 1\n", encoding="utf-8")
-    monkeypatch.setattr("murlocs.claude_adapter.impact_command", _silent_result)
-    monkeypatch.setattr(
-        "murlocs.claude_adapter._packet",
-        lambda _outcomes: '{"outcomes":[{"code":"MURLOCS_ACTION_REQUIRED"}]}',
-    )
-    response = handle(
+def test_prospective_path_escape_is_visible_without_host_policy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    root = _repo(tmp_path / "repository")
+    outside = tmp_path / "outside.py"
+    monkeypatch.setattr(adapter, "_run", lambda *_args: pytest.fail("operation ran"))
+    response = adapter.handle(
         "prospective-impact",
-        {"cwd": str(root), "session_id": "one", "tool_input": {"file_path": str(target)}},
+        {"cwd": str(root), "session_id": "one", "tool_input": {"file_path": str(outside)}},
     )
     nested = response["hookSpecificOutput"]
     assert nested["hookEventName"] == "PreToolUse"
+    assert "outside the repository" in nested["additionalContext"]
     assert "permissionDecision" not in nested
+
+
+def test_changed_paths_include_staged_unstaged_deleted_and_untracked_nul_names(tmp_path: Path):
+    root = tmp_path
+    _git(root, "init", "-q")
+    _git(root, "config", "user.email", "adapter@example.test")
+    _git(root, "config", "user.name", "Adapter Test")
+    (root / "modified.py").write_text("before\n", encoding="utf-8")
+    (root / "deleted.py").write_text("delete\n", encoding="utf-8")
+    _git(root, "add", "modified.py", "deleted.py")
+    _git(root, "commit", "-qm", "base")
+
+    (root / "modified.py").write_text("after\n", encoding="utf-8")
+    (root / "deleted.py").unlink()
+    staged = "staged\nname.py"
+    untracked = "untracked\nname.py"
+    (root / staged).write_text("staged\n", encoding="utf-8")
+    (root / untracked).write_text("untracked\n", encoding="utf-8")
+    _git(root, "add", staged)
+
+    assert adapter._changed_paths(root) == ["deleted.py", "modified.py", staged, untracked]
+
+
+def test_pre_completion_routes_newline_path_and_reports_active_stop_guard(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    root = _repo(tmp_path)
+    _git(root, "init", "-q")
+    _git(root, "config", "user.email", "adapter@example.test")
+    _git(root, "config", "user.name", "Adapter Test")
+    _git(root, "add", ".murlocs/manifest.toml")
+    _git(root, "commit", "-qm", "base")
+    untracked = "new\nfile.py"
+    (root / untracked).write_text("new\n", encoding="utf-8")
+    observed: list[str] = []
+
+    def run(_root, _event, paths, _correlation):
+        observed.extend(paths)
+        return [
+            _outcome(
+                "impact",
+                code="MURLOCS_OUTCOME_DETERMINISTIC_REPAIR",
+                silent=False,
+                blocking=True,
+            )["outcome"]
+        ]
+
+    monkeypatch.setattr(adapter, "_run", run)
+    response = adapter.handle(
+        "pre-completion",
+        {"cwd": str(root), "session_id": "one", "stop_hook_active": True},
+    )
+    assert observed == [untracked]
+    assert response["decision"] == "block"
+    assert "eight-block" in response["reason"]
+
+
+def test_pre_completion_preserves_advisory_context_without_blocking(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    root = _repo(tmp_path)
+    monkeypatch.setattr(adapter, "_changed_paths", lambda _root: ["src/app.py"])
+    monkeypatch.setattr(
+        adapter,
+        "_run",
+        lambda *_args: [
+            _outcome(
+                "impact",
+                code="MURLOCS_OUTCOME_AUTHORITY_REQUIRED",
+                silent=False,
+                blocking=False,
+            )["outcome"]
+        ],
+    )
+    response = adapter.handle("pre-completion", {"cwd": str(root), "session_id": "one"})
+    assert "decision" not in response
+    assert "MURLOCS_OUTCOME_AUTHORITY_REQUIRED" in response["systemMessage"]
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git commit -m safe",
+        "git  commit -m safe",
+        "git -C . commit -m safe",
+        "/usr/bin/git --no-pager -c commit.gpgsign=false commit -m safe",
+        "cd src && git commit -m safe",
+    ],
+)
+def test_git_commit_recognition_covers_supported_spellings(command: str):
+    assert adapter._is_git_commit({"command": command}) is True
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "echo git commit",
+        "printf 'git commit'",
+        "git status",
+        "python build.py",
+        "git checkout commit",
+    ],
+)
+def test_git_commit_recognition_ignores_inert_text_and_ordinary_shell(command: str):
+    assert adapter._is_git_commit({"command": command}) is False
+
+
+def test_non_commit_shell_does_not_run_index_gate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    root = _repo(tmp_path)
+    monkeypatch.setattr(adapter, "run_hook", lambda *_args, **_kwargs: pytest.fail("gate ran"))
+    payload = {"cwd": str(root), "session_id": "one", "tool_input": {"command": "echo git commit"}}
+    assert adapter.handle("pre-commit", payload) == {}
+
+
+@pytest.mark.parametrize(
+    ("event", "field", "expected"),
+    [
+        ("prospective-impact", "hookSpecificOutput", "PreToolUse"),
+        ("pre-commit", "hookSpecificOutput", "PreToolUse"),
+        ("post-edit", "hookSpecificOutput", "PostToolUse"),
+        ("pre-completion", "decision", "block"),
+    ],
+)
+def test_entrypoint_reports_host_owned_failure_in_the_correct_event_shape(
+    event: str,
+    field: str,
+    expected: str,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+):
+    monkeypatch.setattr(adapter, "_payload", lambda: {})
+    monkeypatch.setattr(adapter, "handle", lambda *_args: (_ for _ in ()).throw(OSError("boom")))
+    adapter.main([event])
+    response = json.loads(capsys.readouterr().out)
+    if field == "hookSpecificOutput":
+        assert response[field]["hookEventName"] == expected
+    else:
+        assert response[field] == expected
+    assert "Murlocs adapter unavailable: boom" in json.dumps(response)

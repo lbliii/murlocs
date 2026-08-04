@@ -365,15 +365,20 @@ def _conformance_outcome(kind: str) -> dict[str, Any]:
     return base
 
 
-class CopilotAdapterDriver:
-    """Portable #64 driver sharing lifecycle order and identity with the host bridge.
+class LifecycleAdapterDriver:
+    """Shared production-driver architecture for independent host transports.
 
     ``ConformanceContext`` supplies only black-box fault seams and trusted root
     state. The active-agent request never supplies either value.
     """
 
+    adapter_id: str
+    adapter_version: str
+    conformance_name: str
+    host_name: str
+
     def descriptor(self) -> Mapping[str, Any]:
-        return descriptor()
+        raise NotImplementedError
 
     def invoke(
         self, request: Mapping[str, Any], context: ConformanceContext
@@ -383,9 +388,9 @@ class CopilotAdapterDriver:
         event = request["event"]
         root = self._root(control["root_format"], context.root)
         scope = {
-            "adapter_id": ADAPTER_ID,
-            "adapter_version": ADAPTER_VERSION,
-            "session_id": "copilot-conformance-session",
+            "adapter_id": self.adapter_id,
+            "adapter_version": self.adapter_version,
+            "session_id": f"{self.conformance_name}-conformance-session",
         }
         state_before = opaque_file_token(
             context.root, exclude=(".adapter-conformance/impact-dependency",)
@@ -402,7 +407,7 @@ class CopilotAdapterDriver:
         if "impact" in calls:
             trusted["impact_dependency_id"] = dependency_before
         if control["cache"] in {"hit", "rejected"}:
-            trusted["manifest_identity"] = "manifest:copilot-conformance"
+            trusted["manifest_identity"] = f"manifest:{self.conformance_name}-conformance"
             proof = self._cache_proof(request, trusted)
             if control["cache"] == "rejected":
                 proof["state_id"] = "copilot:stale"
@@ -544,33 +549,33 @@ class CopilotAdapterDriver:
         operations = _required_operations(event)
         return operations[:1] if fault in {"timeout", "malformed"} else operations
 
-    @staticmethod
-    def _dependency_token(root: Path) -> str:
+    @classmethod
+    def _dependency_token(cls, root: Path) -> str:
         content = (root / ".adapter-conformance/impact-dependency").read_bytes()
-        return "copilot-dependency:" + hashlib.sha256(content).hexdigest()
+        return f"{cls.conformance_name}-dependency:" + hashlib.sha256(content).hexdigest()
 
-    @staticmethod
-    def _root(kind: str, root: Path) -> dict[str, Any]:
+    @classmethod
+    def _root(cls, kind: str, root: Path) -> dict[str, Any]:
         if kind == "windows-drive":
             return {"format": "windows-drive", "drive": "C", "segments": [root.name]}
         if kind == "windows-unc":
             return {
                 "format": "windows-unc",
-                "server": "copilot-server",
-                "share": "copilot-share",
+                "server": f"{cls.conformance_name}-server",
+                "share": f"{cls.conformance_name}-share",
                 "segments": [root.name],
             }
         return {"format": "posix", "segments": [root.name]}
 
-    @staticmethod
+    @classmethod
     def _cache_proof(
-        request: Mapping[str, Any], trusted: Mapping[str, Any]
+        cls, request: Mapping[str, Any], trusted: Mapping[str, Any]
     ) -> dict[str, Any]:
         operations = list(_required_operations(request["event"]))
         proof: dict[str, Any] = {
             "contract_version": "1",
-            "adapter_id": ADAPTER_ID,
-            "adapter_version": ADAPTER_VERSION,
+            "adapter_id": cls.adapter_id,
+            "adapter_version": cls.adapter_version,
             "session_id": trusted["token_scope"]["session_id"],
             "event": request["event"],
             "operations": operations,
@@ -637,8 +642,9 @@ class CopilotAdapterDriver:
         )
         return merge_outcomes([bound, bound_impact])
 
-    @staticmethod
+    @classmethod
     def _base_response(
+        cls,
         request: Mapping[str, Any],
         trusted: Mapping[str, Any],
         *,
@@ -679,7 +685,7 @@ class CopilotAdapterDriver:
             "writes": [],
             "fallback": fallback,
             "next_actions": next_actions,
-            "summary": f"Copilot adapter {execution['status']}.",
+            "summary": f"{cls.host_name} adapter {execution['status']}.",
         }
 
     def _failure(
@@ -732,6 +738,18 @@ class CopilotAdapterDriver:
             "effect": "read_repository",
             "authority": "integration",
         }
+
+
+class CopilotAdapterDriver(LifecycleAdapterDriver):
+    """Portable production driver with Copilot's trusted adapter identity."""
+
+    adapter_id = ADAPTER_ID
+    adapter_version = ADAPTER_VERSION
+    conformance_name = "copilot"
+    host_name = "Copilot"
+
+    def descriptor(self) -> Mapping[str, Any]:
+        return descriptor()
 
 
 def _run(root: Path, event: str, paths: Sequence[str], correlation: str) -> list[Mapping[str, Any]]:

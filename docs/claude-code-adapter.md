@@ -38,25 +38,39 @@ false receipt for them.
 
 `SessionStart` runs typed `check`. `PreToolUse` runs prospective `impact` only
 when Claude supplied an in-root edit path. `PostToolUse` runs `check` and
-`impact` for the normalized in-root path. `Stop` uses Git's ordinary changed
-path view plus untracked paths, then runs fresh `check` and `impact`; an empty
-or unavailable path set blocks stopping and returns the same structured
-remediation envelope.
+`impact` for the normalized in-root path. Parent, absolute, NUL-containing,
+and symlink-escape paths never reach Murlocs operations. The Bash pre-commit
+bridge shell-parses direct Git invocations, including global Git options and
+shell segments; inert text such as `echo git commit` is not treated as a gate.
+
+`Stop` obtains staged, unstaged, deleted, and untracked paths from NUL-delimited
+Git output. The read-only queries disable external diff, text conversion, and
+optional Git locks. It then runs fresh `check` and `impact`. Only a typed
+blocking outcome or unavailable completion evidence blocks stopping. A
+non-blocking advisory remains visible as a Claude Code `systemMessage` and does
+not become host policy.
 
 Claude Code can override its own Stop hook after eight consecutive blocks.
 That is an explicit host boundary, not a passing completion receipt. The
 portable Git hook and CI remain the enforceable fallback if an agent continues
-to stop without resolving a finding. Command-hook failures are also not proof
-of a completed operation; unavailable errors stay visible and completion
-blocks conservatively.
+to stop without resolving a finding. When `stop_hook_active` reports a repeated
+continuation, the adapter includes that eight-block boundary in its reason.
 
-The shared v1 conformance suite runs under the `claude-code-hooks` identity.
+An adapter failure caught while the process is still running uses the current
+event's documented response shape: pre-commit and Stop fail closed, while
+task-start, prospective impact, and post-edit add visible unavailable context.
+A Claude Code timeout can terminate the command before it emits that response;
+the host treats that missing result as non-blocking. Such a timeout is never a
+passing receipt, and the Git hook and CI fallback remain required enforcement.
+
+The production `ClaudeAdapterDriver` runs the shared v1 conformance suite under
+the `claude-code-hooks` identity; it does not rewrite fixture-adapter results.
 It verifies the same out-of-band trusted context, token freshness, outcome
 envelopes, fallback declarations, and no-write behavior as the Copilot
 adapter. Transport-level tests additionally exercise this production bridge's
-Claude-shaped output, absolute-path confinement, untracked completion paths,
-and command recognition. No adapter-specific rule is added to Murlocs'
-authored layers.
+Claude-shaped output, path confinement, newline-containing Git paths, advisory
+completion behavior, failure responses, and command recognition. No
+adapter-specific rule is added to Murlocs' authored layers.
 
 ## Install and remove
 
