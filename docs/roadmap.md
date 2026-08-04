@@ -57,6 +57,15 @@ semantic preservation, proof integrity, context discipline, and safe ownership t
 - GitLab CI and pre-commit reference integrations.
 - Changed-path reporting that identifies affected scopes and focused registered checks.
 
+### v0.2e — source-linked evidence research
+
+- Keep source annotations inert until a reviewed manifest/layer relationship and a narrow,
+  versioned parser contract exist.
+- Complete the [authority and threat-model baseline](source-annotation-authority.md) before grammar
+  or discovery implementation; preserve its generated-guidance exclusion fixture.
+- Dogfood existing textual anchors, then specify the `evidence`-only contract and conformance corpus
+  before adding typed parsing, provenance, impact, or lifecycle integration.
+
 ## v0.3 — ecosystem
 
 - Manifest schema publication and compatibility policy.

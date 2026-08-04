@@ -27,7 +27,7 @@
       "id": "repo-base",
       "kind": "base",
       "path": ".murlocs/layers/base.toml",
-      "sha256": "7455fa5396028129bca65b06b2c6d3cfa93dce2d3507ec07403dec4db8163ad9"
+      "sha256": "03d65bd41ff671445822b7196b00d2b8259716d4e34c68f3291724d2732a845d"
     },
     {
       "id": "core",

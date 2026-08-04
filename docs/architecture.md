@@ -34,6 +34,11 @@ integration-produced freshness receipts, cache invalidation, and generated-guida
 fallbacks. It never converts an agent claim, Git event, or Murlocs finding into authenticated
 approval.
 
+Source annotations remain outside the compiler until their contract is implemented. The
+[source annotation authority model](source-annotation-authority.md) makes candidate source comments
+inert, confines their future role to declared evidence attachment, and specifies conservative
+base/head and trusted-adapter behavior. It does not make source prose agent guidance or approval.
+
 The [adapter conformance harness](adapter-conformance.md) tests that boundary through isolated
 repositories and opaque, adapter-scoped state and impact-dependency tokens. It validates observable
 freshness and mutation behavior rather than defining one Git or filesystem snapshot algorithm.

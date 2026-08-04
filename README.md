@@ -198,6 +198,10 @@ decisions, and recoverable source-plus-record apply transactions. Apply never ru
 registered check, or implicit compile. See [Architecture](docs/architecture.md) for trust boundaries and
 [Roadmap](docs/roadmap.md) for planned ecosystem work.
 
+Source-linked evidence is not yet a parser surface. The [source annotation authority model](docs/source-annotation-authority.md)
+records the pre-implementation trust boundary: arbitrary
+comments remain inert and never enter generated guidance.
+
 ## Status
 
 Murlocs is an experimental v0.1 implementation. The manifest schema and generated format may change
