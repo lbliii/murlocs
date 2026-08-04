@@ -8,6 +8,7 @@
         "id": "fresh-ordinary-a1",
         "fresh": true,
         "discovered_guidance": true,
+        "user_interrupted": false,
         "host": {"adapter": "generated-guidance", "capability": "guidance-fallback"}
       },
       "expectation": {
@@ -28,6 +29,7 @@
         "id": "fresh-drift-a1",
         "fresh": true,
         "discovered_guidance": true,
+        "user_interrupted": false,
         "host": {"adapter": "generated-guidance", "capability": "guidance-fallback"}
       },
       "expectation": {
@@ -55,6 +57,7 @@
         "id": "fresh-local-a1",
         "fresh": true,
         "discovered_guidance": true,
+        "user_interrupted": false,
         "host": {"adapter": "generated-guidance", "capability": "guidance-fallback"}
       },
       "expectation": {
@@ -75,6 +78,7 @@
         "id": "fresh-global-a1",
         "fresh": true,
         "discovered_guidance": true,
+        "user_interrupted": false,
         "host": {"adapter": "generated-guidance", "capability": "guidance-fallback"}
       },
       "expectation": {
@@ -95,6 +99,7 @@
         "id": "fresh-authority-a1",
         "fresh": true,
         "discovered_guidance": true,
+        "user_interrupted": true,
         "host": {"adapter": "generated-guidance", "capability": "guidance-fallback"}
       },
       "expectation": {

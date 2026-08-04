@@ -26,6 +26,17 @@ SCENARIOS = frozenset(
     }
 )
 FAILURE_CAUSES = frozenset({"engine", "adapter", "agent_judgment", "host_capability"})
+FAILURE_OBSERVATIONS = frozenset(
+    {
+        "no_discovery",
+        "missing_lifecycle_event",
+        "invalid_outcome",
+        "unexpected_interruption",
+        "repair_not_revalidated",
+        "missing_evidence_proposal",
+        "missing_owner_packet",
+    }
+)
 FORBIDDEN_KEYS = frozenset(
     {"prompt", "task", "request", "transcript", "message", "arguments", "command"}
 )
@@ -115,11 +126,13 @@ def _validate_observation(value: object) -> tuple[str, str | None]:
         _scenario_assertions(item, scenario)
         return scenario, None
     failure_value = _mapping(failure, "failure")
-    _exact_keys(failure_value, {"cause", "detail"}, "failure")
+    _exact_keys(failure_value, {"cause", "observation"}, "failure")
     cause = _token(failure_value["cause"], "failure cause")
     if cause not in FAILURE_CAUSES:
         raise PassiveAcceptanceError("failure cause is not attributable to a supported boundary")
-    _bounded_text(failure_value["detail"], "failure detail")
+    observation = _token(failure_value["observation"], "failure observation")
+    if observation not in FAILURE_OBSERVATIONS:
+        raise PassiveAcceptanceError("failure observation is invalid")
     return scenario, cause
 
 
@@ -127,7 +140,9 @@ def _scenario_assertions(item: Mapping[str, Any], scenario: str) -> None:
     session = _mapping(item["session"], "session")
     if session["fresh"] is not True or session["discovered_guidance"] is not True:
         raise PassiveAcceptanceError("passing observation requires fresh automatic discovery")
-    if scenario == "ordinary-code" and item["escalation"] is not None:
+    if scenario == "ordinary-code" and (
+        session["user_interrupted"] is not False or item["escalation"] is not None
+    ):
         raise PassiveAcceptanceError("healthy ordinary work must not interrupt the user")
     if scenario == "generated-drift":
         remediation = _mapping(item["remediation"], "remediation")
@@ -147,12 +162,18 @@ def _scenario_assertions(item: Mapping[str, Any], scenario: str) -> None:
 
 def _session(value: object) -> None:
     session = _mapping(value, "session")
-    _exact_keys(session, {"id", "fresh", "discovered_guidance", "host"}, "session")
+    _exact_keys(
+        session,
+        {"id", "fresh", "discovered_guidance", "user_interrupted", "host"},
+        "session",
+    )
     _token(session["id"], "session id")
-    if not isinstance(session["fresh"], bool) or not isinstance(
-        session["discovered_guidance"], bool
+    if (
+        not isinstance(session["fresh"], bool)
+        or not isinstance(session["discovered_guidance"], bool)
+        or not isinstance(session["user_interrupted"], bool)
     ):
-        raise PassiveAcceptanceError("session freshness and discovery must be booleans")
+        raise PassiveAcceptanceError("session facts must be booleans")
     host = _mapping(session["host"], "session host")
     _exact_keys(host, {"adapter", "capability"}, "session host")
     _token(host["adapter"], "host adapter")
@@ -294,7 +315,3 @@ def _token(value: object, label: str) -> str:
     if not isinstance(value, str) or not value or len(value) > MAX_TEXT:
         raise PassiveAcceptanceError(f"{label} must be bounded nonempty text")
     return value
-
-
-def _bounded_text(value: object, label: str) -> str:
-    return _token(value, label)

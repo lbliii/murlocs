@@ -63,7 +63,7 @@ def test_failure_records_are_attributed_to_one_boundary_without_falsely_passing(
     evidence = observations()
     first = evidence["observations"][0]
     first["status"] = "fail"
-    first["failure"] = {"cause": "host_capability", "detail": "host did not emit task-start"}
+    first["failure"] = {"cause": "host_capability", "observation": "missing_lifecycle_event"}
 
     report = validate_observations(evidence)
 
