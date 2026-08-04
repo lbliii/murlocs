@@ -66,6 +66,8 @@ semantic preservation, proof integrity, context discipline, and safe ownership t
 - Dogfood existing textual anchors, then complete the [`evidence`-only contract and conformance
   corpus](source-annotation-contract-v1.md) before adding typed parsing, provenance, impact, or
   lifecycle integration.
+- Expose valid bindings with the additive [source annotation provenance](source-annotation-provenance.md)
+  record before annotation-driven impact or lifecycle routing.
 
 ## v0.3 — ecosystem
 

@@ -20,6 +20,7 @@ from murlocs.model import LayerSource, Manifest
 from murlocs.paths import relative_posix, repo_path
 from murlocs.render import render_outputs
 from murlocs.serialization import render_fragment_data, render_manifest_data
+from murlocs.source_annotations import annotation_provenance_payload
 from murlocs.stewards import (
     LEGACY_MARKER,
     TranslationFinding,
@@ -141,6 +142,14 @@ def inventory_repository(root: Path) -> dict[str, Any]:
                     if finding.level == "debt"
                 ),
             }
+    annotations: list[dict[str, object]] = []
+    if (root / ".murlocs" / "manifest.toml").is_file():
+        try:
+            annotations = annotation_provenance_payload(load_manifest(root))
+        except (MurlocsError, OSError, ValueError, TypeError, KeyError):
+            # Inventory remains an orientation command when a candidate is invalid.
+            # The check surface owns deterministic annotation diagnostics.
+            annotations = []
     return {
         "root": str(root),
         "instructions": instructions,
@@ -155,6 +164,7 @@ def inventory_repository(root: Path) -> dict[str, Any]:
             for item in instructions
             if item["kind"] == "AGENTS.md" and item["generator"] != "murlocs"
         ],
+        "annotations": annotations,
     }
 
 

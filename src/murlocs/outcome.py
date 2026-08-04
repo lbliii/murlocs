@@ -11,6 +11,7 @@ from murlocs import __version__
 from murlocs.errors import MurlocsError
 from murlocs.model import Manifest
 from murlocs.render import prepare_manifest
+from murlocs.source_annotations import annotation_provenance_payload
 from murlocs.verify import Finding
 
 OUTCOME_CONTRACT = "io.murlocs.outcome"
@@ -58,6 +59,19 @@ class OutcomeProvenancePayload(TypedDict):
     operation: OutcomeOperation
     source_codes: list[str]
     source_paths: list[str]
+
+
+class OutcomeAnnotationPayload(TypedDict):
+    id: str
+    kind: str
+    version: str
+    invariant: str
+    scope: str
+    file: str
+    line: int
+    declaring_layer: str | None
+    owners: list[str]
+    verification: str
 
 
 class OutcomeAffectedPayload(TypedDict):
@@ -132,6 +146,7 @@ class OutcomePayload(TypedDict):
     source: OutcomeSourcePayload
     correlation: OutcomeCorrelationPayload
     findings: list[OutcomeFindingPayload]
+    annotations: list[OutcomeAnnotationPayload]
     next_actions: list[OutcomeActionPayload]
     change: OutcomeChangePayload
     decision: OutcomeDecisionPayload
@@ -223,6 +238,7 @@ def build_check_outcome(
             correlation_id=correlation_id,
             findings=[],
             actions=[],
+            annotations=_annotation_payloads(manifest),
             summary=(
                 f"murlocs check passed: {len(manifest.scopes)} scope(s), "
                 f"{len(manifest.invariants)} invariant(s), {len(manifest.checks)} check(s)"
@@ -347,12 +363,49 @@ def build_check_outcome(
                 "action_ids": [actions_by_resolution[item_resolution]["id"]],
             }
         )
+    actions = [
+        _action_for(
+            cast(
+                Literal["deterministic_repair", "agent_action", "authority_required"],
+                resolution,
+            ),
+            codes=sorted(
+                {item["code"] for item in payloads if item["resolution_class"] == resolution}
+            ),
+            scopes=sorted(
+                {
+                    scope
+                    for item in payloads
+                    if item["resolution_class"] == resolution
+                    for scope in item["affected"]["scopes"]
+                }
+            ),
+            maps=sorted(
+                {
+                    map_path
+                    for item in payloads
+                    if item["resolution_class"] == resolution
+                    for map_path in item["affected"]["maps"]
+                }
+            ),
+            owners=sorted(
+                {
+                    owner
+                    for item in payloads
+                    if item["resolution_class"] == resolution
+                    for owner in item["affected"]["owners"]
+                }
+            ),
+        )
+        for resolution in sorted(item_resolutions)
+    ]
     return _envelope(
         operation="check",
         exit_code=1,
         correlation_id=correlation_id,
         findings=payloads,
-        actions=list(actions_by_resolution.values()),
+        actions=actions,
+        annotations=_annotation_payloads(manifest),
         summary=f"murlocs found {len(findings)} issue(s)",
     )
 
@@ -653,6 +706,9 @@ def merge_outcomes(outcomes: list[Mapping[str, Any]]) -> OutcomePayload:
         correlation_id=correlation["correlation_id"],
         findings=findings,
         actions=actions,
+        annotations=_dedupe_annotations(
+            item for outcome in parsed for item in outcome["annotations"]
+        ),
         summary=_aggregate_summary(findings),
     )
     merged["correlation"] = dict(correlation)
@@ -744,6 +800,7 @@ def _parse_outcome(value: Any) -> OutcomePayload:
     source = _parse_source(value["source"])
     correlation = _parse_correlation(value["correlation"])
     findings = _parse_findings(value["findings"])
+    annotations = _parse_annotations(value.get("annotations", []))
     actions = _parse_actions(value["next_actions"])
     change = _parse_change(value["change"])
     expected_resolution = _dominant(
@@ -810,6 +867,7 @@ def _parse_outcome(value: Any) -> OutcomePayload:
         "source": source,
         "correlation": correlation,
         "findings": findings,
+        "annotations": annotations,
         "next_actions": actions,
         "change": change,
         "decision": {
@@ -828,6 +886,48 @@ def _parse_outcome(value: Any) -> OutcomePayload:
     return parsed
 
 
+def _parse_annotations(value: Any) -> list[OutcomeAnnotationPayload]:
+    """Parse additive annotation metadata; absent is valid v1 compatibility."""
+    if not isinstance(value, list) or len(value) > 1024:
+        raise MurlocsError("outcome annotations must be a bounded array")
+    expected = {
+        "id", "kind", "version", "invariant", "scope", "file", "line",
+        "declaring_layer", "owners", "verification",
+    }
+    records: list[OutcomeAnnotationPayload] = []
+    for item in value:
+        if not isinstance(item, Mapping) or set(item) != expected:
+            raise MurlocsError("outcome annotation has unknown or missing fields")
+        line = item.get("line")
+        if isinstance(line, bool) or not isinstance(line, int) or line < 1:
+            raise MurlocsError("outcome annotation line must be a positive integer")
+        layer = item.get("declaring_layer")
+        if layer is not None:
+            layer = _bounded_string(layer, "annotation.declaring_layer", maximum=1024)
+        records.append(
+            {
+                "id": _bounded_string(item.get("id"), "annotation.id", maximum=128),
+                "kind": _bounded_string(item.get("kind"), "annotation.kind", maximum=64),
+                "version": _bounded_string(item.get("version"), "annotation.version", maximum=64),
+                "invariant": _bounded_string(
+                    item.get("invariant"), "annotation.invariant", maximum=1024
+                ),
+                "scope": _bounded_string(item.get("scope"), "annotation.scope", maximum=1024),
+                "file": _bounded_string(item.get("file"), "annotation.file", maximum=4096),
+                "line": line,
+                "declaring_layer": layer,
+                "owners": _string_list(item.get("owners"), "annotation.owners", maximum=128),
+                "verification": _bounded_string(
+                    item.get("verification"), "annotation.verification", maximum=64
+                ),
+            }
+        )
+    ordered = sorted(records, key=_annotation_key)
+    if len({_annotation_key(item) for item in ordered}) != len(ordered):
+        raise MurlocsError("outcome annotations must not contain duplicates")
+    return ordered
+
+
 def outcome_json_bytes(outcome: Mapping[str, Any]) -> bytes:
     """Render canonical UTF-8 JSON for receipts and golden fixtures."""
     parsed = parse_outcome(outcome)
@@ -843,6 +943,7 @@ def _envelope(
     correlation_id: str | None,
     findings: list[OutcomeFindingPayload],
     actions: list[OutcomeActionPayload],
+    annotations: list[OutcomeAnnotationPayload] | None = None,
     summary: str,
 ) -> OutcomePayload:
     resolution = cast(
@@ -880,6 +981,7 @@ def _envelope(
             "token_scope": None,
         },
         "findings": sorted(findings, key=_finding_key),
+        "annotations": sorted(annotations or [], key=_annotation_key),
         "next_actions": sorted(actions, key=lambda item: item["id"]),
         "change": {"repository_state_changed": False, "paths": []},
         "decision": cast(OutcomeDecisionPayload, {}),
@@ -888,6 +990,27 @@ def _envelope(
     }
     payload["decision"] = _default_decision(payload)
     return payload
+
+
+def _annotation_payloads(manifest: Manifest) -> list[OutcomeAnnotationPayload]:
+    return cast(list[OutcomeAnnotationPayload], annotation_provenance_payload(manifest))
+
+
+def _annotation_key(item: OutcomeAnnotationPayload) -> tuple[str, str, int, str]:
+    return item["id"], item["file"], item["line"], item["invariant"]
+
+
+def _dedupe_annotations(
+    annotations: Any,
+) -> list[OutcomeAnnotationPayload]:
+    ordered = sorted(annotations, key=_annotation_key)
+    result: list[OutcomeAnnotationPayload] = []
+    for item in ordered:
+        if not result or _annotation_key(item) != _annotation_key(result[-1]):
+            result.append(item)
+        elif item != result[-1]:
+            raise MurlocsError("outcome annotations disagree for one binding")
+    return result
 
 
 def _action_for(

@@ -5,7 +5,7 @@ import sys
 import tomllib
 from dataclasses import replace
 from pathlib import Path
-from typing import Annotated, Any, Literal, NotRequired, TypedDict
+from typing import Annotated, Any, Literal, NotRequired, TypedDict, cast
 
 from milo import CLI, Context, Option, Positional
 
@@ -64,6 +64,7 @@ from murlocs.repair import (
     recover_repair,
 )
 from murlocs.rollout import ScopePlan, apply_add_scope, plan_add_scope
+from murlocs.source_annotations import annotation_provenance_payload
 from murlocs.split import (
     SplitPlan,
     apply_split_layers,
@@ -307,6 +308,19 @@ class FindingPayload(TypedDict):
     annotation_boundary: NotRequired[str]
 
 
+class AnnotationProvenancePayload(TypedDict):
+    id: str
+    kind: str
+    version: str
+    invariant: str
+    scope: str
+    file: str
+    line: int
+    declaring_layer: str | None
+    owners: list[str]
+    verification: str
+
+
 class SummaryPayload(TypedDict):
     scopes: int
     invariants: int
@@ -319,6 +333,7 @@ class CheckPayload(TypedDict):
     findings: list[FindingPayload]
     summary: SummaryPayload
     coverage: CoveragePayload
+    annotations: list[AnnotationProvenancePayload]
     outcome: OutcomePayload
 
 
@@ -326,6 +341,7 @@ class InvariantPayload(TypedDict):
     id: str
     severity: str
     statement: str
+    annotations: NotRequired[list[AnnotationProvenancePayload]]
 
 
 class LayerPayload(TypedDict):
@@ -473,6 +489,7 @@ class InventoryPayload(TypedDict):
     legacy_stewards: LegacySummaryPayload | None
     murlocs: MurlocsStatusPayload
     ownership_conflicts: list[str]
+    annotations: list[AnnotationProvenancePayload]
 
 
 class StatusEvidencePayload(TypedDict):
@@ -519,6 +536,12 @@ class StatusPayload(TypedDict):
     next_actions: list[StatusActionPayload]
     coverage: AdoptionCoveragePayload
     semantic_correctness: Literal["not_evaluated"]
+    annotations: list[AnnotationProvenancePayload]
+
+
+def _annotation_payloads(manifest: Manifest) -> list[AnnotationProvenancePayload]:
+    """Use the resolver's shared normalized record without exposing source prose."""
+    return cast(list[AnnotationProvenancePayload], annotation_provenance_payload(manifest))
 
 
 class TranslationFindingPayload(TypedDict):
@@ -1409,7 +1432,8 @@ def _render_add_scope(plan: ScopePlan, dry_run: bool) -> str:
 
 
 def _precompile_findings(manifest: Manifest) -> list[Finding]:
-    return [item for item in validate(manifest) if item.code not in {"drift", "lock"}]
+    findings = [*validate(manifest), *annotation_findings(manifest)]
+    return [item for item in findings if item.code not in {"drift", "lock"}]
 
 
 def check_command(
@@ -1451,6 +1475,7 @@ def check_command(
         list(manifest.coverage_roots),
         [item for item in findings if item.code == "coverage"],
     )
+    annotations = _annotation_payloads(manifest)
     outcome = build_check_outcome(manifest, findings, correlation_id=correlation_id)
     if findings:
         terminal = "\n".join(
@@ -1458,6 +1483,7 @@ def check_command(
                 *(str(item) for item in findings),
                 render_compact_outcome(outcome),
                 _coverage_terminal(coverage),
+                *_annotation_terminal_lines(annotations),
             ]
         )
         return CommandResult(
@@ -1469,6 +1495,7 @@ def check_command(
                 ],
                 "summary": summary,
                 "coverage": coverage,
+                "annotations": annotations,
                 "outcome": outcome,
             },
             terminal_text=terminal,
@@ -1476,16 +1503,18 @@ def check_command(
             terminal_stream="stderr",
         )
 
-    terminal = outcome["summary"] + f"\n{_coverage_terminal(coverage)}"
+    terminal_lines = [outcome["summary"], _coverage_terminal(coverage)]
+    terminal_lines.extend(_annotation_terminal_lines(annotations))
     return CommandResult(
         {
             "ok": True,
             "findings": [],
             "summary": summary,
             "coverage": coverage,
+            "annotations": annotations,
             "outcome": outcome,
         },
-        terminal_text=terminal,
+        terminal_text="\n".join(terminal_lines),
     )
 
 
@@ -1508,6 +1537,18 @@ def _finding_payload(item: Finding) -> FindingPayload:
         if item.annotation_boundary is not None:
             payload["annotation_boundary"] = item.annotation_boundary
     return payload
+
+
+def _annotation_terminal_lines(annotations: list[AnnotationProvenancePayload]) -> list[str]:
+    return [
+        "annotation "
+        f"{item['id']} ({item['kind']}) → {item['file']}:{item['line']}; "
+        f"invariant={item['invariant']}; scope={item['scope']}; "
+        f"layer={item['declaring_layer'] or 'single-file manifest'}; "
+        f"owners={', '.join(item['owners']) or 'unowned'}; "
+        f"verification={item['verification']}"
+        for item in annotations
+    ]
 
 
 def explain_command(
@@ -1545,6 +1586,9 @@ def explain_command(
 
     applicable_scopes = [scope for _, scope in applicable]
     applicable_ids = {scope.id for scope in applicable_scopes}
+    annotations_by_invariant: dict[str, list[AnnotationProvenancePayload]] = {}
+    for annotation in _annotation_payloads(manifest):
+        annotations_by_invariant.setdefault(annotation["invariant"], []).append(annotation)
     scopes: list[ScopePayload] = []
     lines = [f"Guidance for {relative.as_posix() or '.'}"]
     for scope in applicable_scopes:
@@ -1561,6 +1605,11 @@ def explain_command(
                         "id": item.id,
                         "severity": item.severity,
                         "statement": item.statement,
+                        **(
+                            {"annotations": annotations_by_invariant[item.id]}
+                            if item.id in annotations_by_invariant
+                            else {}
+                        ),
                     }
                     for item in invariants
                 ],
@@ -1578,6 +1627,17 @@ def explain_command(
                 lines.append(f"  owners: {', '.join(owners)}")
         for invariant in invariants:
             lines.append(f"  - {invariant.id} ({invariant.severity}): {invariant.statement}")
+            for annotation in annotations_by_invariant.get(invariant.id, []):
+                lines.extend(
+                    [
+                        "    evidence: "
+                        f"{annotation['id']} ({annotation['kind']}) → "
+                        f"{annotation['file']}:{annotation['line']}; "
+                        f"layer={annotation['declaring_layer'] or 'single-file manifest'}; "
+                        f"owners={', '.join(annotation['owners']) or 'unowned'}; "
+                        f"verification={annotation['verification']}",
+                    ]
+                )
 
     overrides = _applicable_overrides(manifest, applicable_ids)
     if overrides:
@@ -1771,6 +1831,8 @@ def inventory_command(
     lines.extend(
         f"{item['generator']:>8}  {item['path']}" for item in inventory["instructions"]
     )
+    annotations = cast(list[AnnotationProvenancePayload], inventory["annotations"])
+    lines.extend(_annotation_terminal_lines(annotations))
     return CommandResult(
         {"ok": True, **inventory},
         terminal_text="\n".join(lines),
@@ -1801,6 +1863,8 @@ def status_command(
         f"next {item['id']}: {item['command']} — {item['reason']}"
         for item in status["next_actions"]
     )
+    annotations = cast(list[AnnotationProvenancePayload], status["annotations"])
+    lines.extend(_annotation_terminal_lines(annotations))
     lines.append("semantic correctness: not evaluated")
     return CommandResult({"ok": True, **status}, terminal_text="\n".join(lines))
 

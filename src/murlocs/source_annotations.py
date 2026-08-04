@@ -111,6 +111,27 @@ class AnnotationResolution:
     findings: tuple[AnnotationResolverFinding, ...] = ()
 
 
+@dataclass(frozen=True)
+class AnnotationProvenance:
+    """The reviewed, normalized provenance of one valid inert binding.
+
+    This record is intentionally metadata-only.  In particular it never retains
+    the surrounding source comment or attempts to establish that the attached
+    invariant is semantically true.
+    """
+
+    identifier: str
+    kind: str
+    version: str
+    invariant: str
+    scope: str
+    file: str
+    line: int
+    declaring_layer: str | None
+    owners: tuple[str, ...]
+    verification: str
+
+
 def parse_v1_comment(comment: str) -> Annotation | AnnotationFinding | None:
     """Parse one already-recognized comment body under the v1 grammar.
 
@@ -343,6 +364,60 @@ def resolve_annotations(manifest: Manifest) -> AnnotationResolution:
         # An error in this finite relationship domain never becomes partial evidence.
         return AnnotationResolution(findings=tuple(_ordered_findings(findings)))
     return AnnotationResolution(bindings=tuple(sorted(bindings, key=_binding_key)))
+
+
+def annotation_provenance(manifest: Manifest) -> tuple[AnnotationProvenance, ...]:
+    """Return valid bindings as stable, reviewed surface metadata.
+
+    Resolver findings deliberately suppress the complete set.  A partial result
+    could make an invalid or missing marker look like trusted active evidence.
+    """
+    resolution = resolve_annotations(manifest)
+    if resolution.findings:
+        return ()
+    invariants = {item.id: item for item in manifest.invariants}
+    records: list[AnnotationProvenance] = []
+    for binding in resolution.bindings:
+        invariant = invariants[binding.invariant]
+        source = manifest.source_for_invariant(binding.invariant)
+        records.append(
+            AnnotationProvenance(
+                identifier=binding.identifier,
+                kind=binding.kind,
+                version=binding.version,
+                invariant=binding.invariant,
+                scope=binding.scope,
+                file=binding.location.file,
+                line=binding.location.line,
+                declaring_layer=source.id if source is not None else None,
+                owners=source.owners if source is not None else (),
+                verification=invariant.verification,
+            )
+        )
+    return tuple(sorted(records, key=_provenance_key))
+
+
+def _provenance_key(record: AnnotationProvenance) -> tuple[str, str, int, str]:
+    return record.identifier, record.file, record.line, record.invariant
+
+
+def annotation_provenance_payload(manifest: Manifest) -> list[dict[str, object]]:
+    """Return the one additive JSON-compatible record shared by every surface."""
+    return [
+        {
+            "id": item.identifier,
+            "kind": item.kind,
+            "version": item.version,
+            "invariant": item.invariant,
+            "scope": item.scope,
+            "file": item.file,
+            "line": item.line,
+            "declaring_layer": item.declaring_layer,
+            "owners": list(item.owners),
+            "verification": item.verification,
+        }
+        for item in annotation_provenance(manifest)
+    ]
 
 
 def _declared_file(root: Path, raw: str) -> tuple[Path | None, str | None]:
