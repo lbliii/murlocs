@@ -709,3 +709,63 @@ def test_state_race_and_timeout_fail_closed(
     timed_out = run_hook("pre-commit", root, correlation_id="test:timeout")
     assert timed_out.exit_code == 1
     assert timed_out.payload["execution"]["status"] == "timeout"
+
+
+def test_pre_push_passes_quietly_when_there_is_nothing_to_assess(tmp_path: Path) -> None:
+    """A no-op push must not be refused.
+
+    Regression: an empty changed-path set was classified `invalid` and exited 1,
+    so force-pushing a rebased branch or pushing an already-current ref failed.
+    Git swallows hook stdout, so the only visible symptom was
+    `error: failed to push some refs` with no stated cause.
+    """
+    root = repository(tmp_path)
+    head = git(root, "rev-parse", "HEAD").decode()
+    # Remote already matches local: a real push git would still hand to the hook.
+    update = f"refs/heads/main {head} refs/heads/main {head}\n".encode()
+
+    result = run_hook("pre-push", root, correlation_id="test:noop", pre_push_input=update)
+
+    assert result.exit_code == 0
+    assert result.terminal_text == ""
+    # pre-push reports one result per pushed ref.
+    assessed = result.payload["results"][0]
+    assert assessed["execution"] == {
+        "status": "not_applicable",
+        "code": "MURLOCS_NO_CHANGED_PATHS",
+    }
+    assert assessed["silent"] is True
+    assert assessed["operations"] == []
+
+
+def test_pre_push_passes_quietly_when_the_remote_tip_is_not_an_ancestor(
+    tmp_path: Path,
+) -> None:
+    """Force-pushing a rebased branch must not be refused.
+
+    When both tips are still reachable locally, Git can diff them and the hook
+    assesses normally. The contract under test is only that a non-ancestor
+    remote tip is never itself grounds for rejection.
+    """
+    root = repository(tmp_path)
+    base = git(root, "rev-parse", "HEAD").decode()
+    (root / "README.md").write_text("# rewritten\n")
+    git(root, "add", "README.md")
+    git(root, "commit", "--quiet", "-m", "rewritten")
+    rewritten = git(root, "rev-parse", "HEAD").decode()
+    # A discarded commit that is no longer reachable, as after a rebase.
+    git(root, "reset", "--quiet", "--hard", base)
+    (root / "README.md").write_text("# replacement\n")
+    git(root, "add", "README.md")
+    git(root, "commit", "--quiet", "-m", "replacement")
+    local = git(root, "rev-parse", "HEAD").decode()
+    update = f"refs/heads/main {local} refs/heads/main {rewritten}\n".encode()
+
+    result = run_hook("pre-push", root, correlation_id="test:force", pre_push_input=update)
+
+    assert result.exit_code == 0
+    assert result.terminal_text == ""
+    assert result.payload["results"][0]["execution"]["status"] in {
+        "completed",
+        "not_applicable",
+    }
