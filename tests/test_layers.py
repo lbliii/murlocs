@@ -6,6 +6,7 @@ from pathlib import Path
 from murlocs.cli import build_cli
 from murlocs.errors import MurlocsError
 from murlocs.layers import resolve_manifest
+from murlocs.manifest import load_manifest
 
 ROOT_TEMPLATE = """schema_version = 1
 network = "Layered"
@@ -73,6 +74,9 @@ def scaffold(root: Path, *, layers: str, files: dict[str, str]) -> None:
     (murlocs / "PROTOCOL.md").write_text("Use this protocol\n", encoding="utf-8")
     for relative, content in files.items():
         (root / relative).write_text(content, encoding="utf-8")
+
+
+ONE_LAYER_DECL = '[[layers]]\nid = "base"\nkind = "base"\npath = ".murlocs/layers/base.toml"\n'
 
 
 def two_layer_decl() -> str:
@@ -348,3 +352,49 @@ def test_resolve_reports_missing_layer_file(tmp_path):
         assert "docs" in str(exc) and "not found" in str(exc)
     else:  # pragma: no cover
         raise AssertionError("expected a missing-layer error")
+
+
+def test_layered_manifest_missing_required_field_is_rejected(tmp_path):
+    """A layered root that omits `network` must fail like a single-file one.
+
+    Regression: composition copied required keys with `.get()`, so an absent
+    value became `None`, survived validation, and rendered `# None: root`.
+    """
+    root = tmp_path / "repo"
+    scaffold(root, layers=ONE_LAYER_DECL, files={".murlocs/layers/base.toml": BASE_LAYER})
+    manifest = root / ".murlocs" / "manifest.toml"
+    manifest.write_text(
+        "\n".join(
+            line
+            for line in manifest.read_text(encoding="utf-8").splitlines()
+            if not line.startswith("network =")
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    # `resolve_manifest` composes; `load_manifest` is where required fields
+    # are enforced, so assert at the layer that actually validates.
+    try:
+        load_manifest(root)
+    except MurlocsError as exc:
+        assert "missing manifest.network" in str(exc)
+    else:  # pragma: no cover
+        raise AssertionError("expected a missing-network error")
+
+
+def test_layered_compile_refuses_a_manifest_without_a_network(tmp_path):
+    """The failure must reach the command, not just the resolver."""
+    root = tmp_path / "repo"
+    scaffold(root, layers=ONE_LAYER_DECL, files={".murlocs/layers/base.toml": BASE_LAYER})
+    manifest = root / ".murlocs" / "manifest.toml"
+    manifest.write_text(
+        manifest.read_text(encoding="utf-8").replace('network = "Layered"\n', ""),
+        encoding="utf-8",
+    )
+
+    result = invoke("compile", "--repo", str(root))
+
+    assert result.exit_code == 1
+    assert "missing manifest.network" in result.stderr
+    assert not (root / "AGENTS.md").exists()

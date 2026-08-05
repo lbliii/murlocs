@@ -86,7 +86,10 @@ Use this protocol when a change crosses a scope boundary or touches a critical i
 
 
 def _required(data: dict[str, Any], key: str, context: str) -> Any:
-    if key not in data:
+    # A present-but-`None` value is as absent as a missing key. Accepting it
+    # here let `str(None)` reach the renderer and produce a map titled
+    # `# None: root` instead of a validation error.
+    if data.get(key) is None:
         raise MurlocsError(f"missing {context}.{key}")
     return data[key]
 
