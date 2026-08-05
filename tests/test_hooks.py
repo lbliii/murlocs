@@ -5,6 +5,7 @@ import os
 import shlex
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -23,6 +24,50 @@ from murlocs.hooks import (
 )
 
 HOOK_RUNNER = Path(sys.executable).with_name("murlocs")
+
+
+def _process_state(pid: int) -> str:
+    """Return a short state code for a live PID, or `?` when it cannot be read.
+
+    `Z` means the process is dead and waiting to be reaped by whatever inherited
+    it, which is indistinguishable from `running` through `os.kill(pid, 0)`.
+    """
+    stat = Path(f"/proc/{pid}/stat")
+    if stat.is_file():
+        try:
+            # The comm field may contain spaces or parentheses; state follows it.
+            return stat.read_text().rpartition(")")[2].split()[0]
+        except (OSError, IndexError):
+            return "?"
+    result = subprocess.run(
+        ["ps", "-o", "state=", "-p", str(pid)], capture_output=True, text=True, check=False
+    )
+    return result.stdout.strip()[:1] or "?"
+
+
+def _assert_process_terminated(pid: int, timeout: float = 10.0) -> None:
+    """Assert a signalled process is dead, tolerating an unreaped zombie.
+
+    `os.kill(pid, 0)` succeeds for a zombie, and an orphan that has been
+    `SIGKILL`ed stays a zombie until its reaper collects it. How quickly that
+    happens is the reaper's business, not ours, so accept `Z` as terminated and
+    poll for the rest.
+    """
+    deadline = time.monotonic() + timeout
+    state = ""
+    while time.monotonic() < deadline:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return
+        state = _process_state(pid)
+        if state == "Z":
+            return
+        time.sleep(0.05)
+    pytest.fail(
+        f"process {pid} survived termination after {timeout}s in state {state!r}; "
+        "the runner's process group was not killed"
+    )
 
 
 def git(root: Path, *args: str, input_bytes: bytes | None = None) -> bytes:
@@ -544,8 +589,7 @@ def test_runner_probe_kills_forked_descendant_with_inherited_stdout(
     with pytest.raises(MurlocsError, match="timed out"):
         hooks_module._probe_runner_identity(runner)
     descendant = int(pid_file.read_text())
-    with pytest.raises(ProcessLookupError):
-        os.kill(descendant, 0)
+    _assert_process_terminated(descendant)
 
 
 def test_install_rejects_non_content_build_identity(tmp_path: Path) -> None:
