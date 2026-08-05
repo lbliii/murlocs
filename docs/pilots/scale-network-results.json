@@ -175,31 +175,31 @@
   ],
   "measurements": {
     "check": {
-      "max_ms": 657.528,
-      "median_ms": 509.724,
-      "min_ms": 493.452,
-      "peak_memory_bytes": 442737,
+      "max_ms": 191.742,
+      "median_ms": 104.053,
+      "min_ms": 103.115,
+      "peak_memory_bytes": 442389,
       "samples": 5
     },
     "compile": {
-      "max_ms": 631.122,
-      "median_ms": 615.28,
-      "min_ms": 546.029,
-      "peak_memory_bytes": 442836,
+      "max_ms": 265.758,
+      "median_ms": 209.288,
+      "min_ms": 162.912,
+      "peak_memory_bytes": 442507,
       "samples": 5
     },
     "explain": {
-      "max_ms": 12.077,
-      "median_ms": 9.357,
-      "min_ms": 9.236,
-      "peak_memory_bytes": 306332,
+      "max_ms": 7.179,
+      "median_ms": 6.969,
+      "min_ms": 6.944,
+      "peak_memory_bytes": 305666,
       "samples": 5
     },
     "impact": {
-      "max_ms": 31.107,
-      "median_ms": 30.181,
-      "min_ms": 29.905,
-      "peak_memory_bytes": 323967,
+      "max_ms": 28.265,
+      "median_ms": 28.047,
+      "min_ms": 27.994,
+      "peak_memory_bytes": 325161,
       "samples": 5
     }
   },
