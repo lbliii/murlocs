@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 import json
-import os
 import shutil
-import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
+from murlocs.atomic import atomic_write_bytes
 from murlocs.errors import MurlocsError
 from murlocs.lockfile import LOCK_PATH, render_lock, sha256_bytes
 from murlocs.model import Manifest
@@ -99,7 +98,7 @@ def apply_repair(plan: RepairPlan) -> list[str]:
             target = _target(plan.root, update.path)
             if _read_target(target) != update.before:
                 raise MurlocsError(f"repair target changed before apply: {update.path}")
-            _atomic_write(target, update.after)
+            atomic_write_bytes(target, update.after)
             written.append(update)
         shutil.rmtree(directory)
     except BaseException:
@@ -190,7 +189,7 @@ def _write_journal(directory: Path, plan: RepairPlan) -> None:
             }
         )
     metadata["updates"] = entries
-    _atomic_write(
+    atomic_write_bytes(
         directory / "transaction.json",
         (json.dumps(metadata, sort_keys=True, separators=(",", ":")) + "\n").encode(),
     )
@@ -252,16 +251,4 @@ def _restore_written(root: Path, updates: list[RepairUpdate]) -> None:
         if update.before is None:
             target.unlink(missing_ok=True)
         else:
-            _atomic_write(target, update.before)
-
-
-def _atomic_write(path: Path, content: bytes) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    descriptor, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
-    try:
-        with os.fdopen(descriptor, "wb") as handle:
-            handle.write(content)
-        os.replace(temporary, path)
-    except BaseException:
-        Path(temporary).unlink(missing_ok=True)
-        raise
+            atomic_write_bytes(target, update.before)

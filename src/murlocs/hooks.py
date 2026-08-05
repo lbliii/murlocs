@@ -352,15 +352,11 @@ def _run_snapshot(
             "Murlocs manifest is not a regular file in the selected Git view.",
         )
     if not paths:
-        return _snapshot_failure(
-            context,
-            snapshot,
-            event,
-            correlation_id,
-            cache_decision,
-            "invalid",
-            "Murlocs hook received no changed paths to assess.",
-        )
+        # Nothing to assess is a healthy repository, not an invalid one. This
+        # used to fail closed, which blocked force-pushing a rebased branch and
+        # pushing when the remote already matched — and because Git swallows
+        # hook stdout, the only symptom was an unexplained push rejection.
+        return _nothing_to_assess(context, snapshot, event, correlation_id, cache_decision)
 
     state_before = snapshot.state_id
     with tempfile.TemporaryDirectory(prefix="murlocs-hook-") as temporary:
@@ -621,6 +617,38 @@ def _absent(
             "operations": [],
             "outcome": None,
             "summary": "Murlocs is not present.",
+        }
+    )
+    return HookResult(payload, 0, "")
+
+
+def _nothing_to_assess(
+    context: GitContext,
+    snapshot: GitSnapshot,
+    event: str,
+    correlation_id: str,
+    cache_decision: str,
+) -> HookResult:
+    """Pass quietly when the event carries no paths this hook could evaluate.
+
+    A rebase force-push leaves the remote tip off the local history, and a
+    no-op push has nothing new at all. Both are ordinary, so they must not
+    block; refusing them trains `--no-verify`, after which the hook protects
+    nothing.
+    """
+    payload = _response_base(
+        context, snapshot, event, correlation_id, cache_decision, blocking=None
+    )
+    payload.update(
+        {
+            "execution": {
+                "status": "not_applicable",
+                "code": "MURLOCS_NO_CHANGED_PATHS",
+            },
+            "silent": True,
+            "operations": [],
+            "outcome": None,
+            "summary": "No changed paths to assess.",
         }
     )
     return HookResult(payload, 0, "")

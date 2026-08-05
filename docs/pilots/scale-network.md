@@ -49,10 +49,10 @@ not distort the runtime samples.
 
 | Operation | Median | Range | Peak Python allocation |
 | --- | ---: | ---: | ---: |
-| `compile` | 615.280 ms | 546.029–631.122 ms | 442,836 bytes |
-| `check` | 509.724 ms | 493.452–657.528 ms | 442,737 bytes |
-| `explain` | 9.357 ms | 9.236–12.077 ms | 306,332 bytes |
-| `impact` | 30.181 ms | 29.905–31.107 ms | 323,967 bytes |
+| `compile` | 209.288 ms | 162.912–265.758 ms | 442,507 bytes |
+| `check` | 104.053 ms | 103.115–191.742 ms | 442,389 bytes |
+| `explain` | 6.969 ms | 6.944–7.179 ms | 305,666 bytes |
+| `impact` | 28.047 ms | 27.994–28.265 ms | 325,161 bytes |
 
 These are observations, not test thresholds. CI asserts structural outcomes and positive
 measurement shape; it does not assert machine-specific latency or allocation totals.
@@ -101,7 +101,7 @@ Murlocs guidance improves agent performance in general.
 
 ## Practical conclusion and limits
 
-For this 91-map network, compile and check completed in under one second at the median, read-only
+For this 91-map network, compile and check completed in a few hundred milliseconds at the median, read-only
 path queries completed in tens of milliseconds, the deepest chain stayed below budget, and all
 governance failure modes remained visible. That supports using Murlocs for a network of this
 measured shape.

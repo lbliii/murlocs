@@ -7,8 +7,8 @@ from pathlib import Path
 from murlocs.codeowners import find_codeowners, normalize_path, parse_codeowners
 from murlocs.errors import MurlocsError
 from murlocs.lockfile import Lock, read_lock, sha256_bytes, sha256_text
-from murlocs.model import Invariant, LayerSource, Manifest
-from murlocs.paths import relative_posix, repo_path
+from murlocs.model import Invariant, LayerSource, Manifest, Scope
+from murlocs.paths import relative_posix, repo_path, repo_path_within, resolve_root
 from murlocs.render import render_outputs
 from murlocs.source_annotations import (
     AnnotationLocation,
@@ -454,21 +454,32 @@ def _source_drift(manifest: Manifest, lock: Lock) -> list[Finding]:
 
 
 def _maximum_active_bytes(manifest: Manifest, outputs: dict[str, str]) -> int:
+    """Return the largest root-to-leaf chain size, in bytes, over all scopes.
+
+    Resolution is hoisted deliberately. This used to call `repo_path` from
+    inside the nested loop, so an n-scope network performed O(n²) `realpath`
+    walks — 110k `lstat` calls for 91 scopes, and 92% of `murlocs check`. The
+    comparison itself is pure string work once the paths are resolved.
+    """
+    root_resolved = resolve_root(manifest.root)
+    resolved: list[tuple[Scope, Path]] = []
+    for scope in manifest.scopes:
+        try:
+            scope_root = repo_path_within(root_resolved, scope.path, field="scope path")
+            repo_path_within(root_resolved, scope.map, field="scope map")
+        except MurlocsError:
+            continue
+        resolved.append((scope, scope_root))
+
+    sizes = {scope.map: len(outputs[scope.map].encode("utf-8")) for scope, _ in resolved}
     maximum = 0
-    safe_scopes = [
-        scope
-        for scope in manifest.scopes
-        if _is_safe(manifest.root, scope.path) and _is_safe(manifest.root, scope.map)
-    ]
-    for target in safe_scopes:
-        target_root = repo_path(manifest.root, target.path, field="scope path")
+    for _, target_root in resolved:
         active = 0
-        for candidate in safe_scopes:
-            candidate_root = repo_path(manifest.root, candidate.path, field="scope path")
+        for candidate, candidate_root in resolved:
             try:
                 target_root.relative_to(candidate_root)
             except ValueError:
                 continue
-            active += len(outputs[candidate.map].encode("utf-8"))
+            active += sizes[candidate.map]
         maximum = max(maximum, active)
     return maximum

@@ -148,10 +148,11 @@ def compose(
     root manifest. This is the single composition path shared by disk resolution and
     in-memory previews (for example, the add-scope rollout workflow).
     """
+    # Copy only what the root actually declared. Materialising absent keys as
+    # `None` made a layered manifest look complete to the parser, so a missing
+    # `network` compiled to `# None: root` instead of failing validation.
     merged: dict[str, Any] = {
-        "schema_version": root_data.get("schema_version"),
-        "network": root_data.get("network"),
-        "protocol": root_data.get("protocol"),
+        key: root_data[key] for key in ("schema_version", "network", "protocol") if key in root_data
     }
     if "max_active_bytes" in root_data:
         merged["max_active_bytes"] = root_data["max_active_bytes"]
