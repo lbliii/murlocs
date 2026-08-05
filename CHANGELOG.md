@@ -6,9 +6,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). While the major version is
 `0`, the manifest schema and generated map format may change between minor releases.
 
-## [0.1.0] - Unreleased
+## [0.1.0] - 2026-08-05
 
-First published release. Replace `Unreleased` with the release date when the tag is cut.
+First published release.
 
 ### Added
 
