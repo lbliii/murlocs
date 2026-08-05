@@ -49,19 +49,20 @@ dependencies = [
     { name = "milo-cli" },
 ]
 
-[package.optional-dependencies]
+[package.dev-dependencies]
 dev = [
     { name = "pytest" },
     { name = "ruff" },
 ]
 
 [package.metadata]
-requires-dist = [
-    { name = "milo-cli", specifier = ">=0.4.2,<0.5" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.9" },
+requires-dist = [{ name = "milo-cli", specifier = ">=0.4.2,<0.5" }]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest", specifier = ">=8" },
+    { name = "ruff", specifier = ">=0.9" },
 ]
-provides-extras = ["dev"]
 
 [[package]]
 name = "packaging"
