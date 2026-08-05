@@ -22,7 +22,7 @@ jobs:
         with:
           python-version: "3.14"
           prune-cache: true
-      - run: uv sync --extra dev
+      - run: uv sync --group dev
       - run: uv run ruff check .
       - run: uv run pytest
       - run: uv run murlocs check

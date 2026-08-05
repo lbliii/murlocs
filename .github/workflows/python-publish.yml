@@ -1,0 +1,104 @@
+name: Upload Python Package
+
+# Publishes to PyPI when a GitHub release is published.
+#
+# Authentication uses PyPI Trusted Publishing (OIDC), so no API token is stored
+# in this repository. The publisher registered at
+# https://pypi.org/manage/account/publishing/ must match these values exactly,
+# or the upload is rejected:
+#
+#   PyPI project name: murlocs
+#   Owner:             lbliii
+#   Repository:        murlocs
+#   Workflow name:     python-publish.yml
+#   Environment name:  pypi
+#
+# The `pypi` GitHub environment below is created on first use; add tag
+# protection rules to it if releases should be restricted.
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  release-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          python-version: "3.14"
+          prune-cache: true
+
+      - run: uv sync --group dev
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Behaviour and safety tests
+        run: uv run pytest
+
+      - name: Guidance network is current
+        run: uv run murlocs check
+
+      - name: Typed CLI, discovery, and MCP surfaces agree
+        run: uv run milo verify src/murlocs/cli.py
+
+      - name: Declared version matches the release tag
+        run: |
+          project="$(uv run python -c 'import murlocs; print(murlocs.__version__)')"
+          tag="${GITHUB_REF_NAME#v}"
+          if [ "$project" != "$tag" ]; then
+            echo "::error::murlocs.__version__ is $project but the release tag is $tag"
+            exit 1
+          fi
+          echo "version $project matches tag $tag"
+
+  release-build:
+    runs-on: ubuntu-latest
+    needs: [release-gate]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          python-version: "3.14"
+          prune-cache: true
+
+      - name: Build release distributions
+        run: uv build
+
+      - name: Check distribution metadata
+        run: uvx twine check dist/*
+
+      - name: Upload distributions
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-dists
+          path: dist/
+
+  pypi-publish:
+    runs-on: ubuntu-latest
+    needs: [release-build]
+    permissions:
+      id-token: write
+
+    environment:
+      name: pypi
+      url: https://pypi.org/p/murlocs
+
+    steps:
+      - name: Retrieve release distributions
+        uses: actions/download-artifact@v8
+        with:
+          name: release-dists
+          path: dist/
+
+      - name: Publish release distributions to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/

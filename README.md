@@ -1,6 +1,11 @@
 # Murlocs
 
-![An illustrated cavern map connecting layered repository paths to one central field map.](docs/assets/murlocs-field-map-hero.webp)
+[![PyPI](https://img.shields.io/pypi/v/murlocs.svg)](https://pypi.org/project/murlocs/)
+[![CI](https://github.com/lbliii/murlocs/actions/workflows/ci.yml/badge.svg)](https://github.com/lbliii/murlocs/actions/workflows/ci.yml)
+[![Python](https://img.shields.io/badge/python-3.14+-blue.svg)](https://pypi.org/project/murlocs/)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](https://github.com/lbliii/murlocs/blob/main/LICENSE)
+
+![An illustrated cavern map connecting layered repository paths to one central field map.](https://raw.githubusercontent.com/lbliii/murlocs/main/docs/assets/murlocs-field-map-hero.webp)
 
 **Give every coding agent the right map—and prove the map is still current.**
 
@@ -87,7 +92,7 @@ enough. Murlocs earns its place as scopes, owners, and durable claims grow.
 ### Author a map that reflects the real repository
 
 Start with a root map. Split only where ownership or rules need a local scope. One manifest is
-enough; `base`, `domain`, and `overlay` layers compose the same model. See [layered authoring](docs/layers.md).
+enough; `base`, `domain`, and `overlay` layers compose the same model. See [layered authoring](https://github.com/lbliii/murlocs/blob/main/docs/layers.md).
 
 ```bash
 murlocs init --coverage-root src --coverage-root tests
@@ -106,7 +111,7 @@ murlocs impact --path src/my_package/feature.py --path docs/feature.md
 ```
 
 `explain` returns the scope chain and its rules. `impact` shows what a changed path needs reviewed,
-without starting an agent or running repository commands. See [changed-path impact](docs/impact.md).
+without starting an agent or running repository commands. See [changed-path impact](https://github.com/lbliii/murlocs/blob/main/docs/impact.md).
 
 ### Change safely and repair only ordinary drift
 
@@ -135,7 +140,7 @@ murlocs prune
 `init` never overwrites an existing `AGENTS.md`; `import` creates a candidate but never adopts it.
 `adopt` accepts only byte-current legacy-generated maps and saves exact backups; `prune` moves
 legacy tooling into that backup. `rollback` restores the pre-adoption network until maps are edited.
-User-owned files such as `CLAUDE.md` are inventoried, never changed. See [primary user journeys](docs/journeys.md).
+User-owned files such as `CLAUDE.md` are inventoried, never changed. See [primary user journeys](https://github.com/lbliii/murlocs/blob/main/docs/journeys.md).
 
 ## Integrations that preserve the boundary
 
@@ -144,30 +149,30 @@ tools: `version`, `inventory`, `status`, `diff`, `check`, `explain`, `impact`, `
 `curate check`. Writes stay CLI-only. `murlocs --llms-txt`, JSON, and typed dispatch support
 discovery.
 
-The [GitHub Copilot](docs/github-copilot-adapter.md) and
-[Claude Code](docs/claude-code-adapter.md) adapters share the read-only lifecycle contract; the
-[conformance harness](docs/adapter-conformance.md) tests it. Optional
-[passive Git hooks](docs/git-hooks.md) run checks at commit and push, stay quiet when healthy, and
+The [GitHub Copilot](https://github.com/lbliii/murlocs/blob/main/docs/github-copilot-adapter.md) and
+[Claude Code](https://github.com/lbliii/murlocs/blob/main/docs/claude-code-adapter.md) adapters share the read-only lifecycle contract; the
+[conformance harness](https://github.com/lbliii/murlocs/blob/main/docs/adapter-conformance.md) tests it. Optional
+[passive Git hooks](https://github.com/lbliii/murlocs/blob/main/docs/git-hooks.md) run checks at commit and push, stay quiet when healthy, and
 do not replace existing managers or custom hook paths. See the
-[activation lifecycle](docs/activation-lifecycle.md) and [outcome envelope](docs/outcome-envelope.md)
+[activation lifecycle](https://github.com/lbliii/murlocs/blob/main/docs/activation-lifecycle.md) and [outcome envelope](https://github.com/lbliii/murlocs/blob/main/docs/outcome-envelope.md)
 for portable receipts; integration output never sets merge policy.
 
 ## Runtime identity
 
 `murlocs version --format json` reports a redacted build and installation identity for
-integrations. See [runtime build identity](docs/runtime-identity.md) for the contract and publisher
+integrations. See [runtime build identity](https://github.com/lbliii/murlocs/blob/main/docs/runtime-identity.md) for the contract and publisher
 boundary.
 
 ## Find the right detail
 
 | If you need to… | Start here |
 | --- | --- |
-| Understand concepts, trust boundaries, and compilation | [Architecture](docs/architecture.md) |
-| Adopt guidance progressively and configure coverage | [Adoption and coverage](docs/adoption.md) |
-| Plan bootstrap, rollout, migration, repair, or evaluation | [Primary user journeys](docs/journeys.md) |
-| Connect hosts, hooks, or CI | [Activation lifecycle](docs/activation-lifecycle.md) and [Git hooks](docs/git-hooks.md) |
-| Govern proposals before changing live guidance | [Curation](docs/curation.md) |
-| Measure whether guidance improves recorded agent work | [Guidance efficiency evaluation](docs/evaluation.md) |
+| Understand concepts, trust boundaries, and compilation | [Architecture](https://github.com/lbliii/murlocs/blob/main/docs/architecture.md) |
+| Adopt guidance progressively and configure coverage | [Adoption and coverage](https://github.com/lbliii/murlocs/blob/main/docs/adoption.md) |
+| Plan bootstrap, rollout, migration, repair, or evaluation | [Primary user journeys](https://github.com/lbliii/murlocs/blob/main/docs/journeys.md) |
+| Connect hosts, hooks, or CI | [Activation lifecycle](https://github.com/lbliii/murlocs/blob/main/docs/activation-lifecycle.md) and [Git hooks](https://github.com/lbliii/murlocs/blob/main/docs/git-hooks.md) |
+| Govern proposals before changing live guidance | [Curation](https://github.com/lbliii/murlocs/blob/main/docs/curation.md) |
+| Measure whether guidance improves recorded agent work | [Guidance efficiency evaluation](https://github.com/lbliii/murlocs/blob/main/docs/evaluation.md) |
 
 ## Project status and development
 

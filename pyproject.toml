@@ -8,16 +8,32 @@ version = "0.1.0"
 description = "Compile and verify repository-local guidance maps for coding agents."
 readme = "README.md"
 requires-python = ">=3.14"
-license = { text = "MIT" }
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [{ name = "Lawrence Lane" }]
 keywords = ["coding-agents", "AGENTS.md", "repository-guidance", "verification", "developer-tools"]
 classifiers = [
   "Development Status :: 3 - Alpha",
-  "License :: OSI Approved :: MIT License",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Operating System :: OS Independent",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.14",
+  "Topic :: Software Development :: Build Tools",
+  "Topic :: Software Development :: Documentation",
+  "Topic :: Software Development :: Quality Assurance",
+  "Typing :: Typed",
 ]
-dependencies = ["milo-cli>=0.4.2,<0.5"]
+dependencies = [
+  "milo-cli>=0.4.2,<0.5", # Typed CLI, MCP, and agent-discovery surfaces from one registry.
+]
+
+[project.urls]
+Homepage = "https://github.com/lbliii/murlocs"
+Documentation = "https://github.com/lbliii/murlocs/blob/main/docs/README.md"
+Repository = "https://github.com/lbliii/murlocs"
+Issues = "https://github.com/lbliii/murlocs/issues"
+Changelog = "https://github.com/lbliii/murlocs/blob/main/CHANGELOG.md"
 
 [project.scripts]
 murlocs = "murlocs.cli:main"
@@ -25,11 +41,18 @@ mrr = "murlocs.cli:mrr"
 murlocs-copilot-adapter = "murlocs.copilot_adapter:main"
 murlocs-claude-adapter = "murlocs.claude_adapter:main"
 
-[project.optional-dependencies]
+# Development dependencies are a local group, not a published extra: strangers
+# installing `murlocs` should not see a `dev` extra on the project page.
+[dependency-groups]
 dev = ["pytest>=8", "ruff>=0.9"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/murlocs"]
+
+[tool.hatch.build.targets.sdist]
+# The README hero image is 657KB and is fetched from GitHub by the rendered
+# README, so it does not need to ship inside the source distribution.
+exclude = ["docs/assets"]
 
 [tool.pytest.ini_options]
 addopts = "-q"
