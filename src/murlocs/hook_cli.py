@@ -145,9 +145,7 @@ def hook_status_command(
         )
     return CommandResult(
         result,
-        terminal_text="\n".join(
-            f"{event}: {state}" for event, state in result["events"].items()
-        ),
+        terminal_text="\n".join(f"{event}: {state}" for event, state in result["events"].items()),
     )
 
 

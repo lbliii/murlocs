@@ -136,9 +136,7 @@ def test_v1_conformance_goldens_are_canonical_and_malformed_fixtures_fail():
 
 def test_compact_rendering_goldens_are_derived_from_v1_outcomes():
     outcomes = json.loads((FIXTURE_ROOT / "conformance.json").read_text(encoding="utf-8"))
-    compact = json.loads(
-        (FIXTURE_ROOT / "compact-rendering.json").read_text(encoding="utf-8")
-    )
+    compact = json.loads((FIXTURE_ROOT / "compact-rendering.json").read_text(encoding="utf-8"))
     assert compact["contract"] == "io.murlocs.outcome.compact-rendering"
     by_id = {case["id"]: case["outcome"] for case in outcomes["cases"]}
 
@@ -189,12 +187,14 @@ def test_authority_review_requires_matching_trusted_adapter_evidence():
     assert unavailable_integration["decision"]["review_evidence"] is None
 
     stale = dict(evidence, reviewed_state_id="state-older")
-    assert reconcile_external_authority_evidence(satisfied, stale)["decision"][
-        "authority_state"
-    ] == "unresolved"
-    assert reconcile_external_authority_evidence(satisfied, None)["decision"][
-        "authority_state"
-    ] == "unresolved"
+    assert (
+        reconcile_external_authority_evidence(satisfied, stale)["decision"]["authority_state"]
+        == "unresolved"
+    )
+    assert (
+        reconcile_external_authority_evidence(satisfied, None)["decision"]["authority_state"]
+        == "unresolved"
+    )
     forged = copy.deepcopy(satisfied)
     forged["decision"]["agent_acknowledgement"] = "claimed"
     with pytest.raises(MurlocsError, match="agent acknowledgement"):
@@ -286,9 +286,7 @@ def test_generated_fallback_guidance_recommends_compact_for_agents_and_json_for_
     assert drift["resolution_class"] == "deterministic_repair"
     assert drift["blocking"] is True
     assert drift["source"]["exit_code"] == 1
-    assert [item["operation"] for item in drift["next_actions"]] == [
-        "compile_managed_guidance"
-    ]
+    assert [item["operation"] for item in drift["next_actions"]] == ["compile_managed_guidance"]
     assert "command" not in json.dumps(drift)
     assert snapshot(root) == before_drift
 
@@ -302,8 +300,7 @@ def test_modified_generated_output_never_claims_deterministic_repair(tmp_path: P
 
     assert outcome["resolution_class"] == "authority_required"
     assert all(
-        action["operation"] != "compile_managed_guidance"
-        for action in outcome["next_actions"]
+        action["operation"] != "compile_managed_guidance" for action in outcome["next_actions"]
     )
     assert outcome["next_actions"][0]["operation"] == "request_authority"
     assert "@platform" in outcome["next_actions"][0]["arguments"]["owners"]
@@ -323,16 +320,13 @@ def test_mixed_check_findings_bind_each_finding_to_its_own_resolution(tmp_path: 
 
     by_code = {finding["code"]: finding for finding in outcome["findings"]}
     assert by_code["MURLOCS_CHECK_DRIFT"]["resolution_class"] == "authority_required"
-    assert by_code["MURLOCS_CHECK_DRIFT"]["action_ids"] == [
-        "outcome.request-authority"
-    ]
+    assert by_code["MURLOCS_CHECK_DRIFT"]["action_ids"] == ["outcome.request-authority"]
     assert by_code["MURLOCS_CHECK_PROOF"]["resolution_class"] == "agent_action"
-    assert by_code["MURLOCS_CHECK_PROOF"]["action_ids"] == [
-        "outcome.inspect-findings"
-    ]
-    assert {
-        action["operation"] for action in outcome["next_actions"]
-    } == {"inspect_findings", "request_authority"}
+    assert by_code["MURLOCS_CHECK_PROOF"]["action_ids"] == ["outcome.inspect-findings"]
+    assert {action["operation"] for action in outcome["next_actions"]} == {
+        "inspect_findings",
+        "request_authority",
+    }
 
 
 def test_repeated_check_codes_form_one_valid_outcome_finding(tmp_path: Path):
@@ -340,19 +334,13 @@ def test_repeated_check_codes_form_one_valid_outcome_finding(tmp_path: Path):
     build(root)
     manifest = root / ".murlocs/manifest.toml"
     manifest.write_text(
-        manifest.read_text(encoding="utf-8").replace(
-            "pillars = []", 'pillars = ["Changed"]'
-        ),
+        manifest.read_text(encoding="utf-8").replace("pillars = []", 'pillars = ["Changed"]'),
         encoding="utf-8",
     )
 
     outcome = structured("check", root)["outcome"]
 
-    drift = [
-        finding
-        for finding in outcome["findings"]
-        if finding["code"] == "MURLOCS_CHECK_DRIFT"
-    ]
+    drift = [finding for finding in outcome["findings"] if finding["code"] == "MURLOCS_CHECK_DRIFT"]
     assert len(drift) == 1
     assert len(drift[0]["evidence"]) > 1
 
@@ -364,9 +352,9 @@ def test_impact_agent_and_authority_outcomes_name_exact_routing(tmp_path: Path):
     recommended = structured(
         "impact", root, path=["src/api/scratch/note.py"], correlation_id="run:7"
     )["outcome"]
-    required = structured(
-        "impact", root, path=["src/api/app/service.py"], correlation_id="run:7"
-    )["outcome"]
+    required = structured("impact", root, path=["src/api/app/service.py"], correlation_id="run:7")[
+        "outcome"
+    ]
 
     assert recommended["resolution_class"] == "agent_action"
     assert recommended["status"] == "advisory"
@@ -414,12 +402,12 @@ def test_terminal_programmatic_mcp_and_discovery_have_outcome_parity(
 
     terminal_result = invoke(*argv)
     terminal = json.loads(terminal_result.output)
-    programmatic = build_cli().call(
-        command, repo=str(root), correlation_id="parity-1", **kwargs
+    programmatic = build_cli().call(command, repo=str(root), correlation_id="parity-1", **kwargs)
+    mcp = (
+        MCPClient(build_cli())
+        .call(command, repo=str(root), correlation_id="parity-1", **kwargs)
+        .structured
     )
-    mcp = MCPClient(build_cli()).call(
-        command, repo=str(root), correlation_id="parity-1", **kwargs
-    ).structured
     tool = next(item for item in MCPClient(build_cli()).list_tools() if item.name == command)
 
     assert terminal == programmatic == mcp
@@ -460,9 +448,9 @@ def test_integration_binding_only_echoes_opaque_tokens_and_merge_requires_identi
     root = tmp_path / "repo"
     build(root)
     check = structured("check", root, correlation_id="task-1")["outcome"]
-    impact = structured(
-        "impact", root, path=["src/api/scratch/note.py"], correlation_id="task-1"
-    )["outcome"]
+    impact = structured("impact", root, path=["src/api/scratch/note.py"], correlation_id="task-1")[
+        "outcome"
+    ]
     bound_check = bind_integration_tokens(
         check,
         correlation_id="task-1",
@@ -527,9 +515,9 @@ def test_merge_unions_same_action_arguments_and_rejects_conflicting_findings(
 ):
     root = tmp_path / "repo"
     build(root)
-    first = structured(
-        "impact", root, path=["src/api/scratch/note.py"], correlation_id="merge-1"
-    )["outcome"]
+    first = structured("impact", root, path=["src/api/scratch/note.py"], correlation_id="merge-1")[
+        "outcome"
+    ]
     second = copy.deepcopy(first)
     finding = second["findings"][0]
     finding["message"] = "Scope worker is recommended for guidance review."

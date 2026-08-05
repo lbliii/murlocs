@@ -116,9 +116,9 @@ def test_structured_output_reports_override_source_locations(tmp_path):
     root = tmp_path / "repo"
     build(root)
     assert invoke("compile", "--repo", str(root)).exit_code == 0
-    structured = MCPClient(build_cli()).call(
-        "explain", path="docs/api/x.md", repo=str(root)
-    ).structured
+    structured = (
+        MCPClient(build_cli()).call("explain", path="docs/api/x.md", repo=str(root)).structured
+    )
     overrides = structured["overrides"]
     assert len(overrides) == 1
     override = overrides[0]
@@ -134,9 +134,9 @@ def test_structured_output_reports_focused_checks_and_budget(tmp_path):
     root = tmp_path / "repo"
     build(root)
     assert invoke("compile", "--repo", str(root)).exit_code == 0
-    structured = MCPClient(build_cli()).call(
-        "explain", path="docs/api/x.md", repo=str(root)
-    ).structured
+    structured = (
+        MCPClient(build_cli()).call("explain", path="docs/api/x.md", repo=str(root)).structured
+    )
     assert [check["name"] for check in structured["checks"]] == ["docs-test"]
     assert structured["budget"]["max_active_bytes"] == 24576
     assert structured["budget"]["active_bytes"] > 0

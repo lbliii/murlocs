@@ -310,17 +310,21 @@ def test_eval_cli_ingests_files_and_writes_reproducible_results(tmp_path, capsys
     reordered_payload = json.loads(RUNS_FIXTURE.read_text(encoding="utf-8"))
     reordered_payload["runs"].reverse()
     reordered_runs.write_text(json.dumps(reordered_payload), encoding="utf-8")
-    assert eval_main(
-        ["--task", str(TASK_FIXTURE), "--runs", str(RUNS_FIXTURE), "--output", str(first)]
-    ) == 0
+    assert (
+        eval_main(
+            ["--task", str(TASK_FIXTURE), "--runs", str(RUNS_FIXTURE), "--output", str(first)]
+        )
+        == 0
+    )
     assert "most efficient correct arm: murlocs" in capsys.readouterr().out
-    assert eval_main(
-        ["--task", str(TASK_FIXTURE), "--runs", str(reordered_runs), "--output", str(second)]
-    ) == 0
+    assert (
+        eval_main(
+            ["--task", str(TASK_FIXTURE), "--runs", str(reordered_runs), "--output", str(second)]
+        )
+        == 0
+    )
     capsys.readouterr()
-    assert (first / "import-graph.json").read_bytes() == (
-        second / "import-graph.json"
-    ).read_bytes()
+    assert (first / "import-graph.json").read_bytes() == (second / "import-graph.json").read_bytes()
 
 
 def test_eval_cli_requires_explicit_demo_or_inputs(capsys):
@@ -328,8 +332,7 @@ def test_eval_cli_requires_explicit_demo_or_inputs(capsys):
         eval_main([])
     assert missing.value.code == 2
     assert (
-        "one of the arguments --demo --task --longitudinal is required"
-        in capsys.readouterr().err
+        "one of the arguments --demo --task --longitudinal is required" in capsys.readouterr().err
     )
 
     assert eval_main(["--demo"]) == 0

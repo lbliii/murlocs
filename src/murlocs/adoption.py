@@ -132,10 +132,16 @@ def adoption_status(root: Path) -> dict[str, Any]:
                 [MIGRATION_STATE.as_posix()],
             )
         )
-    if manifest_exists and lock_exists and legacy_exists and migration_status not in {
-        "adopted",
-        "pruned",
-    }:
+    if (
+        manifest_exists
+        and lock_exists
+        and legacy_exists
+        and migration_status
+        not in {
+            "adopted",
+            "pruned",
+        }
+    ):
         ambiguity.append(
             (
                 "parallel_managed_and_legacy_networks",

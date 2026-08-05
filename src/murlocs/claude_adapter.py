@@ -103,7 +103,7 @@ def _confined_path(root: Path, raw: str) -> str | None:
         resolved_root = root.resolve(strict=True)
         resolved = target.resolve(strict=False)
         relative = resolved.relative_to(resolved_root)
-    except (OSError, ValueError):
+    except OSError, ValueError:
         return None
     return None if relative == Path() else relative.as_posix()
 
@@ -125,8 +125,7 @@ def _paths(root: Path, value: object) -> list[str]:
 
 def _has_path_candidate(value: object) -> bool:
     return isinstance(value, Mapping) and any(
-        isinstance(value.get(name), str)
-        for name in ("path", "file", "filePath", "file_path")
+        isinstance(value.get(name), str) for name in ("path", "file", "filePath", "file_path")
     )
 
 

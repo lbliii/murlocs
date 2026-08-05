@@ -69,9 +69,7 @@ def scaffold(root: Path, *, layers: str, files: dict[str, str]) -> None:
     (root / "docs" / "guide.md").write_text("guide\n", encoding="utf-8")
     murlocs = root / ".murlocs"
     (murlocs / "layers").mkdir(parents=True)
-    (murlocs / "manifest.toml").write_text(
-        ROOT_TEMPLATE.format(layers=layers), encoding="utf-8"
-    )
+    (murlocs / "manifest.toml").write_text(ROOT_TEMPLATE.format(layers=layers), encoding="utf-8")
     (murlocs / "PROTOCOL.md").write_text("Use this protocol\n", encoding="utf-8")
     for relative, content in files.items():
         (root / relative).write_text(content, encoding="utf-8")
@@ -167,8 +165,7 @@ def test_overlay_override_merges_without_changing_paths(tmp_path):
         'point_of_view = "Repo-wide, refined."\nguardrails = ["Stay small."]\n'
     )
     layers = two_layer_decl() + (
-        '\n[[layers]]\nid = "overlay"\nkind = "overlay"'
-        '\npath = ".murlocs/layers/overlay.toml"\n'
+        '\n[[layers]]\nid = "overlay"\nkind = "overlay"\npath = ".murlocs/layers/overlay.toml"\n'
     )
     scaffold(
         root,
@@ -192,8 +189,7 @@ def test_override_cannot_change_output_path(tmp_path):
     root = tmp_path / "repo"
     overlay = '[[scopes]]\nid = "root"\noverride = true\nmap = "OTHER.md"\n'
     layers = two_layer_decl() + (
-        '\n[[layers]]\nid = "overlay"\nkind = "overlay"'
-        '\npath = ".murlocs/layers/overlay.toml"\n'
+        '\n[[layers]]\nid = "overlay"\nkind = "overlay"\npath = ".murlocs/layers/overlay.toml"\n'
     )
     scaffold(
         root,
@@ -211,10 +207,7 @@ def test_override_cannot_change_output_path(tmp_path):
 
 def test_duplicate_scope_without_override_is_rejected(tmp_path):
     root = tmp_path / "repo"
-    dup = (
-        '[[scopes]]\nid = "root"\npath = "."\nmap = "AGENTS.md"\n'
-        'point_of_view = "Second root."\n'
-    )
+    dup = '[[scopes]]\nid = "root"\npath = "."\nmap = "AGENTS.md"\npoint_of_view = "Second root."\n'
     layers = two_layer_decl() + (
         '\n[[layers]]\nid = "dup"\nkind = "domain"\npath = ".murlocs/layers/dup.toml"\n'
     )
@@ -289,9 +282,7 @@ def test_layer_may_not_set_control_plane_fields(tmp_path):
 
 def test_unsafe_layer_path_is_rejected(tmp_path):
     root = tmp_path / "repo"
-    layers = (
-        '[[layers]]\nid = "escape"\nkind = "base"\npath = "../escape.toml"\n'
-    )
+    layers = '[[layers]]\nid = "escape"\nkind = "base"\npath = "../escape.toml"\n'
     scaffold(root, layers=layers, files={})
     result = invoke("check", "--repo", str(root))
     assert result.exit_code == 1

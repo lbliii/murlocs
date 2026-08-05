@@ -28,9 +28,7 @@ def invoke_packaged(*argv: str) -> subprocess.CompletedProcess[str]:
             **os.environ,
             "NO_COLOR": "1",
             "PYTHONPATH": os.pathsep.join(
-                value
-                for value in (str(PROJECT_SRC), os.environ.get("PYTHONPATH"))
-                if value
+                value for value in (str(PROJECT_SRC), os.environ.get("PYTHONPATH")) if value
             ),
         },
         text=True,
@@ -297,8 +295,7 @@ def test_real_parser_preserves_every_repeated_split_option(tmp_path):
     manifest.write_text(
         manifest.read_text(encoding="utf-8").replace(
             '"src/core/generated" = "generated code"',
-            '"src/core/generated" = "generated code"\n'
-            '"docs/generated" = "generated documentation"',
+            '"src/core/generated" = "generated code"\n"docs/generated" = "generated documentation"',
         ),
         encoding="utf-8",
     )
@@ -391,18 +388,14 @@ def test_apply_recomputes_codeowners_after_planning(tmp_path):
         encoding="utf-8",
     )
     mutated = {
-        path.relative_to(root): path.read_bytes()
-        for path in root.rglob("*")
-        if path.is_file()
+        path.relative_to(root): path.read_bytes() for path in root.rglob("*") if path.is_file()
     }
 
     with pytest.raises(MurlocsError, match="CODEOWNERS requirements are not satisfied"):
         apply_split_layers(root, plan)
 
     assert {
-        path.relative_to(root): path.read_bytes()
-        for path in root.rglob("*")
-        if path.is_file()
+        path.relative_to(root): path.read_bytes() for path in root.rglob("*") if path.is_file()
     } == mutated
     assert not (root / ".murlocs" / "layers").exists()
 
@@ -482,18 +475,14 @@ def test_apply_revalidates_current_filesystem_and_writes_nothing(tmp_path, mutat
         (new_unit / "feature.py").write_text("VALUE = 3\n", encoding="utf-8")
         expected = "source-bearing unit has no map: src/core/new-unit"
     mutated = {
-        path.relative_to(root): path.read_bytes()
-        for path in root.rglob("*")
-        if path.is_file()
+        path.relative_to(root): path.read_bytes() for path in root.rglob("*") if path.is_file()
     }
 
     with pytest.raises(MurlocsError, match=expected):
         apply_split_layers(root, plan)
 
     after = {
-        path.relative_to(root): path.read_bytes()
-        for path in root.rglob("*")
-        if path.is_file()
+        path.relative_to(root): path.read_bytes() for path in root.rglob("*") if path.is_file()
     }
     assert after == mutated
     assert not (root / ".murlocs" / "layers").exists()

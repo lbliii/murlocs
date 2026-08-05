@@ -59,10 +59,8 @@ def build(
         'operating_rules = ["O."]\n'
         'stop_and_ask = ["A."]\n'
         'done_criteria = ["D."]\n'
-        "[coverage]\nroots = []\nsource_suffixes = [\".py\"]\n[coverage.exemptions]\n"
-        f"[policies]\n{policies}\n\n"
-        + "\n\n".join(decls)
-        + "\n",
+        '[coverage]\nroots = []\nsource_suffixes = [".py"]\n[coverage.exemptions]\n'
+        f"[policies]\n{policies}\n\n" + "\n\n".join(decls) + "\n",
         encoding="utf-8",
     )
     (murlocs / "PROTOCOL.md").write_text("Use this protocol\n", encoding="utf-8")
@@ -116,10 +114,7 @@ def test_codeowners_validation_detects_missing_entry(tmp_path):
     build(
         root,
         policies="validate_codeowners = true",
-        codeowners=(
-            "/.murlocs/manifest.toml @control\n"
-            "/.murlocs/layers/base.toml @platform\n"
-        ),
+        codeowners=("/.murlocs/manifest.toml @control\n/.murlocs/layers/base.toml @platform\n"),
     )
     result = invoke("check", "--repo", str(root))
     assert result.exit_code == 1
@@ -132,10 +127,7 @@ def test_codeowners_validation_detects_missing_root_manifest_entry(tmp_path):
     build(
         root,
         policies="validate_codeowners = true",
-        codeowners=(
-            "/.murlocs/layers/base.toml @platform\n"
-            "/.murlocs/layers/docs.toml @docs\n"
-        ),
+        codeowners=("/.murlocs/layers/base.toml @platform\n/.murlocs/layers/docs.toml @docs\n"),
     )
     result = invoke("check", "--repo", str(root))
     assert result.exit_code == 1

@@ -107,7 +107,7 @@ def _confined_path(root: Path, raw: str) -> str | None:
         resolved_root = root.resolve(strict=True)
         resolved = target.resolve(strict=False)
         relative = resolved.relative_to(resolved_root)
-    except (OSError, ValueError):
+    except OSError, ValueError:
         return None
     return None if relative == Path() else relative.as_posix()
 
@@ -129,8 +129,7 @@ def _paths(root: Path, value: object) -> list[str]:
 
 def _has_path_candidate(value: object) -> bool:
     return isinstance(value, Mapping) and any(
-        isinstance(value.get(name), str)
-        for name in ("path", "file", "filePath", "file_path")
+        isinstance(value.get(name), str) for name in ("path", "file", "filePath", "file_path")
     )
 
 
@@ -380,9 +379,7 @@ class LifecycleAdapterDriver:
     def descriptor(self) -> Mapping[str, Any]:
         raise NotImplementedError
 
-    def invoke(
-        self, request: Mapping[str, Any], context: ConformanceContext
-    ) -> Mapping[str, Any]:
+    def invoke(self, request: Mapping[str, Any], context: ConformanceContext) -> Mapping[str, Any]:
         control = context.control
         fault = control["fault"]
         event = request["event"]
@@ -424,9 +421,7 @@ class LifecycleAdapterDriver:
                     status="invalid",
                     cache="forbidden" if fault == "agent-token" else "miss",
                     fallback=(
-                        ["generated-guidance", "git-hook", "ci"]
-                        if fault == "agent-token"
-                        else []
+                        ["generated-guidance", "git-hook", "ci"] if fault == "agent-token" else []
                     ),
                 ),
             }
@@ -568,9 +563,7 @@ class LifecycleAdapterDriver:
         return {"format": "posix", "segments": [root.name]}
 
     @classmethod
-    def _cache_proof(
-        cls, request: Mapping[str, Any], trusted: Mapping[str, Any]
-    ) -> dict[str, Any]:
+    def _cache_proof(cls, request: Mapping[str, Any], trusted: Mapping[str, Any]) -> dict[str, Any]:
         operations = list(_required_operations(request["event"]))
         proof: dict[str, Any] = {
             "contract_version": "1",
@@ -716,8 +709,7 @@ class LifecycleAdapterDriver:
             outcome=None,
             silent=silent,
             fallback=fallback,
-            next_actions=next_actions
-            or ([self._fallback_action(fallback[0])] if fallback else []),
+            next_actions=next_actions or ([self._fallback_action(fallback[0])] if fallback else []),
             blocking=None,
         )
 

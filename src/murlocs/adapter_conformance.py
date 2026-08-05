@@ -248,9 +248,7 @@ def run_adapter_conformance(
                 )
             if before != after and not context.control.get("mutations"):
                 errors.append("read-only scenario changed repository bytes")
-        scenario_results.append(
-            {"id": scenario["id"], "passed": not errors, "errors": errors}
-        )
+        scenario_results.append({"id": scenario["id"], "passed": not errors, "errors": errors})
     return {
         "contract": REPORT_CONTRACT,
         "schema_version": 1,
@@ -342,8 +340,7 @@ def _validate_descriptor(value: Mapping[str, Any]) -> dict[str, Any]:
     if (
         not isinstance(deprecated, list)
         or any(
-            not isinstance(item, int) or isinstance(item, bool) or item < 1
-            for item in deprecated
+            not isinstance(item, int) or isinstance(item, bool) or item < 1 for item in deprecated
         )
         or deprecated != sorted(set(deprecated))
     ):
@@ -540,9 +537,7 @@ def _validate_observation(
         raise AdapterConformanceError("adapter operation trace does not match expectation")
     if context.agent_prompted != expected["agent_prompted"]:
         raise AdapterConformanceError("adapter prompt behavior does not match expectation")
-    required_checkpoints = {
-        item["checkpoint"] for item in scenario["control"].get("mutations", [])
-    }
+    required_checkpoints = {item["checkpoint"] for item in scenario["control"].get("mutations", [])}
     if not required_checkpoints <= set(context.checkpoints):
         raise AdapterConformanceError("adapter did not expose a required mutation checkpoint")
 
@@ -696,9 +691,7 @@ def _validate_lifecycle_response(
                 "adapter outcome is not bound to trusted lifecycle tokens"
             )
         expected_dependency = (
-            trusted.get("impact_dependency_id")
-            if "impact" in expected_operations
-            else None
+            trusted.get("impact_dependency_id") if "impact" in expected_operations else None
         )
         if correlation["dependency_id"] != expected_dependency:
             raise AdapterConformanceError("adapter outcome dependency token does not match receipt")
@@ -708,9 +701,10 @@ def _validate_fresh_receipts(
     operations: Sequence[Mapping[str, Any]], trusted: Mapping[str, Any]
 ) -> None:
     for receipt in operations:
-        if receipt.get("state_before") != trusted["state_id"] or receipt.get(
-            "state_after"
-        ) != trusted["state_id"]:
+        if (
+            receipt.get("state_before") != trusted["state_id"]
+            or receipt.get("state_after") != trusted["state_id"]
+        ):
             raise AdapterConformanceError("adapter receipt state tokens are not fresh")
         if receipt.get("operation") == "impact":
             dependency = trusted.get("impact_dependency_id")

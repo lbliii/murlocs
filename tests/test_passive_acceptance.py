@@ -20,11 +20,7 @@ FIXTURE = (
     / "example-observations.json"
 )
 PILOT = (
-    Path(__file__).parent
-    / "fixtures"
-    / "passive-agent-acceptance"
-    / "v1"
-    / "pilot-2026-08-03.json"
+    Path(__file__).parent / "fixtures" / "passive-agent-acceptance" / "v1" / "pilot-2026-08-03.json"
 )
 
 

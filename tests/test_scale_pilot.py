@@ -60,15 +60,9 @@ def test_scale_fixture_is_owned_layered_and_byte_deterministic(tmp_path: Path):
     assert not [finding for finding in validate(manifest) if finding.code not in {"lock", "drift"}]
 
     compile_manifest(manifest)
-    first = {
-        scope.map: (root / scope.map).read_bytes()
-        for scope in manifest.scopes
-    }
+    first = {scope.map: (root / scope.map).read_bytes() for scope in manifest.scopes}
     compile_manifest(load_manifest(root))
-    second = {
-        scope.map: (root / scope.map).read_bytes()
-        for scope in manifest.scopes
-    }
+    second = {scope.map: (root / scope.map).read_bytes() for scope in manifest.scopes}
     assert first == second
     assert validate(load_manifest(root)) == []
 
@@ -122,9 +116,9 @@ def test_scale_pilot_reports_invariants_without_speed_thresholds(tmp_path: Path)
 
     assert result["fixture"]["map_count"] == EXPECTED_MAPS
     assert result["fixture"]["byte_deterministic_recompile"] is True
-    assert result["fixture"]["maximum_active_chain_bytes"] < result["fixture"][
-        "total_generated_bytes"
-    ]
+    assert (
+        result["fixture"]["maximum_active_chain_bytes"] < result["fixture"]["total_generated_bytes"]
+    )
     assert set(result["measurements"]) == {"compile", "check", "explain", "impact"}
     assert all(
         measurement["median_ms"] >= 0 and measurement["peak_memory_bytes"] > 0

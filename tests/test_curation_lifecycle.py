@@ -344,9 +344,7 @@ def test_accept_dry_run_then_promote_changes_only_source_and_record(tmp_path):
     assert preview.exit_code == 0, preview.stderr
     payload = json.loads(preview.output)
     assert payload["identity_assurance"] == "not_authenticated"
-    assert [item["path"] for item in payload["patches"]] == [
-        ".murlocs/curation/add-rule.toml"
-    ]
+    assert [item["path"] for item in payload["patches"]] == [".murlocs/curation/add-rule.toml"]
     assert snapshot(root) == before_accept
 
     accepted = action(root, "accept", "add-rule")
@@ -535,13 +533,10 @@ def test_transaction_failure_rolls_back_and_crash_recovers(tmp_path):
     checked = invoke("curate", "check", "--repo", str(root), "--format", "json")
     checked_payload = json.loads(checked.output)
     assert checked_payload["ok"] is False
-    assert any(
-        item["code"] == "pending_transaction" for item in checked_payload["findings"]
-    )
+    assert any(item["code"] == "pending_transaction" for item in checked_payload["findings"])
     ordinary = invoke("check", "--repo", str(root), "--format", "json")
     assert any(
-        item["code"] == "curation_transaction"
-        for item in json.loads(ordinary.output)["findings"]
+        item["code"] == "curation_transaction" for item in json.loads(ordinary.output)["findings"]
     )
     compile_result = invoke("compile", "--repo", str(root))
     assert compile_result.exit_code == 1
@@ -564,14 +559,10 @@ def test_transaction_failure_rolls_back_and_crash_recovers(tmp_path):
     assert preview_payload["status"] == (
         "roll back exact accepted addition reconstructed from lifecycle semantics"
     )
-    assert [item["path"] for item in preview_payload["patches"]] == [
-        ".murlocs/manifest.toml"
-    ]
+    assert [item["path"] for item in preview_payload["patches"]] == [".murlocs/manifest.toml"]
     assert "attacker-selected" not in preview_payload["patches"][0]["diff"]
     assert snapshot(root) == mixed
-    recovered = invoke(
-        "curate", "recover", "transaction-rule", "--repo", str(root)
-    )
+    recovered = invoke("curate", "recover", "transaction-rule", "--repo", str(root))
     assert recovered.exit_code == 0, recovered.stderr
     assert snapshot(root) == before
     applied = apply_record(
@@ -673,9 +664,7 @@ def test_coverage_topology_and_codeowners_precedence_are_commit_guards(tmp_path)
         ),
         encoding="utf-8",
     )
-    (root / "CODEOWNERS").write_text(
-        "/.murlocs/manifest.toml @owners\n", encoding="utf-8"
-    )
+    (root / "CODEOWNERS").write_text("/.murlocs/manifest.toml @owners\n", encoding="utf-8")
     assert invoke("compile", "--repo", str(root)).exit_code == 0
     propose(root, "guarded-dependencies")
     assert action(root, "accept", "guarded-dependencies").exit_code == 0
@@ -810,9 +799,7 @@ def test_terminal_review_reports_current_truth_and_rejects_intent_state_tamperin
 
     record = root / ".murlocs/curation/terminal-truth.toml"
     record.write_text(
-        record.read_text(encoding="utf-8").replace(
-            'state = "promoted"', 'state = "pruned"'
-        ),
+        record.read_text(encoding="utf-8").replace('state = "promoted"', 'state = "pruned"'),
         encoding="utf-8",
     )
     checked = invoke("curate", "check", "--repo", str(root), "--format", "json")
@@ -831,9 +818,7 @@ def test_terminal_review_reports_current_truth_and_rejects_intent_state_tamperin
         {"version": 1, "updates": [], "future": True},
     ],
 )
-def test_transaction_recovery_rejects_unknown_journal_schema_without_writes(
-    tmp_path, metadata
-):
+def test_transaction_recovery_rejects_unknown_journal_schema_without_writes(tmp_path, metadata):
     root = tmp_path / "repo"
     initialize(root)
     source = root / ".murlocs/manifest.toml"
@@ -1168,9 +1153,7 @@ def test_global_domain_proposal_routes_every_affected_chain_owner(tmp_path):
 
     codeowners = root / ".github/CODEOWNERS"
     original_codeowners = codeowners.read_text(encoding="utf-8")
-    codeowners.write_text(
-        original_codeowners.replace("@test", "@test @security"), encoding="utf-8"
-    )
+    codeowners.write_text(original_codeowners.replace("@test", "@test @security"), encoding="utf-8")
     before = snapshot(root)
     stale = invoke(
         "curate",
@@ -1221,9 +1204,7 @@ def test_global_domain_proposal_routes_every_affected_chain_owner(tmp_path):
         "current": ["app", "root", "tests"],
     }
 
-    codeowners.write_text(
-        original_codeowners.replace("@test", "@test @security"), encoding="utf-8"
-    )
+    codeowners.write_text(original_codeowners.replace("@test", "@test @security"), encoding="utf-8")
     changed_owners = json.loads(
         invoke(
             "curate",
@@ -1342,9 +1323,7 @@ def test_required_scopes_recompute_terminal_owners_across_topology_changes(tmp_p
         '\n[[layers]]\nid = "extra"\nkind = "domain"\n'
         'path = ".murlocs/layers/extra.toml"\nowners = ["@extra"]\n'
     )
-    manifest.write_text(
-        manifest.read_text(encoding="utf-8") + extra_declaration, encoding="utf-8"
-    )
+    manifest.write_text(manifest.read_text(encoding="utf-8") + extra_declaration, encoding="utf-8")
     (root / ".murlocs/layers/extra.toml").write_text(
         '[[scopes]]\nid = "extra"\npath = "extra"\nmap = "extra/AGENTS.md"\n'
         'point_of_view = "Extra."\nowns = ["extra"]\nguardrails = []\nedges = []\n',
@@ -1352,8 +1331,7 @@ def test_required_scopes_recompute_terminal_owners_across_topology_changes(tmp_p
     )
     codeowners = root / ".github/CODEOWNERS"
     codeowners.write_text(
-        codeowners.read_text(encoding="utf-8")
-        + "/.murlocs/layers/extra.toml @extra\n",
+        codeowners.read_text(encoding="utf-8") + "/.murlocs/layers/extra.toml @extra\n",
         encoding="utf-8",
     )
     expanded = json.loads(
@@ -1562,9 +1540,7 @@ def test_legacy_scope_removal_terminal_fails_closed_and_reports_current_owners(t
     record_path = root / ".murlocs/curation/remove-app-scope.toml"
     text = record_path.read_text(encoding="utf-8")
     record_path.write_text(
-        "\n".join(
-            line for line in text.splitlines() if not line.startswith("required_scopes =")
-        )
+        "\n".join(line for line in text.splitlines() if not line.startswith("required_scopes ="))
         + "\n",
         encoding="utf-8",
     )

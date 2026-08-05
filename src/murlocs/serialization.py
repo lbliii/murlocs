@@ -218,9 +218,13 @@ def _array(values: list[str]) -> str:
 def _append_annotation(lines: list[str], annotation: Any) -> None:
     if annotation is None:
         return
-    lines.append("annotation = { " + ", ".join(
-        f"{key} = {_quote(annotation[key])}" for key in ("id", "kind", "file", "version")
-    ) + " }")
+    lines.append(
+        "annotation = { "
+        + ", ".join(
+            f"{key} = {_quote(annotation[key])}" for key in ("id", "kind", "file", "version")
+        )
+        + " }"
+    )
 
 
 def _bare_key(value: str) -> str:
@@ -230,9 +234,7 @@ def _bare_key(value: str) -> str:
 def _ownership(value: Any) -> str:
     if isinstance(value, list):
         return _array(value)
-    entries = ", ".join(
-        f"{_bare_key(kind)} = {_array(paths)}" for kind, paths in value.items()
-    )
+    entries = ", ".join(f"{_bare_key(kind)} = {_array(paths)}" for kind, paths in value.items())
     return "{ " + entries + " }"
 
 

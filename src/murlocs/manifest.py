@@ -144,9 +144,7 @@ def parse_manifest_data(
         )
         unknown_judgments = sorted(set(judgments) - {scope.id for scope in scopes})
         if unknown_judgments:
-            raise ValueError(
-                "judgments reference unknown scopes: " + ", ".join(unknown_judgments)
-            )
+            raise ValueError("judgments reference unknown scopes: " + ", ".join(unknown_judgments))
         invariants = tuple(
             Invariant(
                 id=str(_required(item, "id", "invariants[]")),
@@ -228,9 +226,7 @@ def _parse_annotation(value: Any) -> SourceAnnotation | None:
         )
     missing = sorted(fields - set(value))
     if missing:
-        raise ValueError(
-            "invariants[].annotation is missing fields: " + ", ".join(missing)
-        )
+        raise ValueError("invariants[].annotation is missing fields: " + ", ".join(missing))
     if not all(isinstance(value[field], str) for field in fields):
         raise TypeError("invariants[].annotation fields must be strings")
     return SourceAnnotation(

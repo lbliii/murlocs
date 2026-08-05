@@ -143,9 +143,7 @@ def recover_repair(root: Path, *, dry_run: bool) -> tuple[str, list[str]]:
             "leave the journal for manual remediation"
         )
     changed_updates = [
-        item
-        for item, current in zip(updates, states, strict=True)
-        if current == item.after
+        item for item, current in zip(updates, states, strict=True) if current == item.after
     ]
     paths = [item.path for item in changed_updates]
     if not dry_run:

@@ -220,9 +220,7 @@ def parse_record_data(
         raise MurlocsError(f"{filename}.base_source_sha256 must be 64 lowercase hex characters")
     required_owners = _string_array(data, "required_owners", filename)
     required_scopes = (
-        _string_array(data, "required_scopes", filename)
-        if "required_scopes" in data
-        else ()
+        _string_array(data, "required_scopes", filename) if "required_scopes" in data else ()
     )
     for scope_id in required_scopes:
         _validate_id(scope_id)
@@ -261,15 +259,9 @@ def parse_record_data(
                 review_ref=_optional_string(table, "review_ref", context),
                 before_sha256=_optional_sha256(table, "before_sha256", context),
                 after_sha256=_optional_sha256(table, "after_sha256", context),
-                source_before_sha256=_optional_sha256(
-                    table, "source_before_sha256", context
-                ),
-                source_after_sha256=_optional_sha256(
-                    table, "source_after_sha256", context
-                ),
-                related_proposal_id=_optional_id(
-                    table, "related_proposal_id", context
-                ),
+                source_before_sha256=_optional_sha256(table, "source_before_sha256", context),
+                source_after_sha256=_optional_sha256(table, "source_after_sha256", context),
+                related_proposal_id=_optional_id(table, "related_proposal_id", context),
             )
         )
     _validate_events(events, filename, intent)
@@ -424,9 +416,7 @@ def review_record(root: Path, record: CurationRecord) -> dict[str, Any]:
             shadow_findings.append(item.payload())
         findings.append(item)
     try:
-        before, after, structural = _apply_proposal(
-            fragments[source_index], record, manifest
-        )
+        before, after, structural = _apply_proposal(fragments[source_index], record, manifest)
         for item in structural:
             if item.code == "exact_duplicate" and item.payload() not in duplicate_findings:
                 duplicate_findings.append(item.payload())
@@ -749,9 +739,7 @@ def decide_record(
     tree_guards: tuple[TreeGuard, ...] = ()
     if decision == "withdrawn":
         if actor != record.proposer:
-            raise MurlocsError(
-                f"withdraw actor must match attributed proposer {record.proposer!r}"
-            )
+            raise MurlocsError(f"withdraw actor must match attributed proposer {record.proposer!r}")
     else:
         disk = read_disk_sources(root)
         manifest = _manifest_from_disk(root, disk)
@@ -830,9 +818,7 @@ def apply_record(
     )
     updated = replace(record, events=(*record.events, event))
     updates = (
-        FileUpdate(
-            plan["source_path"], plan["source_bytes"], plan["rendered_bytes"], "source"
-        ),
+        FileUpdate(plan["source_path"], plan["source_bytes"], plan["rendered_bytes"], "source"),
         FileUpdate(
             record_path,
             record_before,
@@ -882,12 +868,14 @@ def supersede_record(
         raise MurlocsError("superseded proposal must currently be promoted")
     if new.state != "accepted" or new.intent != "replace":
         raise MurlocsError("replacement proposal must currently be accepted")
+
     def identity(item: CurationRecord) -> tuple[str, str | None, str]:
         return (
             item.target_source,
             item.target_scope,
             item.subject_kind,
         )
+
     if identity(old) != identity(new):
         raise MurlocsError("superseding proposal must target the same active subject")
     if old.subject_kind not in LIST_SUBJECT_FIELDS and old.target_key != new.target_key:
@@ -923,9 +911,7 @@ def supersede_record(
         related_proposal_id=new_proposal_id,
     )
     updates = (
-        FileUpdate(
-            plan["source_path"], plan["source_bytes"], plan["rendered_bytes"], "source"
-        ),
+        FileUpdate(plan["source_path"], plan["source_bytes"], plan["rendered_bytes"], "source"),
         FileUpdate(
             old_path,
             old_before,
@@ -965,13 +951,9 @@ def recover_record_transaction(
 ) -> dict[str, Any]:
     """Preview or explicitly apply recovery of one exact curation transaction."""
     proposal_ids = (
-        (proposal_id, with_proposal_id)
-        if with_proposal_id is not None
-        else (proposal_id,)
+        (proposal_id, with_proposal_id) if with_proposal_id is not None else (proposal_id,)
     )
-    records = [
-        load_record(proposal_path(root, item), expected_id=item) for item in proposal_ids
-    ]
+    records = [load_record(proposal_path(root, item), expected_id=item) for item in proposal_ids]
     sources = {record.target_source for record in records}
     if len(sources) != 1:
         raise MurlocsError("recovery records must name the same exact active source")
@@ -1079,9 +1061,7 @@ def _semantic_recovery_plan(
     manifest = _manifest_from_disk(root, disk)
     fragments = copy.deepcopy(disk.fragments)
     try:
-        _before, _after, structural = _apply_proposal(
-            fragments[source_index], inverse, manifest
-        )
+        _before, _after, structural = _apply_proposal(fragments[source_index], inverse, manifest)
     except MurlocsError as exc:
         raise MurlocsError(
             "accepted addition is not the exact current subject; manual remediation is required"
@@ -1229,9 +1209,9 @@ def _apply_event(
 
 
 def _subject_digest(value: Any) -> str:
-    canonical = json.dumps(
-        value, ensure_ascii=False, sort_keys=True, separators=(",", ":")
-    ).encode("utf-8")
+    canonical = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode(
+        "utf-8"
+    )
     return sha256_bytes(canonical)
 
 
@@ -1388,7 +1368,7 @@ def _terminal_review(root: Path, record: CurationRecord) -> dict[str, Any]:
             current_owners = all_owners
         current_hash = source.sha256
         active = True
-    except (MurlocsError, OSError, ValueError):
+    except MurlocsError, OSError, ValueError:
         pass
     return {
         "ok": not any(item.blocking for item in findings),
@@ -1496,9 +1476,7 @@ def _affected_required_owners(
     return tuple(sorted(owners))
 
 
-def _terminal_affected_chains(
-    manifest: Manifest, record: CurationRecord
-) -> list[dict[str, Any]]:
+def _terminal_affected_chains(manifest: Manifest, record: CurationRecord) -> list[dict[str, Any]]:
     """Recover stable owner-routing scope ids for an already-applied record."""
     if record.subject_kind in {*LIST_SUBJECT_FIELDS, "check", "scope", "invariant"}:
         return [{"scope": scope.id} for scope in manifest.scopes]
@@ -1515,9 +1493,7 @@ def _terminal_affected_chains(
     ]
 
 
-def _terminal_current_scope_ids(
-    manifest: Manifest, record: CurationRecord
-) -> tuple[str, ...]:
+def _terminal_current_scope_ids(manifest: Manifest, record: CurationRecord) -> tuple[str, ...]:
     """Re-evaluate current consumers from persisted terminal routing evidence."""
     if record.subject_kind in {*LIST_SUBJECT_FIELDS, "check"}:
         return tuple(sorted(scope.id for scope in manifest.scopes))
@@ -1534,9 +1510,7 @@ def _terminal_current_scope_ids(
         return tuple(sorted(current_ids.intersection(record.required_scopes)))
     return tuple(
         sorted(
-            scope.id
-            for scope in manifest.scopes
-            if target in _scope_chain(manifest, scope.path)
+            scope.id for scope in manifest.scopes if target in _scope_chain(manifest, scope.path)
         )
     )
 
@@ -1544,8 +1518,7 @@ def _terminal_current_scope_ids(
 def _terminal_routing_findings(record: CurationRecord) -> list[CurationFinding]:
     """Reject impossible audit snapshots while subject semantics own safe routing."""
     global_by_definition = record.subject_kind in {*LIST_SUBJECT_FIELDS, "check"} or (
-        record.subject_kind in {"scope", "invariant"}
-        and record.intent in {"add", "remove"}
+        record.subject_kind in {"scope", "invariant"} and record.intent in {"add", "remove"}
     )
     if record.required_scopes and global_by_definition and "root" not in record.required_scopes:
         return [
@@ -1573,9 +1546,7 @@ def _decision_owner_findings(
     return findings
 
 
-def _target_scope_address_error(
-    record: CurationRecord, manifest: Manifest
-) -> str | None:
+def _target_scope_address_error(record: CurationRecord, manifest: Manifest) -> str | None:
     """Validate scope-addressed subjects without treating the field as confinement."""
     addressed: str | None = None
     if record.subject_kind == "scope":
@@ -1599,9 +1570,7 @@ def _target_scope_address_error(
     return None
 
 
-def _record_addressed_scope(
-    record: CurationRecord, manifest: Manifest
-) -> str | None:
+def _record_addressed_scope(record: CurationRecord, manifest: Manifest) -> str | None:
     if record.target_scope is not None:
         return record.target_scope
     if record.subject_kind == "scope":
@@ -1662,9 +1631,7 @@ def _effective_structural_findings(
         if record.intent in {"replace", "remove"}:
             target_values = disk.fragments[source_index].get(field, [])
             matches = [
-                value
-                for value in target_values
-                if stable_list_key(value) == record.target_key
+                value for value in target_values if stable_list_key(value) == record.target_key
             ]
             if len(matches) == 1:
                 current = matches[0]
@@ -1838,8 +1805,7 @@ def _apply_table_array(
                     [
                         CurationFinding(
                             "immutable_scope_identity",
-                            "scope replacement may not change path or map: "
-                            + "; ".join(changes),
+                            "scope replacement may not change path or map: " + "; ".join(changes),
                         )
                     ],
                 )
@@ -1972,12 +1938,10 @@ def _affected_chains(current: Manifest, proposed: Manifest | None) -> list[dict[
         if not changed_maps.intersection(maps):
             continue
         current_bytes = sum(
-            len(current_outputs.get(scope.map, "").encode("utf-8"))
-            for scope in current_chain
+            len(current_outputs.get(scope.map, "").encode("utf-8")) for scope in current_chain
         )
         proposed_bytes = sum(
-            len(proposed_outputs.get(scope.map, "").encode("utf-8"))
-            for scope in proposed_chain
+            len(proposed_outputs.get(scope.map, "").encode("utf-8")) for scope in proposed_chain
         )
         chains.append(
             {

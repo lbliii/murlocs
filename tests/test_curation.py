@@ -133,9 +133,7 @@ def test_review_is_deterministic_read_only_and_has_human_json_mcp_parity(tmp_pat
         .call("curate.review", id="add-review-rule", repo=str(root))
         .structured
     )
-    programmatic = build_cli().call(
-        "curate.review", id="add-review-rule", repo=str(root)
-    )
+    programmatic = build_cli().call("curate.review", id="add-review-rule", repo=str(root))
     tool = next(
         item for item in MCPClient(build_cli()).list_tools() if item.name == "curate.review"
     )
@@ -285,9 +283,7 @@ def test_scope_replacement_cannot_change_path_or_map_identity(tmp_path):
     )
     assert report["ok"] is False
     finding = next(
-        item
-        for item in report["findings"]
-        if item["code"] == "immutable_scope_identity"
+        item for item in report["findings"] if item["code"] == "immutable_scope_identity"
     )
     assert finding["blocking"] is True
     assert "path 'docs' -> 'moved-docs'" in finding["message"]
@@ -357,7 +353,7 @@ def test_review_reports_when_a_later_duplicate_would_become_active(tmp_path):
     layers = root / ".murlocs" / "layers"
     layers.mkdir()
     (layers / "later.toml").write_text(
-        f'operating_rules = [{json.dumps(current)}]\n', encoding="utf-8"
+        f"operating_rules = [{json.dumps(current)}]\n", encoding="utf-8"
     )
     manifest = root / ".murlocs" / "manifest.toml"
     manifest.write_text(
@@ -375,9 +371,7 @@ def test_review_reports_when_a_later_duplicate_would_become_active(tmp_path):
     remove.extend(["--target-key", stable_list_key(current)])
     assert invoke(*remove).exit_code == 0
     report = json.loads(
-        invoke(
-            "curate", "review", "activate-later", "--repo", str(root), "--format", "json"
-        ).output
+        invoke("curate", "review", "activate-later", "--repo", str(root), "--format", "json").output
     )
     assert any("newly active" in item["message"] for item in report["shadowing"])
     assert report["affected_chains"][0]["delta_bytes"] == 0
@@ -416,9 +410,7 @@ def test_structured_missing_proposal_preserves_operational_error_exit(tmp_path):
     root = tmp_path / "repo"
     initialize(root)
 
-    result = invoke(
-        "curate", "review", "missing", "--repo", str(root), "--format", "json"
-    )
+    result = invoke("curate", "review", "missing", "--repo", str(root), "--format", "json")
 
     assert result.exit_code == 1
     assert result.stderr == ""
@@ -485,10 +477,12 @@ def test_current_owners_are_recomputed_and_propose_is_not_agent_visible(tmp_path
     layers.mkdir()
     (layers / "owned.toml").write_text('pillars = ["Owned layer."]\n', encoding="utf-8")
     manifest.write_text(
-        manifest.read_text(encoding="utf-8").replace(
+        manifest.read_text(encoding="utf-8")
+        .replace(
             "max_active_bytes = 24576",
             'max_active_bytes = 24576\nowners = ["@platform"]',
-        ).replace(
+        )
+        .replace(
             "require_scope_invariants = false",
             "require_scope_invariants = false\nvalidate_codeowners = true",
         )
@@ -499,8 +493,7 @@ def test_current_owners_are_recomputed_and_propose_is_not_agent_visible(tmp_path
     codeowners = root / ".github" / "CODEOWNERS"
     codeowners.parent.mkdir()
     codeowners.write_text(
-        "/.murlocs/manifest.toml @platform\n"
-        "/.murlocs/layers/owned.toml @domain\n",
+        "/.murlocs/manifest.toml @platform\n/.murlocs/layers/owned.toml @domain\n",
         encoding="utf-8",
     )
     assert invoke("compile", "--repo", str(root)).exit_code == 0

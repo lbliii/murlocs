@@ -71,9 +71,7 @@ def translate_stewards_manifest(
         name for name, check in checks.items() if not check.get("proof_contains")
     )
     aliased_severities = tuple(
-        item["id"]
-        for item in invariants
-        if item["severity"] in {"P0", "P1", "P2", "P3"}
+        item["id"] for item in invariants if item["severity"] in {"P0", "P1", "P2", "P3"}
     )
     findings: list[TranslationFinding] = []
     if missing_anchors:
@@ -81,9 +79,7 @@ def translate_stewards_manifest(
             TranslationFinding(
                 level="debt",
                 code="missing-proof-anchor",
-                message=(
-                    "registered checks without proof_contains remain unanchored proof debt"
-                ),
+                message=("registered checks without proof_contains remain unanchored proof debt"),
                 subjects=missing_anchors,
             )
         )
@@ -251,9 +247,7 @@ def _render_legacy_root(
         invariants = grouped.get(steward["id"], [])
         machine = sum(item.get("verification") == "machine" for item in invariants)
         percent = f"{100 * machine // len(invariants)}%" if invariants else "—"
-        output.append(
-            f"| {steward['id']} | `{steward['path']}` | {len(invariants)} | {percent} |"
-        )
+        output.append(f"| {steward['id']} | `{steward['path']}` | {len(invariants)} | {percent} |")
     root_invariants = grouped.get("root", [])
     if root_invariants:
         output.extend(
@@ -329,8 +323,7 @@ def _translate_scopes(raw: list[Any]) -> list[dict[str, Any]]:
         if not isinstance(raw_owns, dict):
             raise MurlocsError(f"{context}.owns must be a table")
         owns = {
-            str(kind): _strings(paths, f"{context}.owns.{kind}")
-            for kind, paths in raw_owns.items()
+            str(kind): _strings(paths, f"{context}.owns.{kind}") for kind, paths in raw_owns.items()
         }
         scopes.append(
             {
@@ -704,9 +697,7 @@ def render_legacy_layered_maps(
     return render_legacy_steward_maps(flattened)
 
 
-def _compose_legacy(
-    data: dict[str, Any], layer_datas: list[dict[str, Any]]
-) -> dict[str, Any]:
+def _compose_legacy(data: dict[str, Any], layer_datas: list[dict[str, Any]]) -> dict[str, Any]:
     """Flatten a layered steward network into one effective legacy dict for rendering only."""
     _reject_unknown("layered steward manifest", data, LEGACY_LAYERED_TOP_LEVEL)
     flat: dict[str, Any] = {

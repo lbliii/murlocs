@@ -140,9 +140,7 @@ def test_git_commit_recognition_ignores_inert_text_and_ordinary_shell(command: s
     assert adapter._is_git_commit({"command": command}) is False
 
 
-def test_non_commit_shell_does_not_run_index_gate(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
+def test_non_commit_shell_does_not_run_index_gate(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     root = _repo(tmp_path)
     monkeypatch.setattr(adapter, "run_hook", lambda *_args, **_kwargs: pytest.fail("gate ran"))
     payload = {"cwd": str(root), "sessionId": "one", "toolArgs": {"command": "echo git commit"}}
@@ -267,9 +265,7 @@ def test_entrypoint_exits_nonzero_for_host_owned_failure_policy(
 
 def test_missing_edit_path_becomes_a_structured_remediation_packet(tmp_path: Path):
     root = _repo(tmp_path)
-    response = adapter.handle(
-        "post-edit", {"cwd": str(root), "sessionId": "one", "toolArgs": {}}
-    )
+    response = adapter.handle("post-edit", {"cwd": str(root), "sessionId": "one", "toolArgs": {}})
     packet = json.loads(response["additionalContext"])
     assert packet["outcomes"][0]["code"] == "MURLOCS_ACTIVATION_UNAVAILABLE"
     assert packet["outcomes"][0]["next_actions"][0]["authority"] == "integration"
