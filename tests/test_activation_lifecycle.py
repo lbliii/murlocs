@@ -82,8 +82,10 @@ def keys_below(value: Any) -> set[str]:
 
 
 def valid_scalar(value: Any) -> bool:
-    return isinstance(value, str) and "\0" not in value and all(
-        not 0xD800 <= ord(char) <= 0xDFFF for char in value
+    return (
+        isinstance(value, str)
+        and "\0" not in value
+        and all(not 0xD800 <= ord(char) <= 0xDFFF for char in value)
     )
 
 
@@ -432,8 +434,7 @@ def validate_case(data: dict[str, Any], case: dict[str, Any]) -> None:
         receipt_operations = [receipt["operation"] for receipt in operations]
         source_operation = parsed_outcome["source"]["operation"]
         provenance_operations = {
-            finding["provenance"]["operation"]
-            for finding in parsed_outcome["findings"]
+            finding["provenance"]["operation"] for finding in parsed_outcome["findings"]
         }
         if source_operation == "aggregate":
             require(
@@ -460,8 +461,7 @@ def validate_case(data: dict[str, Any], case: dict[str, Any]) -> None:
         )
         if "impact" in receipt_operations and source_operation in {"impact", "aggregate"}:
             require(
-                correlation["dependency_id"]
-                == host_context.get("impact_dependency_id"),
+                correlation["dependency_id"] == host_context.get("impact_dependency_id"),
                 f"{case['id']}: outcome dependency mismatch",
             )
     require(response.get("writes") == [], f"{case['id']}: lifecycle attempted a write")
@@ -722,9 +722,7 @@ MUTATIONS: list[tuple[str, Mutation]] = [
         "impact dependency mismatch",
         mutate(
             "prospective-impact-focused",
-            lambda c: c["response"]["operations"][0].update(
-                dependency_after_id="dependency:other"
-            ),
+            lambda c: c["response"]["operations"][0].update(dependency_after_id="dependency:other"),
         ),
     ),
     (
@@ -903,9 +901,7 @@ MUTATIONS: list[tuple[str, Mutation]] = [
             "task-start-healthy",
             lambda c: (
                 c["request"]["host_context"].update(manifest_identity=None),
-                c["request"]["host_context"]["cache_offer"]["proof"].update(
-                    manifest_identity=None
-                ),
+                c["request"]["host_context"]["cache_offer"]["proof"].update(manifest_identity=None),
             ),
         ),
     ),
@@ -947,9 +943,7 @@ def test_normative_mutation_is_rejected(name: str, mutation: Mutation):
 def test_outcome_sidecar_is_forward_compatible_and_unknown_fields_are_ignored():
     data = copy.deepcopy(load_fixture())
     healthy = by_id(data, "task-start-healthy")["response"]
-    healthy["outcome"]["future_extension"] = {
-        "shell": "ignored metadata, never an action"
-    }
+    healthy["outcome"]["future_extension"] = {"shell": "ignored metadata, never an action"}
     healthy["unknown_activation_extension"] = {"also": "ignored"}
     by_id(data, "prospective-impact-focused")["response"].pop("outcome")
     validate_contract_fixture(data)
@@ -995,9 +989,9 @@ def test_aggregate_outcome_requires_receipt_provenance_and_impact_dependency():
     validate_contract_fixture(data)
 
     bad_provenance = copy.deepcopy(data)
-    by_id(bad_provenance, "post-edit-healthy")["response"]["outcome"]["findings"][0][
-        "provenance"
-    ]["operation"] = "aggregate"
+    by_id(bad_provenance, "post-edit-healthy")["response"]["outcome"]["findings"][0]["provenance"][
+        "operation"
+    ] = "aggregate"
     with pytest.raises(ContractViolation, match="provenance lacks a receipt"):
         validate_contract_fixture(bad_provenance)
 
@@ -1023,10 +1017,7 @@ def test_trusted_tokens_are_out_of_band_and_impact_dependencies_are_operation_lo
     assert "repository" not in wire
     assert "state_id" not in keys_below(wire)
     assert "impact_dependency_id" not in healthy["request"]["host_context"]
-    assert (
-        "impact_dependency_id"
-        not in healthy["request"]["host_context"]["cache_offer"]["proof"]
-    )
+    assert "impact_dependency_id" not in healthy["request"]["host_context"]["cache_offer"]["proof"]
     assert "dependency_before_id" not in healthy["response"]["operations"][0]
     injected = {**wire, "host_context": healthy["request"]["host_context"]}
     assert request_errors(injected) == ["host_context"]
@@ -1186,8 +1177,7 @@ def test_document_examples_and_diagrams_are_machine_readable():
 
 def test_contract_json_rejects_duplicate_members():
     duplicated_receipt = (
-        '{"operation":"impact","output_sha256":"sha256:first",'
-        '"output_sha256":"sha256:second"}'
+        '{"operation":"impact","output_sha256":"sha256:first","output_sha256":"sha256:second"}'
     )
     with pytest.raises(ContractViolation, match="duplicate JSON member: output_sha256"):
         parse_json_strict(duplicated_receipt)

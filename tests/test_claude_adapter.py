@@ -94,15 +94,15 @@ def test_production_bridge_exercises_every_configured_lifecycle_event(
 
     base = {"cwd": str(root), "session_id": "production-session"}
     assert adapter.handle("task-start", base) == {}
-    assert adapter.handle(
-        "prospective-impact", {**base, "tool_input": {"file_path": str(target)}}
-    ) == {}
-    assert adapter.handle(
-        "post-edit", {**base, "tool_input": {"file_path": str(target)}}
-    ) == {}
-    assert adapter.handle(
-        "pre-commit", {**base, "tool_input": {"command": "git  commit -m safe"}}
-    ) == {}
+    assert (
+        adapter.handle("prospective-impact", {**base, "tool_input": {"file_path": str(target)}})
+        == {}
+    )
+    assert adapter.handle("post-edit", {**base, "tool_input": {"file_path": str(target)}}) == {}
+    assert (
+        adapter.handle("pre-commit", {**base, "tool_input": {"command": "git  commit -m safe"}})
+        == {}
+    )
     assert adapter.handle("pre-completion", base) == {}
 
     assert calls == [
@@ -269,9 +269,7 @@ def test_git_commit_recognition_ignores_inert_text_and_ordinary_shell(command: s
     assert adapter._is_git_commit({"command": command}) is False
 
 
-def test_non_commit_shell_does_not_run_index_gate(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
+def test_non_commit_shell_does_not_run_index_gate(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     root = _repo(tmp_path)
     monkeypatch.setattr(adapter, "run_hook", lambda *_args, **_kwargs: pytest.fail("gate ran"))
     payload = {"cwd": str(root), "session_id": "one", "tool_input": {"command": "echo git commit"}}

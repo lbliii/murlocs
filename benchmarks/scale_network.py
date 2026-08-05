@@ -76,9 +76,7 @@ def build_fixture(root: Path) -> None:
         layer_id = f"domain-{domain:02d}"
         owner = TEAM_OWNERS[domain % len(TEAM_OWNERS)]
         layer_path = f".murlocs/layers/{layer_id}.toml"
-        layers.append(
-            {"id": layer_id, "kind": "domain", "path": layer_path, "owners": [owner]}
-        )
+        layers.append({"id": layer_id, "kind": "domain", "path": layer_path, "owners": [owner]})
         codeowners.append(f"/{layer_path} {owner}")
 
         scopes: list[dict[str, Any]] = []
@@ -512,15 +510,12 @@ def run_pilot(root: Path, artifact_root: Path, samples: int = 5) -> dict[str, An
             "owner_count": len(source_owners),
             "owners": source_owners,
             "maximum_scope_depth": max(
-                0 if scope.path == "." else len(Path(scope.path).parts)
-                for scope in manifest.scopes
+                0 if scope.path == "." else len(Path(scope.path).parts) for scope in manifest.scopes
             ),
             "total_generated_bytes": generated_bytes,
             "maximum_active_chain_bytes": active_by_scope[max_scope],
             "maximum_active_chain_scope": max_scope,
-            "maximum_active_to_total_ratio": round(
-                active_by_scope[max_scope] / generated_bytes, 4
-            ),
+            "maximum_active_to_total_ratio": round(active_by_scope[max_scope] / generated_bytes, 4),
             "active_budget_bytes": manifest.max_active_bytes,
             "byte_deterministic_recompile": deterministic,
             "generated_snapshot_sha256": _digest_snapshot(second),

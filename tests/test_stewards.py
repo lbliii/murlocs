@@ -36,9 +36,7 @@ def test_chirp_translation_preserves_structured_intent(tmp_path):
         ("tests", ("tests/test_templating.py",)),
         ("docs", ("docs/hypermedia.md",)),
     ]
-    assert templating.judgment.advocate == (
-        "DOM-level assertions with actionable diagnostics.",
-    )
+    assert templating.judgment.advocate == ("DOM-level assertions with actionable diagnostics.",)
     assert manifest.invariants[0].verification == "command"
     assert result.findings[0].code == "missing-proof-anchor"
     assert result.findings[0].subjects == ("templating-suite",)
@@ -156,9 +154,7 @@ def test_registered_command_paths_are_checked_without_execution(tmp_path):
 
 def test_registered_commands_are_never_executed(tmp_path):
     translated = translate_stewards_manifest(load_fixture("kida"))
-    translated.manifest["checks"]["compiler-suite"]["invoke"] = (
-        "touch tests/side-effect.txt"
-    )
+    translated.manifest["checks"]["compiler-suite"]["invoke"] = "touch tests/side-effect.txt"
     manifest = parse_manifest_data(tmp_path, translated.manifest)
     (tmp_path / "tests").mkdir()
     (tmp_path / "tests" / "test_compiler.py").write_text(

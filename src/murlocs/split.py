@@ -269,9 +269,7 @@ def plan_split_layers(
         automatic = _scope_destination(str(path), selected, scope_paths)
         destination = exemption_assignments.get(str(path), automatic)
         if str(path) in exemption_assignments:
-            decisions.append(
-                f"coverage-exemption:{path} explicitly assigned to {destination}"
-            )
+            decisions.append(f"coverage-exemption:{path} explicitly assigned to {destination}")
         if destination != "root":
             fragments[destination].setdefault("coverage", {}).setdefault("exemptions", {})[path] = (
                 exemptions.pop(path)
@@ -532,9 +530,7 @@ def _strip_provenance(text: str) -> str:
     # Annotation bindings are generated, reviewed attachment metadata just like
     # the source-layer footer. They do not change an invariant's statement.
     guidance = "\n".join(
-        line
-        for line in guidance.splitlines()
-        if not line.startswith("  - Evidence provenance: ")
+        line for line in guidance.splitlines() if not line.startswith("  - Evidence provenance: ")
     )
     return guidance.rstrip() + "\n"
 

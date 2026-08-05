@@ -219,9 +219,7 @@ def codeowners_requirements_for(
         else ".github/CODEOWNERS"
     )
     entries = (
-        parse_codeowners(codeowners.read_text(encoding="utf-8"))
-        if codeowners is not None
-        else {}
+        parse_codeowners(codeowners.read_text(encoding="utf-8")) if codeowners is not None else {}
     )
     requirements: list[CodeownersRequirement] = []
     for source in manifest.sources:

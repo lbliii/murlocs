@@ -288,7 +288,7 @@ def test_resolver_accepts_indented_real_comments(tmp_path, path, content, identi
 
 def test_resolver_accepts_a_real_inline_python_comment_but_not_a_quoted_prefix(tmp_path):
     (tmp_path / "source.py").write_text(
-        'value = "# murlocs:annotation/v1 evidence \\\"quoted.marker\\\""\n'
+        'value = "# murlocs:annotation/v1 evidence \\"quoted.marker\\""\n'
         'value = 1  # murlocs:annotation/v1 evidence "actual.marker"\n',
         encoding="utf-8",
     )
@@ -320,6 +320,8 @@ def test_resolver_fails_closed_when_declared_file_changes_during_open(tmp_path, 
     assert result.findings == (
         AnnotationResolverFinding("annotation.excluded", "race.marker", "invariant-0"),
     )
+
+
 def test_resolver_does_not_guess_markers_inside_strings_or_multiline_comments(tmp_path):
     (tmp_path / "source.py").write_text(
         "\n".join(
@@ -332,9 +334,7 @@ def test_resolver_does_not_guess_markers_inside_strings_or_multiline_comments(tm
         ),
         encoding="utf-8",
     )
-    result = resolve_annotations(
-        manifest(tmp_path, [annotation("outside.comment", "source.py")])
-    )
+    result = resolve_annotations(manifest(tmp_path, [annotation("outside.comment", "source.py")]))
     assert [(item.identifier, item.location.line) for item in result.bindings] == [
         ("outside.comment", 4)
     ]
@@ -350,9 +350,7 @@ def test_resolver_does_not_guess_markers_inside_strings_or_multiline_comments(tm
         ),
         encoding="utf-8",
     )
-    result = resolve_annotations(
-        manifest(tmp_path, [annotation("outside.comment", "source.js")])
-    )
+    result = resolve_annotations(manifest(tmp_path, [annotation("outside.comment", "source.js")]))
     assert [(item.identifier, item.location.line) for item in result.bindings] == [
         ("outside.comment", 4)
     ]
@@ -404,9 +402,7 @@ def test_validation_reports_marker_deletion_without_a_partial_binding(tmp_path):
     resolution = resolve_annotations(parsed)
     assert resolution.bindings == ()
     assert resolution.findings == (
-        AnnotationResolverFinding(
-            "annotation.missing", "deletion.marker", "invariant-0"
-        ),
+        AnnotationResolverFinding("annotation.missing", "deletion.marker", "invariant-0"),
     )
     finding = annotation_findings(parsed)[0]
     assert (finding.code, finding.annotation_id, finding.locations) == (
@@ -428,8 +424,7 @@ def test_validation_reports_copy_paste_duplication_at_every_location(tmp_path):
     resolution = resolve_annotations(parsed)
     assert resolution.bindings == ()
     assert [
-        (finding.code, finding.identifier, finding.location.line)
-        for finding in resolution.findings
+        (finding.code, finding.identifier, finding.location.line) for finding in resolution.findings
     ] == [
         ("annotation.duplicate", "copied.marker", 1),
         ("annotation.duplicate", "copied.marker", 3),
@@ -439,9 +434,7 @@ def test_validation_reports_copy_paste_duplication_at_every_location(tmp_path):
 
 def test_validation_reports_a_declared_file_rename_as_excluded(tmp_path):
     source = tmp_path / "source.py"
-    source.write_text(
-        '# murlocs:annotation/v1 evidence "rename.marker"\n', encoding="utf-8"
-    )
+    source.write_text('# murlocs:annotation/v1 evidence "rename.marker"\n', encoding="utf-8")
     parsed = manifest(tmp_path, [annotation("rename.marker", "source.py")])
     assert resolve_annotations(parsed).findings == ()
 
@@ -450,9 +443,7 @@ def test_validation_reports_a_declared_file_rename_as_excluded(tmp_path):
     resolution = resolve_annotations(parsed)
     assert resolution.bindings == ()
     assert resolution.findings == (
-        AnnotationResolverFinding(
-            "annotation.excluded", "rename.marker", "invariant-0"
-        ),
+        AnnotationResolverFinding("annotation.excluded", "rename.marker", "invariant-0"),
     )
     finding = annotation_findings(parsed)[0]
     assert (finding.annotation_id, finding.source_paths, finding.annotation_boundary) == (
@@ -510,15 +501,11 @@ def test_validation_preserves_location_across_line_ending_conversion(tmp_path):
 
 def test_validation_reresolves_concurrent_manifest_and_source_edits(tmp_path):
     source = tmp_path / "source.py"
-    source.write_text(
-        '# murlocs:annotation/v1 evidence "before.marker"\n', encoding="utf-8"
-    )
+    source.write_text('# murlocs:annotation/v1 evidence "before.marker"\n', encoding="utf-8")
     before = manifest(tmp_path, [annotation("before.marker", "source.py")])
     assert resolve_annotations(before).findings == ()
 
-    source.write_text(
-        '# murlocs:annotation/v1 evidence "after.marker"\n', encoding="utf-8"
-    )
+    source.write_text('# murlocs:annotation/v1 evidence "after.marker"\n', encoding="utf-8")
     stale = resolve_annotations(before)
     assert stale.bindings == ()
     assert [finding.code for finding in stale.findings] == [
@@ -604,8 +591,7 @@ def test_validation_covers_contract_states(tmp_path, identifier, path, content, 
     payload = next(
         item
         for item in outcome["findings"]
-        if item["code"]
-        == f"MURLOCS_CHECK_{code.replace('.', '_').replace('-', '_').upper()}"
+        if item["code"] == f"MURLOCS_CHECK_{code.replace('.', '_').replace('-', '_').upper()}"
     )
     assert (payload["status"], payload["severity"], payload["resolution_class"]) == (
         "blocking",

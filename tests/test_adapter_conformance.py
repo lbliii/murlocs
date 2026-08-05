@@ -64,9 +64,7 @@ class FixtureAdapter(AdapterDriver):
             "deprecated_versions": [],
         }
 
-    def invoke(
-        self, request: Mapping[str, Any], context: ConformanceContext
-    ) -> Mapping[str, Any]:
+    def invoke(self, request: Mapping[str, Any], context: ConformanceContext) -> Mapping[str, Any]:
         control = context.control
         fault = control["fault"]
         event = request["event"]
@@ -108,9 +106,7 @@ class FixtureAdapter(AdapterDriver):
                     trusted,
                     status="invalid",
                     cache="forbidden" if agent_token else "miss",
-                    fallback=(
-                        ["generated-guidance", "git-hook", "ci"] if agent_token else []
-                    ),
+                    fallback=(["generated-guidance", "git-hook", "ci"] if agent_token else []),
                 ),
             }
         if fault == "absent":
@@ -222,9 +218,7 @@ class FixtureAdapter(AdapterDriver):
         return {"trusted_context": trusted, "response": response}
 
     @staticmethod
-    def _cache_proof(
-        request: Mapping[str, Any], trusted: Mapping[str, Any]
-    ) -> dict[str, Any]:
+    def _cache_proof(request: Mapping[str, Any], trusted: Mapping[str, Any]) -> dict[str, Any]:
         operations = {
             "task-start": ["check"],
             "prospective-impact": ["impact"],
@@ -435,9 +429,7 @@ class FixtureAdapter(AdapterDriver):
             outcome=None,
             silent=silent,
             fallback=fallback,
-            next_actions=next_actions or (
-                [self._fallback_action(fallback[0])] if fallback else []
-            ),
+            next_actions=next_actions or ([self._fallback_action(fallback[0])] if fallback else []),
             blocking=None,
         )
 
@@ -492,41 +484,31 @@ def test_reports_are_deterministic_and_do_not_expose_opaque_tokens(tmp_path: Pat
 
 
 class PromptingAdapter(FixtureAdapter):
-    def invoke(
-        self, request: Mapping[str, Any], context: ConformanceContext
-    ) -> Mapping[str, Any]:
+    def invoke(self, request: Mapping[str, Any], context: ConformanceContext) -> Mapping[str, Any]:
         context.request_agent_input()
         return super().invoke(request, context)
 
 
 class WritingAdapter(FixtureAdapter):
-    def invoke(
-        self, request: Mapping[str, Any], context: ConformanceContext
-    ) -> Mapping[str, Any]:
+    def invoke(self, request: Mapping[str, Any], context: ConformanceContext) -> Mapping[str, Any]:
         (context.root / "adapter-wrote.txt").write_text("not allowed\n", encoding="utf-8")
         return super().invoke(request, context)
 
 
 class DirectoryWritingAdapter(FixtureAdapter):
-    def invoke(
-        self, request: Mapping[str, Any], context: ConformanceContext
-    ) -> Mapping[str, Any]:
+    def invoke(self, request: Mapping[str, Any], context: ConformanceContext) -> Mapping[str, Any]:
         (context.root / "adapter-created-directory").mkdir()
         return super().invoke(request, context)
 
 
 class ModeWritingAdapter(FixtureAdapter):
-    def invoke(
-        self, request: Mapping[str, Any], context: ConformanceContext
-    ) -> Mapping[str, Any]:
+    def invoke(self, request: Mapping[str, Any], context: ConformanceContext) -> Mapping[str, Any]:
         (context.root / "src/app.py").chmod(0o600)
         return super().invoke(request, context)
 
 
 class StaleReceiptAdapter(FixtureAdapter):
-    def invoke(
-        self, request: Mapping[str, Any], context: ConformanceContext
-    ) -> Mapping[str, Any]:
+    def invoke(self, request: Mapping[str, Any], context: ConformanceContext) -> Mapping[str, Any]:
         observation = copy.deepcopy(super().invoke(request, context))
         receipts = observation["response"]["operations"]
         if receipts:
@@ -535,9 +517,7 @@ class StaleReceiptAdapter(FixtureAdapter):
 
 
 class CrashingAdapter(FixtureAdapter):
-    def invoke(
-        self, request: Mapping[str, Any], context: ConformanceContext
-    ) -> Mapping[str, Any]:
+    def invoke(self, request: Mapping[str, Any], context: ConformanceContext) -> Mapping[str, Any]:
         raise RuntimeError("injected adapter crash")
 
 

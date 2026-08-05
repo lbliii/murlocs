@@ -65,8 +65,7 @@ def changed_paths_from_revision(root: Path, revision_range: str) -> tuple[str, .
     if completed.returncode:
         message = completed.stderr.decode("utf-8", errors="replace").strip()
         raise MurlocsError(
-            f"could not inspect Git revision range {revision_range}: "
-            f"{message or 'git diff failed'}"
+            f"could not inspect Git revision range {revision_range}: {message or 'git diff failed'}"
         )
     return tuple(
         sorted(
@@ -125,9 +124,7 @@ def build_impact_report(
         scope = scopes_by_id[scope_id]
         for edge in scope.edges:
             if edge.to not in directly_required:
-                recommended[edge.to].add(
-                    f"edge {scope.id} -[{edge.type}]-> {edge.to}: {edge.what}"
-                )
+                recommended[edge.to].add(f"edge {scope.id} -[{edge.type}]-> {edge.to}: {edge.what}")
         for candidate in manifest.scopes:
             for edge in candidate.edges:
                 if edge.to == scope_id and candidate.id not in directly_required:
@@ -225,10 +222,7 @@ def _classify_direct_path(
             or (
                 explicit
                 and (
-                    (
-                        explicit_global
-                        and (not affected_maps or source_stale is False)
-                    )
+                    (explicit_global and (not affected_maps or source_stale is False))
                     or (
                         root_map in drifted_maps
                         and source_stale is not False
@@ -254,9 +248,7 @@ def _classify_direct_path(
                 )
         else:
             for scope in contributing or list(manifest.scopes):
-                required[scope.id].add(
-                    f"{changed} changes contributing guidance layer {source.id}"
-                )
+                required[scope.id].add(f"{changed} changes contributing guidance layer {source.id}")
 
     for scope in manifest.scopes:
         if changed == _clean(scope.map):
@@ -272,9 +264,7 @@ def _classify_direct_path(
 
     for invariant in manifest.invariants:
         if invariant.evidence_file and changed == _clean(invariant.evidence_file):
-            required[invariant.scope].add(
-                f"{changed} is evidence for invariant {invariant.id}"
-            )
+            required[invariant.scope].add(f"{changed} is evidence for invariant {invariant.id}")
         if invariant.enforced_by:
             check = manifest.checks.get(invariant.enforced_by)
             if check is not None and changed == _clean(check.location):
@@ -339,7 +329,7 @@ def _source_has_global_guidance(manifest: Manifest, source_path: str) -> bool:
     """Identify active source content that contributes to root guidance collections."""
     try:
         disk = read_disk_sources(manifest.root)
-    except (MurlocsError, OSError):
+    except MurlocsError, OSError:
         return False
     for source, fragment in zip(disk.sources, disk.fragments, strict=True):
         if source.path != source_path:
@@ -354,7 +344,7 @@ def _stale_source_paths_against_lock(manifest: Manifest) -> tuple[str, ...] | No
     """Return sources changed since compilation, or None without complete evidence."""
     try:
         lock = read_lock(manifest.root)
-    except (MurlocsError, OSError):
+    except MurlocsError, OSError:
         return None
     if lock is None:
         return None
@@ -365,13 +355,11 @@ def _stale_source_paths_against_lock(manifest: Manifest) -> tuple[str, ...] | No
     return tuple(sorted(path for path, digest in current.items() if locked[path] != digest))
 
 
-def _workspace_source_changes_root_render(
-    manifest: Manifest, source_path: str
-) -> bool | None:
+def _workspace_source_changes_root_render(manifest: Manifest, source_path: str) -> bool | None:
     """Compare source semantics with a bounded, batched locked Git baseline."""
     try:
         lock = read_lock(manifest.root)
-    except (MurlocsError, OSError):
+    except MurlocsError, OSError:
         return None
     if lock is None:
         return None
@@ -405,7 +393,7 @@ def _workspace_source_changes_root_render(
             timeout=GIT_READ_TIMEOUT_SECONDS,
         )
         current_bytes = (manifest.root / source_path).read_bytes()
-    except (OSError, subprocess.TimeoutExpired):
+    except OSError, subprocess.TimeoutExpired:
         return None
     if history.returncode or sha256_bytes(current_bytes) != loaded.sha256:
         return None
@@ -431,12 +419,10 @@ def _workspace_source_changes_root_render(
             env=git_env,
             timeout=GIT_READ_TIMEOUT_SECONDS,
         )
-    except (OSError, subprocess.TimeoutExpired):
+    except OSError, subprocess.TimeoutExpired:
         return None
     metadata = _parse_git_batch_sizes(checked.stdout, object_names)
-    present_sizes = tuple(
-        entry[1] for entry in metadata or () if entry is not None
-    )
+    present_sizes = tuple(entry[1] for entry in metadata or () if entry is not None)
     if (
         checked.returncode
         or metadata is None
@@ -462,7 +448,7 @@ def _workspace_source_changes_root_render(
             env=git_env,
             timeout=GIT_READ_TIMEOUT_SECONDS,
         )
-    except (OSError, subprocess.TimeoutExpired):
+    except OSError, subprocess.TimeoutExpired:
         return None
     blobs = _parse_git_batch_blobs(completed.stdout, object_names, metadata)
     if completed.returncode or blobs is None:
@@ -476,7 +462,7 @@ def _workspace_source_changes_root_render(
     try:
         before = tomllib.loads(baseline_bytes.decode("utf-8"))
         after = tomllib.loads(current_bytes.decode("utf-8"))
-    except (UnicodeDecodeError, tomllib.TOMLDecodeError):
+    except UnicodeDecodeError, tomllib.TOMLDecodeError:
         return None
     return _fragment_changes_root_render(before, after)
 
@@ -569,9 +555,7 @@ def _parse_git_batch_blobs(
     return tuple(blobs)
 
 
-def _revision_mentions_global_guidance(
-    root: Path, revision_range: str, source_path: str
-) -> bool:
+def _revision_mentions_global_guidance(root: Path, revision_range: str, source_path: str) -> bool:
     """Catch removal of the last global field by inspecting the already-authorized Git diff."""
     if not revision_range.strip() or revision_range.lstrip().startswith("-"):
         return False
@@ -653,9 +637,7 @@ def _fragment_changes_root_render(before: dict[str, Any], after: dict[str, Any])
             if isinstance(item, dict)
         )
 
-    return scopes(before) != scopes(after) or invariant_summary(before) != invariant_summary(
-        after
-    )
+    return scopes(before) != scopes(after) or invariant_summary(before) != invariant_summary(after)
 
 
 def _scope_payload(
@@ -735,9 +717,7 @@ def _scope_payload(
         "map": scope.map,
         "status": status,
         "reasons": reasons,
-        "guidance_chain": [
-            {"id": candidate.id, "map": candidate.map} for candidate in chain
-        ],
+        "guidance_chain": [{"id": candidate.id, "map": candidate.map} for candidate in chain],
         "layers": layers,
         "owners": owners,
         "invariants": invariants,

@@ -93,9 +93,7 @@ def run(
             **os.environ,
             "NO_COLOR": "1",
             "PYTHONPATH": os.pathsep.join(
-                value
-                for value in (str(PROJECT_SRC), os.environ.get("PYTHONPATH"))
-                if value
+                value for value in (str(PROJECT_SRC), os.environ.get("PYTHONPATH")) if value
             ),
         },
         text=True,
@@ -131,9 +129,7 @@ def commit_all(root: Path, message: str) -> None:
     git(root, "commit", "--quiet", "-m", message)
 
 
-def test_disposable_repository_does_not_inherit_commit_signing(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_disposable_repository_does_not_inherit_commit_signing(tmp_path: Path, monkeypatch) -> None:
     inherited = write(tmp_path, "global.gitconfig", "[commit]\n\tgpgsign = true\n")
     monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(inherited))
     root = tmp_path / "repository"
@@ -210,9 +206,7 @@ def test_greenfield_bootstrap_with_explicit_coverage(tmp_path: Path) -> None:
     commit_all(root, "initial source")
 
     before, status = snapshot(root)
-    preview = murlocs(
-        root, "--dry-run", "init", "--name", "Example", "--coverage-root", "src"
-    )
+    preview = murlocs(root, "--dry-run", "init", "--name", "Example", "--coverage-root", "src")
     assert "would write .murlocs/manifest.toml" in preview.stdout
     assert "coverage incomplete" in preview.stdout
     structured_preview = murlocs(
@@ -382,8 +376,7 @@ def test_progressive_owned_rollout_with_deferral_and_codeowners(tmp_path: Path) 
 
     codeowners = root / ".github" / "CODEOWNERS"
     codeowners.write_text(
-        "/.murlocs/manifest.toml @platform\n"
-        "/.murlocs/layers/src-app.toml @app\n",
+        "/.murlocs/manifest.toml @platform\n/.murlocs/layers/src-app.toml @app\n",
         encoding="utf-8",
     )
     commit_all(root, "approve app layer")
@@ -410,15 +403,12 @@ def test_progressive_owned_rollout_with_deferral_and_codeowners(tmp_path: Path) 
     )
     nested_requirements = json.loads(nested_preview.stdout)["codeowners_requirements"]
     nested_requirement = next(
-        item
-        for item in nested_requirements
-        if item["path"] == ".murlocs/layers/src-app-api.toml"
+        item for item in nested_requirements if item["path"] == ".murlocs/layers/src-app-api.toml"
     )
     assert nested_requirement["entry"] == "/.murlocs/layers/src-app-api.toml @api"
     assert_unchanged(root, before, status)
     codeowners.write_text(
-        codeowners.read_text(encoding="utf-8")
-        + "/.murlocs/layers/src-app-api.toml @api\n",
+        codeowners.read_text(encoding="utf-8") + "/.murlocs/layers/src-app-api.toml @api\n",
         encoding="utf-8",
     )
     murlocs(root, "add-scope", "src/app/api", "--owners", "@api")
@@ -454,9 +444,7 @@ def test_legacy_migration_backup_prune_and_rollback_contract(tmp_path: Path) -> 
     assert "legacy network: 1 scope(s), 1 invariant(s), 1 check(s)" in inventory.stdout
     inventory_json = json.loads(murlocs(root, "inventory", "--format", "json").stdout)
     assert inventory_json["legacy_stewards"]["proof_debt"] == 1
-    semantic = json.loads(
-        murlocs(root, "diff", "--mode", "semantic", "--format", "json").stdout
-    )
+    semantic = json.loads(murlocs(root, "diff", "--mode", "semantic", "--format", "json").stdout)
     assert semantic["semantic"]["findings"][0]["code"] == "missing-proof-anchor"
     assert "--- a/AGENTS.md" in murlocs(root, "diff", "--mode", "rendered").stdout
 
@@ -499,9 +487,7 @@ def test_legacy_migration_backup_prune_and_rollback_contract(tmp_path: Path) -> 
     assert "proof-debt" not in resolved.stderr
 
     before, status = snapshot(root)
-    adopt_preview = json.loads(
-        murlocs(root, "--dry-run", "adopt", "--format", "json").stdout
-    )
+    adopt_preview = json.loads(murlocs(root, "--dry-run", "adopt", "--format", "json").stdout)
     assert adopt_preview["adopted"] == ["AGENTS.md"]
     assert_unchanged(root, before, status)
 
@@ -522,9 +508,7 @@ def test_legacy_migration_backup_prune_and_rollback_contract(tmp_path: Path) -> 
 
     before, status = snapshot(root)
     prune_preview = murlocs(root, "--dry-run", "prune")
-    rollback_preview = json.loads(
-        murlocs(root, "--dry-run", "rollback", "--format", "json").stdout
-    )
+    rollback_preview = json.loads(murlocs(root, "--dry-run", "rollback", "--format", "json").stdout)
     assert "would prune" in prune_preview.stdout
     assert rollback_preview["restore"] == ["AGENTS.md"]
     assert rollback_preview["restore_legacy"] is False
@@ -597,9 +581,7 @@ def test_packaged_structured_failures_preserve_terminal_exit_codes(tmp_path: Pat
 
     manifest = root / ".murlocs" / "manifest.toml"
     manifest.write_text(
-        manifest.read_text(encoding="utf-8").replace(
-            "Repository guidance", "Changed guidance"
-        ),
+        manifest.read_text(encoding="utf-8").replace("Repository guidance", "Changed guidance"),
         encoding="utf-8",
     )
     drift = murlocs(root, "check", "--format", "json", expected=1)
@@ -617,9 +599,7 @@ def test_packaged_structured_failures_preserve_terminal_exit_codes(tmp_path: Pat
     assert malformed_payload["ok"] is False
     assert malformed_payload["findings"]
 
-    missing = murlocs(
-        root, "curate", "review", "missing-proposal", "--format", "json", expected=1
-    )
+    missing = murlocs(root, "curate", "review", "missing-proposal", "--format", "json", expected=1)
     assert missing.stderr == ""
     missing_payload = json.loads(missing.stdout)
     assert missing_payload["ok"] is False

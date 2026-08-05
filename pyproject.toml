@@ -44,7 +44,11 @@ murlocs-claude-adapter = "murlocs.claude_adapter:main"
 # Development dependencies are a local group, not a published extra: strangers
 # installing `murlocs` should not see a `dev` extra on the project page.
 [dependency-groups]
-dev = ["pytest>=8", "ruff>=0.9"]
+dev = [
+  "pytest>=8",
+  "ruff>=0.9",
+  "ty>=0.0.1a10", # Type checker; gated through scripts/ty_ratchet.py while the backlog burns down.
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/murlocs"]

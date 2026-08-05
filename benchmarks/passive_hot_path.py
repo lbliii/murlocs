@@ -60,9 +60,7 @@ def _write(path: Path, content: str) -> None:
 
 
 def _git(root: Path, *args: str) -> bytes:
-    return subprocess.run(
-        ["git", *args], cwd=root, check=True, capture_output=True
-    ).stdout.strip()
+    return subprocess.run(["git", *args], cwd=root, check=True, capture_output=True).stdout.strip()
 
 
 def _commit(root: Path, message: str) -> None:
@@ -103,9 +101,7 @@ def build_fixture(root: Path, shape: Shape) -> tuple[str, tuple[str, ...]]:
         identifier = f"domain-{domain:02d}"
         source = f".murlocs/layers/{identifier}.toml"
         source_paths.append(source)
-        layers.append(
-            {"id": identifier, "kind": "domain", "path": source, "owners": ["@perf"]}
-        )
+        layers.append({"id": identifier, "kind": "domain", "path": source, "owners": ["@perf"]})
         scopes = []
         for leaf in range(shape.leaves_per_domain):
             relative = f"src/{identifier}/area-{leaf:02d}"
@@ -248,8 +244,10 @@ def _hook_operation(event: str, root: Path, update: bytes = b"") -> tuple[dict[s
     if not isinstance(results, list) or not results:
         raise RuntimeError("completion benchmark returned no activation results")
     work = [_activation_work(payload, root) for payload in results]
-    return result.payload, max(git_calls for git_calls, _ in work), sum(
-        files_read for _, files_read in work
+    return (
+        result.payload,
+        max(git_calls for git_calls, _ in work),
+        sum(files_read for _, files_read in work),
     )
 
 
@@ -321,9 +319,7 @@ def run_suite(root: Path) -> dict[str, Any]:
         head = _git(fixture, "rev-parse", "HEAD").decode("ascii")
         update = f"refs/heads/main {head} refs/heads/main {'0' * len(head)}\n".encode()
         measurements: dict[str, dict[str, Any]] = {
-            "task_start_discovery": _measure(
-                lambda fixture=fixture: _task_start(fixture)
-            ),
+            "task_start_discovery": _measure(lambda fixture=fixture: _task_start(fixture)),
             "explicit_impact": _measure(
                 lambda fixture=fixture, target=target: _explicit_impact(fixture, target)
             ),
@@ -341,9 +337,7 @@ def run_suite(root: Path) -> dict[str, Any]:
                 lambda fixture=fixture: _hook_operation("pre-commit", fixture)
             )
             measurements["completion_gating"] = _measure(
-                lambda fixture=fixture, update=update: _hook_operation(
-                    "pre-push", fixture, update
-                )
+                lambda fixture=fixture, update=update: _hook_operation("pre-push", fixture, update)
             )
             agents = fixture / "AGENTS.md"
             agents.write_text(
@@ -351,9 +345,7 @@ def run_suite(root: Path) -> dict[str, Any]:
                 encoding="utf-8",
             )
             _git(fixture, "add", "AGENTS.md")
-            drifted = _measure(
-                lambda fixture=fixture: _hook_operation("pre-commit", fixture)
-            )
+            drifted = _measure(lambda fixture=fixture: _hook_operation("pre-commit", fixture))
             if drifted["payload"]["repository"]["blocking"] is not True:
                 raise RuntimeError("drifted checks did not block")
             measurements["drifted_checks"] = drifted

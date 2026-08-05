@@ -37,7 +37,7 @@ def _process_state(pid: int) -> str:
         try:
             # The comm field may contain spaces or parentheses; state follows it.
             return stat.read_text().rpartition(")")[2].split()[0]
-        except (OSError, IndexError):
+        except OSError, IndexError:
             return "?"
     result = subprocess.run(
         ["ps", "-o", "state=", "-p", str(pid)], capture_output=True, text=True, check=False
@@ -108,11 +108,11 @@ def durable_runner(tmp_path: Path, version: str = "0.1.0") -> Path:
     runner.parent.mkdir(exist_ok=True)
     runner.write_text(
         "#!/bin/sh\n"
-        "if [ \"$1\" = \"--version\" ]; then\n"
+        'if [ "$1" = "--version" ]; then\n'
         f"  echo 'murlocs {version}'\n"
         "  exit 0\n"
         "fi\n"
-        f"exec {shlex.quote(str(sys.executable))} -m murlocs \"$@\"\n"
+        f'exec {shlex.quote(str(sys.executable))} -m murlocs "$@"\n'
     )
     runner.chmod(0o755)
     return runner
@@ -132,9 +132,7 @@ def test_hook_cli_management_preserves_output_and_exit_behavior(tmp_path: Path) 
         str(HOOK_RUNNER),
     )
     status = invoke("hook", "status", "--repo", str(root))
-    removed = invoke(
-        "hook", "uninstall", "--event", "pre-commit", "--repo", str(root)
-    )
+    removed = invoke("hook", "uninstall", "--event", "pre-commit", "--repo", str(root))
     missing = invoke("hook", "status", "--repo", str(tmp_path / "missing"))
 
     assert (installed.exit_code, installed.output, installed.stderr) == (
@@ -295,9 +293,7 @@ def test_pre_push_assesses_outgoing_commit_and_rejects_malformed_input(
     new = git(root, "rev-parse", "HEAD").decode()
     update = f"refs/heads/main {new} refs/heads/main {old}\n".encode()
 
-    result = run_hook(
-        "pre-push", root, correlation_id="test:push", pre_push_input=update
-    )
+    result = run_hook("pre-push", root, correlation_id="test:push", pre_push_input=update)
 
     assert result.exit_code == 0
     assert result.payload["results"][0]["event"] == "pre-completion"
@@ -391,10 +387,7 @@ def test_installer_allows_detached_uv_tool_environment_symlink(
     target = tool_root / "bin" / "murlocs"
     target.parent.mkdir(parents=True)
     (tool_root / "pyvenv.cfg").write_text("home = /python\n")
-    target.write_text(
-        "#!/bin/sh\n"
-        f"exec {shlex.quote(str(sys.executable))} -m murlocs \"$@\"\n"
-    )
+    target.write_text(f'#!/bin/sh\nexec {shlex.quote(str(sys.executable))} -m murlocs "$@"\n')
     target.chmod(0o755)
     user_bin = tmp_path / "user-bin"
     user_bin.mkdir()
@@ -533,9 +526,9 @@ def test_install_runner_probe_rejects_duplicate_and_oversized_json(tmp_path: Pat
     duplicate = tmp_path / "duplicate-identity"
     duplicate.write_text(
         "#!/bin/sh\n"
-        "printf '%s' '{\"schema_version\":1,\"project\":\"murlocs\","
-        "\"version\":\"0.1.0\",\"version\":\"0.1.0\",\"build\":{},"
-        "\"installation\":{}}'\n"
+        'printf \'%s\' \'{"schema_version":1,"project":"murlocs",'
+        '"version":"0.1.0","version":"0.1.0","build":{},'
+        '"installation":{}}\'\n'
     )
     duplicate.chmod(0o755)
     oversized = tmp_path / "oversized-identity"
@@ -645,7 +638,7 @@ def test_status_treats_malformed_or_extended_runner_metadata_as_modified(
     hook.write_text(
         "#!/bin/sh\n"
         f"{hooks_module.HOOK_MARKER}\n"
-        "# Murlocs runner: {\"path\":\"/tmp/x\",\"path\":\"/tmp/x\"}\n"
+        '# Murlocs runner: {"path":"/tmp/x","path":"/tmp/x"}\n'
     )
 
     assert hook_status(root)["events"]["pre-commit"] == "modified"

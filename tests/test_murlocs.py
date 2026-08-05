@@ -156,9 +156,7 @@ def test_hook_command_registry_contract_is_stable():
         "properties": {
             "event": {
                 **event_option,
-                "description": (
-                    "Hook event to install; omission selects both supported events."
-                ),
+                "description": ("Hook event to install; omission selects both supported events."),
             },
             "repo": repo_option,
             "runner": runner_option,
@@ -169,9 +167,7 @@ def test_hook_command_registry_contract_is_stable():
         "properties": {
             "event": {
                 **event_option,
-                "description": (
-                    "Hook event to remove; omission selects both supported events."
-                ),
+                "description": ("Hook event to remove; omission selects both supported events."),
             },
             "repo": repo_option,
         },
@@ -237,9 +233,7 @@ def test_init_dry_run_writes_nothing(tmp_path):
 def test_init_accepts_explicit_coverage_roots_and_reports_structural_gaps(tmp_path):
     root = make_repo(tmp_path)
     (root / "tests").mkdir()
-    (root / "tests" / "test_core.py").write_text(
-        "def test_core(): pass\n", encoding="utf-8"
-    )
+    (root / "tests" / "test_core.py").write_text("def test_core(): pass\n", encoding="utf-8")
 
     result = invoke(
         "init",
@@ -260,9 +254,9 @@ def test_init_accepts_explicit_coverage_roots_and_reports_structural_gaps(tmp_pa
         "roots": ["src", "tests"],
         "evaluated": True,
     }
-    assert 'roots = ["src", "tests"]' in (
-        root / ".murlocs" / "manifest.toml"
-    ).read_text(encoding="utf-8")
+    assert 'roots = ["src", "tests"]' in (root / ".murlocs" / "manifest.toml").read_text(
+        encoding="utf-8"
+    )
     checked = invoke("check", "--repo", str(root), "--format", "json")
     checked_payload = json.loads(checked.output)
     assert checked_payload["ok"] is False
@@ -402,9 +396,7 @@ def test_structured_check_preserves_declared_exit_code_and_payload(tmp_path):
     initialize(root)
     manifest = root / ".murlocs" / "manifest.toml"
     manifest.write_text(
-        manifest.read_text(encoding="utf-8").replace(
-            "Repository guidance", "Agent guidance"
-        ),
+        manifest.read_text(encoding="utf-8").replace("Repository guidance", "Agent guidance"),
         encoding="utf-8",
     )
 

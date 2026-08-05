@@ -192,9 +192,7 @@ def _load_layer(
     seen_ids.add(layer_id)
     kind = str(decl.get("kind") or "")
     if kind not in LAYER_KINDS:
-        raise MurlocsError(
-            f"layer {layer_id} kind must be one of {', '.join(LAYER_KINDS)}"
-        )
+        raise MurlocsError(f"layer {layer_id} kind must be one of {', '.join(LAYER_KINDS)}")
     relative = str(decl.get("path") or "")
     if not relative:
         raise MurlocsError(f"layer {layer_id} requires a path")
@@ -258,8 +256,7 @@ class _MergeState:
             existing = self.exemptions.get(path)
             if existing is not None and existing[1] != reason:
                 raise MurlocsError(
-                    f"conflicting coverage exemption for {path}: "
-                    f"{existing[0]} vs {source.id}"
+                    f"conflicting coverage exemption for {path}: {existing[0]} vs {source.id}"
                 )
             self.exemptions[path] = (source.id, reason)
         self._absorb_checks(source, data.get("checks", {}))
@@ -278,9 +275,7 @@ class _MergeState:
             clean = {k: v for k, v in value.items() if k != "override"}
             if name in self.checks:
                 if not override:
-                    raise MurlocsError(
-                        f"duplicate check {name}; set override = true to replace it"
-                    )
+                    raise MurlocsError(f"duplicate check {name}; set override = true to replace it")
                 prior_layer = self.checks[name][0]
                 self.overrides.append(
                     Override(
@@ -323,9 +318,7 @@ class _MergeState:
                 self._override_scope(source, scope_id, clean)
                 self.scope_layers[scope_id].append(source.id)
 
-    def _override_scope(
-        self, source: LayerSource, scope_id: str, incoming: dict[str, Any]
-    ) -> None:
+    def _override_scope(self, source: LayerSource, scope_id: str, incoming: dict[str, Any]) -> None:
         base = self.scopes[scope_id]
         definer = self.scope_layers[scope_id][0]
         prior_layer = self.scope_layers[scope_id][-1]
@@ -336,9 +329,7 @@ class _MergeState:
                     f"({self._at(definer)} -> {self._at(source.id)}): "
                     f"{base.get(immutable)} -> {incoming[immutable]}"
                 )
-        if "point_of_view" in incoming and incoming["point_of_view"] != base.get(
-            "point_of_view"
-        ):
+        if "point_of_view" in incoming and incoming["point_of_view"] != base.get("point_of_view"):
             self.overrides.append(
                 Override(
                     subject=f"scope:{scope_id}",
@@ -377,8 +368,7 @@ class _MergeState:
             if invariant_id in self.invariants:
                 if not override:
                     raise MurlocsError(
-                        f"duplicate invariant {invariant_id}; "
-                        "set override = true to replace it"
+                        f"duplicate invariant {invariant_id}; set override = true to replace it"
                     )
                 prior_layer = self.invariants[invariant_id][0]
                 self.overrides.append(

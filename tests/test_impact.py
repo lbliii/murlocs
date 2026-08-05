@@ -200,9 +200,7 @@ def test_edge_propagates_one_hop_recommendation(tmp_path):
 
     worker = by_id(report, "worker")
     assert worker["status"] == "recommended"
-    assert worker["reasons"] == [
-        "edge api -[verified-by]-> worker: Worker tests API contracts."
-    ]
+    assert worker["reasons"] == ["edge api -[verified-by]-> worker: Worker tests API contracts."]
 
 
 def test_evidence_and_check_configuration_require_review(tmp_path):
@@ -489,8 +487,7 @@ def test_existing_global_content_does_not_widen_exact_local_rendered_drift(tmp_p
     build(root)
     layer = root / ".murlocs/layers/api.toml"
     layer.write_text(
-        'operating_rules = ["Existing global rule."]\n\n'
-        + layer.read_text(encoding="utf-8"),
+        'operating_rules = ["Existing global rule."]\n\n' + layer.read_text(encoding="utf-8"),
         encoding="utf-8",
     )
     assert invoke("compile", "--repo", str(root)).exit_code == 0
@@ -608,8 +605,7 @@ def test_concurrent_source_swap_after_history_probe_fails_closed(tmp_path, monke
     commit_all(root, "compiled baseline")
     api = root / ".murlocs/layers/api.toml"
     api.write_text(
-        api.read_text(encoding="utf-8")
-        + '\n[judgments.api]\nadvocate = ["Initial local edit."]\n',
+        api.read_text(encoding="utf-8") + '\n[judgments.api]\nadvocate = ["Initial local edit."]\n',
         encoding="utf-8",
     )
     worker = root / ".murlocs/layers/worker.toml"
@@ -643,9 +639,7 @@ def test_concurrent_source_swap_after_history_probe_fails_closed(tmp_path, monke
     assert "Concurrent local edit." in api.read_text(encoding="utf-8")
 
 
-def test_unsupported_no_lazy_fetch_option_fails_closed_without_retry(
-    tmp_path, monkeypatch
-):
+def test_unsupported_no_lazy_fetch_option_fails_closed_without_retry(tmp_path, monkeypatch):
     root = tmp_path / "repo"
     build(root)
     assert invoke("compile", "--repo", str(root)).exit_code == 0
@@ -745,9 +739,7 @@ def test_raw_batched_lookup_never_executes_diff_filters_or_hooks(tmp_path):
         hook = hooks / name
         hook.write_text(f'#!/bin/sh\ntouch "{sentinel}"\n', encoding="utf-8")
         hook.chmod(0o755)
-    (root / ".gitattributes").write_text(
-        "*.toml diff=sentinel filter=sentinel\n", encoding="utf-8"
-    )
+    (root / ".gitattributes").write_text("*.toml diff=sentinel filter=sentinel\n", encoding="utf-8")
     subprocess.run(["git", "init"], cwd=root, check=True, capture_output=True)
     commit_all(root, "compiled baseline with inert drivers")
     for key, value in (
@@ -757,9 +749,7 @@ def test_raw_batched_lookup_never_executes_diff_filters_or_hooks(tmp_path):
         ("filter.sentinel.process", str(driver)),
         ("core.hooksPath", str(hooks)),
     ):
-        subprocess.run(
-            ["git", "config", key, value], cwd=root, check=True, capture_output=True
-        )
+        subprocess.run(["git", "config", key, value], cwd=root, check=True, capture_output=True)
     api = root / ".murlocs/layers/api.toml"
     api.write_text(
         api.read_text(encoding="utf-8")
@@ -790,9 +780,7 @@ def test_real_git_batch_preserves_special_path_spaces_and_duplicate_blob_order(
     special_path = ".murlocs/layers/- api:glob[*?].toml"
     manifest = root / ".murlocs/manifest.toml"
     manifest.write_text(
-        manifest.read_text(encoding="utf-8").replace(
-            ".murlocs/layers/api.toml", special_path
-        ),
+        manifest.read_text(encoding="utf-8").replace(".murlocs/layers/api.toml", special_path),
         encoding="utf-8",
     )
     api = root / ".murlocs/layers/api.toml"
@@ -904,9 +892,7 @@ def test_missing_locked_git_blob_falls_back_conservatively(tmp_path):
     build(root)
     assert invoke("compile", "--repo", str(root)).exit_code == 0
     subprocess.run(["git", "init"], cwd=root, check=True, capture_output=True)
-    subprocess.run(
-        ["git", "config", "gc.auto", "0"], cwd=root, check=True, capture_output=True
-    )
+    subprocess.run(["git", "config", "gc.auto", "0"], cwd=root, check=True, capture_output=True)
     commit_all(root, "compiled baseline")
     blob = subprocess.run(
         ["git", "rev-parse", "HEAD:.murlocs/layers/api.toml"],
@@ -942,16 +928,9 @@ def test_git_batch_parser_accepts_missing_entries_and_rejects_partial_output():
 
     assert impact_module._parse_git_batch_sizes(sizes, object_names) == metadata
     assert impact_module._parse_git_batch_sizes(sizes, object_names[:1]) is None
-    assert impact_module._parse_git_batch_blobs(
-        valid, object_names, metadata
-    ) == (b"abc", None)
+    assert impact_module._parse_git_batch_blobs(valid, object_names, metadata) == (b"abc", None)
     assert impact_module._parse_git_batch_blobs(valid[:-1], object_names, metadata) is None
-    assert (
-        impact_module._parse_git_batch_blobs(
-            valid + b"extra", object_names, metadata
-        )
-        is None
-    )
+    assert impact_module._parse_git_batch_blobs(valid + b"extra", object_names, metadata) is None
 
 
 def test_git_batch_parsers_reject_invalid_ids_sequence_sizes_and_caps():
@@ -963,28 +942,13 @@ def test_git_batch_parsers_reject_invalid_ids_sequence_sizes_and_caps():
 
     assert impact_module._parse_git_commit_ids(oid + b"\ninvalid\n") is None
     assert impact_module._parse_git_commit_ids(b"A" * 40 + b"\n") is None
+    assert impact_module._parse_git_batch_sizes(b"z" * 40 + b" blob 3\n", object_names) is None
     assert (
-        impact_module._parse_git_batch_sizes(
-            b"z" * 40 + b" blob 3\n", object_names
-        )
+        impact_module._parse_git_batch_sizes(oid + b" blob " + b"9" * 5000 + b"\n", object_names)
         is None
     )
-    assert (
-        impact_module._parse_git_batch_sizes(
-            oid + b" blob " + b"9" * 5000 + b"\n", object_names
-        )
-        is None
-    )
-    assert (
-        impact_module._parse_git_batch_sizes(
-            oid + b" blob 3 extra\n", object_names
-        )
-        is None
-    )
-    assert (
-        impact_module._parse_git_batch_sizes(b"other:path missing\n", object_names)
-        is None
-    )
+    assert impact_module._parse_git_batch_sizes(oid + b" blob 3 extra\n", object_names) is None
+    assert impact_module._parse_git_batch_sizes(b"other:path missing\n", object_names) is None
     corrupt_headers = (
         other_oid + b" blob 3\n" + locked_bytes + b"\n",
         oid + b" blob 4\n" + locked_bytes + b"x\n",
@@ -1044,10 +1008,7 @@ def test_fake_batch_oid_with_locked_bytes_cannot_narrow_routing(tmp_path, monkey
             stdout = b"z" * 40 + f" blob {len(locked_bytes)}\n".encode("ascii")
         else:
             stdout = (
-                b"z" * 40
-                + f" blob {len(locked_bytes)}\n".encode("ascii")
-                + locked_bytes
-                + b"\n"
+                b"z" * 40 + f" blob {len(locked_bytes)}\n".encode("ascii") + locked_bytes + b"\n"
             )
         return subprocess.CompletedProcess(args, 0, stdout=stdout, stderr=b"")
 
@@ -1060,9 +1021,7 @@ def test_fake_batch_oid_with_locked_bytes_cannot_narrow_routing(tmp_path, monkey
     assert not any(call[-1] == "--batch" for call in calls)
 
 
-def test_oversized_historical_blob_fails_closed_before_content_batch(
-    tmp_path, monkeypatch
-):
+def test_oversized_historical_blob_fails_closed_before_content_batch(tmp_path, monkeypatch):
     root = tmp_path / "repo"
     build(root)
     assert invoke("compile", "--repo", str(root)).exit_code == 0
@@ -1221,8 +1180,7 @@ def test_revision_local_edit_ignores_unchanged_global_content(tmp_path):
     build(root)
     layer = root / ".murlocs/layers/api.toml"
     layer.write_text(
-        'operating_rules = ["Existing global rule."]\n\n'
-        + layer.read_text(encoding="utf-8"),
+        'operating_rules = ["Existing global rule."]\n\n' + layer.read_text(encoding="utf-8"),
         encoding="utf-8",
     )
     assert invoke("compile", "--repo", str(root)).exit_code == 0
@@ -1259,7 +1217,7 @@ def test_revision_root_summary_semantics_route_every_scope(tmp_path, change):
         text += (
             '\n[[scopes]]\nid = "api-child"\npath = "src/api/app"\n'
             + 'map = "src/api/app/AGENTS.md"\npoint_of_view = "API child."\n'
-            + 'owns = []\nguardrails = []\nedges = []\n'
+            + "owns = []\nguardrails = []\nedges = []\n"
         )
     elif change == "invariant-add":
         text += (
@@ -1306,8 +1264,7 @@ def test_explicit_global_source_semantics_survive_union_with_worker_revision(tmp
     build(root)
     api = root / ".murlocs/layers/api.toml"
     api.write_text(
-        'operating_rules = ["Existing global rule."]\n\n'
-        + api.read_text(encoding="utf-8"),
+        'operating_rules = ["Existing global rule."]\n\n' + api.read_text(encoding="utf-8"),
         encoding="utf-8",
     )
     assert invoke("compile", "--repo", str(root)).exit_code == 0
@@ -1341,9 +1298,7 @@ def test_revision_content_inspection_never_executes_textconv(tmp_path):
     build(root)
     sentinel = root / "TEXTCONV_EXECUTED"
     driver = root / "textconv-driver.sh"
-    driver.write_text(
-        f'#!/bin/sh\ntouch "{sentinel}"\ncat "$1"\n', encoding="utf-8"
-    )
+    driver.write_text(f'#!/bin/sh\ntouch "{sentinel}"\ncat "$1"\n', encoding="utf-8")
     driver.chmod(0o755)
     (root / ".gitattributes").write_text("*.toml diff=sentinel\n", encoding="utf-8")
     subprocess.run(["git", "init"], cwd=root, check=True, capture_output=True)
@@ -1356,8 +1311,7 @@ def test_revision_content_inspection_never_executes_textconv(tmp_path):
     commit_all(root, "textconv baseline")
     api = root / ".murlocs/layers/api.toml"
     api.write_text(
-        'operating_rules = ["Revision global rule."]\n\n'
-        + api.read_text(encoding="utf-8"),
+        'operating_rules = ["Revision global rule."]\n\n' + api.read_text(encoding="utf-8"),
         encoding="utf-8",
     )
 

@@ -21,9 +21,7 @@ CORRELATION_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}")
 TOKEN_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,255}")
 DIAGNOSTIC_CODE = re.compile(r"MURLOCS_[A-Z0-9_]{1,120}")
 
-ResolutionClass = Literal[
-    "pass", "deterministic_repair", "agent_action", "authority_required"
-]
+ResolutionClass = Literal["pass", "deterministic_repair", "agent_action", "authority_required"]
 OutcomeStatus = Literal["pass", "advisory", "blocking"]
 OutcomeSeverity = Literal["none", "advisory", "important", "critical"]
 OutcomeOperation = Literal["check", "impact", "aggregate"]
@@ -88,9 +86,7 @@ class OutcomeFindingPayload(TypedDict):
     evidence: list[OutcomeEvidencePayload]
     provenance: OutcomeProvenancePayload
     affected: OutcomeAffectedPayload
-    resolution_class: Literal[
-        "deterministic_repair", "agent_action", "authority_required"
-    ]
+    resolution_class: Literal["deterministic_repair", "agent_action", "authority_required"]
     action_ids: list[str]
 
 
@@ -103,9 +99,7 @@ class OutcomeActionArgumentsPayload(TypedDict):
 
 class OutcomeActionPayload(TypedDict):
     id: str
-    operation: Literal[
-        "compile_managed_guidance", "inspect_findings", "request_authority"
-    ]
+    operation: Literal["compile_managed_guidance", "inspect_findings", "request_authority"]
     arguments: OutcomeActionArgumentsPayload
     effect: Literal["read_repository", "write_managed_guidance", "request_authority"]
     authority: Literal["integration", "agent", "human"]
@@ -207,9 +201,7 @@ _ACTION_SPECS = {
         "human",
     ),
 }
-_ACTION_ID_BY_RESOLUTION = {
-    resolution: values[0] for resolution, values in _ACTION_SPECS.items()
-}
+_ACTION_ID_BY_RESOLUTION = {resolution: values[0] for resolution, values in _ACTION_SPECS.items()}
 
 
 def validate_correlation_id(value: str | None) -> str | None:
@@ -217,9 +209,7 @@ def validate_correlation_id(value: str | None) -> str | None:
     if value is not None and (
         not isinstance(value, str) or CORRELATION_ID.fullmatch(value) is None
     ):
-        raise MurlocsError(
-            "correlation id must match [A-Za-z0-9][A-Za-z0-9._:-]{0,127}"
-        )
+        raise MurlocsError("correlation id must match [A-Za-z0-9][A-Za-z0-9._:-]{0,127}")
     return value
 
 
@@ -249,7 +239,7 @@ def build_check_outcome(
     if repairable:
         try:
             prepare_manifest(manifest)
-        except (MurlocsError, OSError):
+        except MurlocsError, OSError:
             repairable = False
 
     source_paths = sorted(source.path for source in manifest.sources)
@@ -260,9 +250,7 @@ def build_check_outcome(
     actions_by_resolution = {
         item_resolution: _action_for(
             cast(
-                Literal[
-                    "deterministic_repair", "agent_action", "authority_required"
-                ],
+                Literal["deterministic_repair", "agent_action", "authority_required"],
                 item_resolution,
             ),
             codes=sorted(
@@ -293,15 +281,9 @@ def build_check_outcome(
                 *(path for item in annotation_items for path in item.source_paths),
             }
         )
-        finding_scopes = sorted(
-            {scope for item in annotation_items for scope in item.scopes}
-        )
+        finding_scopes = sorted({scope for item in annotation_items for scope in item.scopes})
         finding_maps = sorted(
-            {
-                scope.map
-                for scope in manifest.scopes
-                if scope.id in set(finding_scopes)
-            }
+            {scope.map for scope in manifest.scopes if scope.id in set(finding_scopes)}
         )
         finding_owners = sorted(
             {
@@ -346,17 +328,23 @@ def build_check_outcome(
                     "scopes": (
                         finding_scopes
                         if annotation_items
-                        else all_scopes if item_resolution != "agent_action" else []
+                        else all_scopes
+                        if item_resolution != "agent_action"
+                        else []
                     ),
                     "maps": (
                         finding_maps
                         if annotation_items
-                        else all_maps if item_resolution != "agent_action" else []
+                        else all_maps
+                        if item_resolution != "agent_action"
+                        else []
                     ),
                     "owners": (
                         finding_owners
                         if annotation_items
-                        else all_owners if item_resolution == "authority_required" else []
+                        else all_owners
+                        if item_resolution == "authority_required"
+                        else []
                     ),
                 },
                 "resolution_class": item_resolution,
@@ -429,19 +417,12 @@ def build_impact_outcome(
         if scope_status not in {"required", "recommended"}:
             continue
         required = scope_status == "required"
-        code = (
-            "MURLOCS_IMPACT_REVIEW_REQUIRED"
-            if required
-            else "MURLOCS_IMPACT_REVIEW_RECOMMENDED"
-        )
+        code = "MURLOCS_IMPACT_REVIEW_REQUIRED" if required else "MURLOCS_IMPACT_REVIEW_RECOMMENDED"
         scope_id = str(scope.get("id", ""))
         maps = sorted(
             {
                 str(scope.get("map", "")),
-                *(
-                    str(item.get("map", ""))
-                    for item in scope.get("guidance_chain", ())
-                ),
+                *(str(item.get("map", "")) for item in scope.get("guidance_chain", ())),
             }
             - {""}
         )
@@ -540,17 +521,13 @@ def build_failure_outcome(
     """Represent a handled operation failure while preserving exit code one."""
     correlation_id = validate_correlation_id(correlation_id)
     stable = _stable_code(code)
-    action = _action_for(
-        "agent_action", codes=[stable], scopes=[], maps=[], owners=[]
-    )
+    action = _action_for("agent_action", codes=[stable], scopes=[], maps=[], owners=[])
     finding: OutcomeFindingPayload = {
         "code": stable,
         "status": "blocking",
         "severity": "important",
         "message": message,
-        "evidence": [
-            {"kind": "diagnostic", "reference": code, "detail": message}
-        ],
+        "evidence": [{"kind": "diagnostic", "reference": code, "detail": message}],
         "provenance": {
             "operation": operation,
             "source_codes": [code],
@@ -636,9 +613,7 @@ def reconcile_external_authority_evidence(
     if not isinstance(task_authorized, bool):
         raise MurlocsError("trusted task authorization must be boolean")
     decision["gated_boundary"] = gated_boundary
-    decision["task_authorization"] = (
-        "externally_attested" if task_authorized else "not_attested"
-    )
+    decision["task_authorization"] = "externally_attested" if task_authorized else "not_attested"
     if evidence is None:
         parsed["decision"] = decision
         return parsed
@@ -672,9 +647,7 @@ def render_compact_outcome(outcome: Mapping[str, Any]) -> str:
                 f"lifecycle: {owners} review satisfies the {boundary} gate; "
                 f"{boundary} may proceed while evidence remains valid."
             )
-            lines.append(
-                f"next: retain the trusted {owners} review evidence through {boundary}."
-            )
+            lines.append(f"next: retain the trusted {owners} review evidence through {boundary}.")
         else:
             lines.append(
                 f"lifecycle: implementation may continue; {owners} review gates {boundary}."
@@ -696,9 +669,7 @@ def merge_outcomes(outcomes: list[Mapping[str, Any]]) -> OutcomePayload:
     if len(versions) != 1:
         raise MurlocsError("outcome Murlocs versions do not match")
     correlation = _merge_correlation([item["correlation"] for item in parsed])
-    findings = _dedupe_findings(
-        finding for item in parsed for finding in item["findings"]
-    )
+    findings = _dedupe_findings(finding for item in parsed for finding in item["findings"])
     actions = _dedupe_actions(action for item in parsed for action in item["next_actions"])
     merged = _envelope(
         operation="aggregate",
@@ -770,9 +741,7 @@ def _parse_outcome(value: Any) -> OutcomePayload:
         raise MurlocsError("unsupported outcome contract")
     version = value.get("schema_version")
     if isinstance(version, bool) or version != OUTCOME_SCHEMA_VERSION:
-        raise MurlocsError(
-            f"unsupported outcome schema_version {version!r}; expected 1"
-        )
+        raise MurlocsError(f"unsupported outcome schema_version {version!r}; expected 1")
     required = {
         "code",
         "status",
@@ -806,12 +775,8 @@ def _parse_outcome(value: Any) -> OutcomePayload:
     expected_resolution = _dominant(
         (item["resolution_class"] for item in findings), _RESOLUTION_RANK, "pass"
     )
-    expected_status = _dominant(
-        (item["status"] for item in findings), _STATUS_RANK, "pass"
-    )
-    expected_severity = _dominant(
-        (item["severity"] for item in findings), _SEVERITY_RANK, "none"
-    )
+    expected_status = _dominant((item["status"] for item in findings), _STATUS_RANK, "pass")
+    expected_severity = _dominant((item["severity"] for item in findings), _SEVERITY_RANK, "none")
     if (resolution, status, severity) != (
         expected_resolution,
         expected_status,
@@ -853,9 +818,7 @@ def _parse_outcome(value: Any) -> OutcomePayload:
             action["arguments"][field] != sorted(expected[field])
             for field in ("codes", "scopes", "maps", "owners")
         ):
-            raise MurlocsError(
-                f"outcome action arguments do not match findings: {action['id']}"
-            )
+            raise MurlocsError(f"outcome action arguments do not match findings: {action['id']}")
     parsed: OutcomePayload = {
         "contract": OUTCOME_CONTRACT,
         "schema_version": OUTCOME_SCHEMA_VERSION,
@@ -891,8 +854,16 @@ def _parse_annotations(value: Any) -> list[OutcomeAnnotationPayload]:
     if not isinstance(value, list) or len(value) > 1024:
         raise MurlocsError("outcome annotations must be a bounded array")
     expected = {
-        "id", "kind", "version", "invariant", "scope", "file", "line",
-        "declaring_layer", "owners", "verification",
+        "id",
+        "kind",
+        "version",
+        "invariant",
+        "scope",
+        "file",
+        "line",
+        "declaring_layer",
+        "owners",
+        "verification",
     }
     records: list[OutcomeAnnotationPayload] = []
     for item in value:
@@ -948,9 +919,7 @@ def _envelope(
 ) -> OutcomePayload:
     resolution = cast(
         ResolutionClass,
-        _dominant(
-            (item["resolution_class"] for item in findings), _RESOLUTION_RANK, "pass"
-        ),
+        _dominant((item["resolution_class"] for item in findings), _RESOLUTION_RANK, "pass"),
     )
     status = cast(
         OutcomeStatus,
@@ -1194,10 +1163,7 @@ def _parse_actions(value: Any) -> list[OutcomeActionPayload]:
         raise MurlocsError("outcome next_actions must be a bounded array")
     parsed: list[OutcomeActionPayload] = []
     expected_keys = {"id", "operation", "arguments", "effect", "authority"}
-    allowed = {
-        values[1]: (values[0], values[2], values[3])
-        for values in _ACTION_SPECS.values()
-    }
+    allowed = {values[1]: (values[0], values[2], values[3]) for values in _ACTION_SPECS.values()}
     for raw in value:
         if not isinstance(raw, Mapping) or set(raw) != expected_keys:
             raise MurlocsError("outcome action has unknown or missing fields")
@@ -1516,9 +1482,7 @@ def _merge_correlation(
         for item in values[1:]
     ):
         raise MurlocsError("outcome correlation and integration tokens do not match")
-    dependencies = {
-        item["dependency_id"] for item in values if item["dependency_id"] is not None
-    }
+    dependencies = {item["dependency_id"] for item in values if item["dependency_id"] is not None}
     if len(dependencies) > 1:
         raise MurlocsError("outcome dependency tokens do not match")
     return {

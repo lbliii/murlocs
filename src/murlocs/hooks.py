@@ -187,14 +187,10 @@ def install_hooks(
     selected = _normalized_events(events)
     states = {event: _hook_state(hooks / event, event) for event in selected}
     conflicts = [
-        event
-        for event, state_name in states.items()
-        if state_name in {"modified", "occupied"}
+        event for event, state_name in states.items() if state_name in {"modified", "occupied"}
     ]
     if conflicts:
-        raise MurlocsError(
-            "refusing to replace existing Git hook(s): " + ", ".join(conflicts)
-        )
+        raise MurlocsError("refusing to replace existing Git hook(s): " + ", ".join(conflicts))
     # A byte-owned dispatcher may be left untouched even if its runner has moved;
     # this preserves idempotency and lets status describe the repair needed.
     if all(states[event] == "installed" for event in selected) and runner is None:
@@ -241,9 +237,7 @@ def uninstall_hooks(root: Path, events: tuple[HookEvent, ...]) -> dict[str, Any]
         if target.exists() and not owned[event]:
             conflicts.append(event)
     if conflicts:
-        raise MurlocsError(
-            "refusing to remove modified Git hook(s): " + ", ".join(conflicts)
-        )
+        raise MurlocsError("refusing to remove modified Git hook(s): " + ", ".join(conflicts))
     changed: list[str] = []
     for event in selected:
         target = hooks / event
@@ -479,9 +473,7 @@ def _run_snapshot(
     return HookResult(payload, 1 if blocking else 0, text)
 
 
-def _recapture(
-    context: GitContext, snapshot: GitSnapshot, deadline: Deadline
-) -> GitSnapshot:
+def _recapture(context: GitContext, snapshot: GitSnapshot, deadline: Deadline) -> GitSnapshot:
     if snapshot.view == "index":
         return capture_index(context, deadline)
     return capture_commit(context, snapshot.object_id or "", deadline)
@@ -517,8 +509,7 @@ def _run_operation(
 ) -> tuple[dict[str, Any], int, bytes]:
     package_root = Path(__file__).resolve().parents[1]
     bootstrap = (
-        "import sys;sys.path.insert(0,sys.argv[1]);"
-        "from murlocs.cli import main;main(sys.argv[2:])"
+        "import sys;sys.path.insert(0,sys.argv[1]);from murlocs.cli import main;main(sys.argv[2:])"
     )
     argv = [
         sys.executable,
@@ -735,11 +726,11 @@ def _hook_bytes(event: HookEvent, runner: HookRunner) -> bytes:
     quoted_runner = shlex.quote(str(runner.path))
     quoted_build_id = shlex.quote(runner.build_id)
     command = (
-        f'exec {quoted_runner} hook run pre-commit --expected-build-id={quoted_build_id}\n'
+        f"exec {quoted_runner} hook run pre-commit --expected-build-id={quoted_build_id}\n"
         if event == "pre-commit"
         else (
             f'exec {quoted_runner} hook run pre-push --remote-name="$1" --remote-url="$2" '
-            f'--expected-build-id={quoted_build_id}\n'
+            f"--expected-build-id={quoted_build_id}\n"
         )
     )
     metadata = json.dumps(
@@ -768,7 +759,7 @@ def _v1_hook_bytes(event: HookEvent, runner: HookRunner) -> bytes:
     """Render the exact pinned-runner dispatcher emitted before build identity."""
     quoted_runner = shlex.quote(str(runner.path))
     command = (
-        f'exec {quoted_runner} hook run pre-commit\n'
+        f"exec {quoted_runner} hook run pre-commit\n"
         if event == "pre-commit"
         else f'exec {quoted_runner} hook run pre-push --remote-name="$1" --remote-url="$2"\n'
     )
@@ -826,9 +817,7 @@ def _owned_runner(content: bytes, event: HookEvent) -> HookRunner | None:
             return None
         if not lines[2].startswith(_RUNNER_PREFIX):
             return None
-        data = json.loads(
-            lines[2][len(_RUNNER_PREFIX) :], object_pairs_hook=_unique_object
-        )
+        data = json.loads(lines[2][len(_RUNNER_PREFIX) :], object_pairs_hook=_unique_object)
         if set(data) == {"path", "version"}:
             schema = "v1"
         elif set(data) == {"path", "version", "build_id", "sha256"}:
@@ -851,7 +840,7 @@ def _owned_runner(content: bytes, event: HookEvent) -> HookRunner | None:
             return None
         runner = HookRunner(Path(path), version, build_id, sha256)
         return runner if content == _hook_bytes(event, runner) else None
-    except (MurlocsError, UnicodeDecodeError, TypeError, ValueError, json.JSONDecodeError):
+    except MurlocsError, UnicodeDecodeError, TypeError, ValueError, json.JSONDecodeError:
         return None
 
 
@@ -1049,7 +1038,11 @@ def _terminate_runner_process_group(process: subprocess.Popen[bytes]) -> None:
 def _parse_runner_identity(value: Any) -> RuntimeIdentity:
     """Strictly accept the version-1 identity protocol from a chosen runner."""
     if not isinstance(value, Mapping) or set(value) != {
-        "schema_version", "project", "version", "build", "installation"
+        "schema_version",
+        "project",
+        "version",
+        "build",
+        "installation",
     }:
         raise MurlocsError("hook runner returned an unsupported build identity schema")
     if value["schema_version"] != 1 or value["project"] != "murlocs":
@@ -1069,7 +1062,10 @@ def _parse_runner_identity(value: Any) -> RuntimeIdentity:
     ):
         raise MurlocsError("hook runner returned an invalid build identity")
     if not isinstance(installation, Mapping) or set(installation) != {
-        "kind", "editable", "source_revision", "archive_hash"
+        "kind",
+        "editable",
+        "source_revision",
+        "archive_hash",
     }:
         raise MurlocsError("hook runner returned an invalid installation identity")
     if (

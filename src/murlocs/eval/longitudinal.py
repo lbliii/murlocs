@@ -171,8 +171,7 @@ def analyze_longitudinal(dataset: LongitudinalDataset) -> dict[str, Any]:
     state_counts = Counter(item.record.state for item in ordered_proposals)
     intent_counts = Counter(item.record.intent for item in ordered_proposals)
     accepted_count = sum(
-        any(event.state == "accepted" for event in item.record.events)
-        for item in ordered_proposals
+        any(event.state == "accepted" for event in item.record.events) for item in ordered_proposals
     )
     applied_additions = sum(
         item.record.intent == "add" and _apply_event(item.record) is not None
@@ -388,8 +387,7 @@ def _load_observation(
     expected_bytes = getattr(matching_chains[0], f"active_bytes_{phase}")
     if expected_bytes is None or guidance_bytes(murlocs_runs[0].guidance_text) != expected_bytes:
         raise ValueError(
-            f"{context}: murlocs guidance bytes do not match affected-chain "
-            f"active_bytes_{phase}"
+            f"{context}: murlocs guidance bytes do not match affected-chain active_bytes_{phase}"
         )
     return RunObservation(
         proposal_id,
@@ -416,9 +414,7 @@ def _validate_revision_link(
     context: str,
 ) -> None:
     if revisions.source_before != record.base_source_sha256:
-        raise ValueError(
-            f"{context}: source_before does not match record base_source_sha256"
-        )
+        raise ValueError(f"{context}: source_before does not match record base_source_sha256")
     event = _apply_event(record)
     after_values = (
         revisions.repository_after,
@@ -484,9 +480,7 @@ def _validate_supersession_links(proposals: dict[str, ProposalLink], context: st
             )
 
 
-def _validate_series_continuity(
-    proposals: tuple[ProposalLink, ...], context: str
-) -> None:
+def _validate_series_continuity(proposals: tuple[ProposalLink, ...], context: str) -> None:
     """Require one deterministic revision line; unapplied records never advance it."""
     target_sources = {item.record.target_source for item in proposals}
     if len(target_sources) != 1:
@@ -522,9 +516,9 @@ def _validate_series_continuity(
         )
         initial = _revision_boundary(first, "before")
 
-    boundary_bytes: dict[
-        tuple[str, str, str], dict[tuple[str, tuple[str, ...]], int]
-    ] = defaultdict(dict)
+    boundary_bytes: dict[tuple[str, str, str], dict[tuple[str, tuple[str, ...]], int]] = (
+        defaultdict(dict)
+    )
     for item in proposals:
         _record_boundary_bytes(boundary_bytes, item, "before", context)
         if _apply_event(item.record) is not None:
@@ -579,9 +573,9 @@ def _validate_observation_links(
     context: str,
 ) -> None:
     seen: set[tuple[str, str, str, str, tuple[str, ...]]] = set()
-    grouped: dict[
-        str, dict[str, dict[tuple[str, str, tuple[str, ...]], RunObservation]]
-    ] = defaultdict(lambda: {"before": {}, "after": {}})
+    grouped: dict[str, dict[str, dict[tuple[str, str, tuple[str, ...]], RunObservation]]] = (
+        defaultdict(lambda: {"before": {}, "after": {}})
+    )
     for item in observations:
         identity = (item.proposal_id, item.phase, item.task.id, item.scope, item.chain)
         if identity in seen:
@@ -628,8 +622,7 @@ def _validate_physical_snapshot_reuse(
             continue
         if len(uses) != 2:
             raise ValueError(
-                f"{context}: physical task/run snapshot has ambiguous attribution: "
-                f"{runs_sha256}"
+                f"{context}: physical task/run snapshot has ambiguous attribution: {runs_sha256}"
             )
         after = next((item for item in uses if item.phase == "after"), None)
         before = next((item for item in uses if item.phase == "before"), None)
@@ -648,8 +641,7 @@ def _validate_physical_snapshot_reuse(
             and asdict(after.task) == asdict(before.task)
             and after.source_revision == before.source_revision
             and after.task.repository_revision == before.task.repository_revision
-            and _murlocs_run(after).guidance_revision
-            == _murlocs_run(before).guidance_revision
+            and _murlocs_run(after).guidance_revision == _murlocs_run(before).guidance_revision
         )
         if not same_boundary:
             raise ValueError(
@@ -810,8 +802,7 @@ def _chain_payload(item: AffectedChainLink) -> dict[str, Any]:
 def _event_time(event: CurationEvent, proposal_id: str) -> datetime:
     if RFC3339_PATTERN.fullmatch(event.at) is None:
         raise ValueError(
-            f"proposal {proposal_id!r} event {event.state!r} has invalid RFC3339 time "
-            f"{event.at!r}"
+            f"proposal {proposal_id!r} event {event.state!r} has invalid RFC3339 time {event.at!r}"
         )
     try:
         parsed = datetime.fromisoformat(event.at.replace("Z", "+00:00"))
@@ -847,9 +838,7 @@ def _murlocs_run(observation: RunObservation) -> RunRecord:
     return next(record for record in observation.records if record.arm == "murlocs")
 
 
-def _evidence_sha256(
-    task: TaskDefinition, records: tuple[RunRecord, ...]
-) -> tuple[str, str]:
+def _evidence_sha256(task: TaskDefinition, records: tuple[RunRecord, ...]) -> tuple[str, str]:
     record_payload = [
         asdict(record) for record in sorted(records, key=lambda item: ARMS.index(item.arm))
     ]

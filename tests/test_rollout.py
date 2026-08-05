@@ -42,9 +42,7 @@ def enable_codeowners(root: Path, content: str | None) -> None:
 
 def test_dry_run_previews_and_writes_nothing(tmp_path):
     root = root_only(tmp_path)
-    result = invoke(
-        "--dry-run", "add-scope", "docs", "--repo", str(root), "--owners", "@docs"
-    )
+    result = invoke("--dry-run", "add-scope", "docs", "--repo", str(root), "--owners", "@docs")
     assert result.exit_code == 0
     assert "would add scope docs" in result.output
     assert "manifest registration:" in result.output
@@ -118,9 +116,7 @@ def test_apply_reports_codeowners_resolution_and_makes_no_partial_writes(tmp_pat
     assert "/.murlocs/layers/docs.toml @docs" in result.stderr
     assert "Murlocs will not edit" not in result.stderr
     assert not (root / ".murlocs" / "layers" / "docs.toml").exists()
-    assert "[[layers]]" not in (root / ".murlocs" / "manifest.toml").read_text(
-        encoding="utf-8"
-    )
+    assert "[[layers]]" not in (root / ".murlocs" / "manifest.toml").read_text(encoding="utf-8")
 
 
 def test_codeowners_mismatch_is_blocking_and_exact_match_applies(tmp_path):
@@ -128,23 +124,17 @@ def test_codeowners_mismatch_is_blocking_and_exact_match_applies(tmp_path):
     codeowners = root / ".github" / "CODEOWNERS"
     enable_codeowners(
         root,
-        "/.murlocs/manifest.toml @platform\n"
-        "/.murlocs/layers/docs.toml @someone-else\n",
+        "/.murlocs/manifest.toml @platform\n/.murlocs/layers/docs.toml @someone-else\n",
     )
 
-    preview = invoke(
-        "--dry-run", "add-scope", "docs", "--repo", str(root), "--owners", "@docs"
-    )
+    preview = invoke("--dry-run", "add-scope", "docs", "--repo", str(root), "--owners", "@docs")
     assert preview.exit_code == 0
     assert "blocking: owner-mismatch" in preview.output
     assert "current owners: @someone-else" in preview.output
-    assert invoke(
-        "add-scope", "docs", "--repo", str(root), "--owners", "@docs"
-    ).exit_code == 1
+    assert invoke("add-scope", "docs", "--repo", str(root), "--owners", "@docs").exit_code == 1
 
     codeowners.write_text(
-        "/.murlocs/manifest.toml @platform\n"
-        "/.murlocs/layers/docs.toml @docs\n",
+        "/.murlocs/manifest.toml @platform\n/.murlocs/layers/docs.toml @docs\n",
         encoding="utf-8",
     )
     applied = invoke("add-scope", "docs", "--repo", str(root), "--owners", "@docs")
@@ -156,9 +146,7 @@ def test_missing_codeowners_file_is_previewed_without_creating_it(tmp_path):
     root = root_only(tmp_path)
     enable_codeowners(root, None)
 
-    result = invoke(
-        "--dry-run", "add-scope", "docs", "--repo", str(root), "--owners", "@docs"
-    )
+    result = invoke("--dry-run", "add-scope", "docs", "--repo", str(root), "--owners", "@docs")
 
     assert result.exit_code == 0
     assert "blocking: missing-file" in result.output

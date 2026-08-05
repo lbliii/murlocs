@@ -22,7 +22,7 @@ def _repo(root: Path) -> None:
     assert invoke("init", "--repo", str(root)).exit_code == 0
     (root / "src").mkdir()
     (root / "src" / "proof.py").write_text(
-        "# murlocs:annotation/v1 evidence \"guidance.marker\"\nVALUE = 1\n",
+        '# murlocs:annotation/v1 evidence "guidance.marker"\nVALUE = 1\n',
         encoding="utf-8",
     )
     manifest = root / ".murlocs" / "manifest.toml"
@@ -68,15 +68,11 @@ def test_valid_annotation_provenance_has_one_additive_record_on_every_surface(tm
     assert checked["outcome"]["annotations"] == [expected]
     assert "annotations" in tool.output_schema["anyOf"][0]["properties"]
     assert "**check**" in generate_llms_txt(build_cli())
-    assert "annotation guidance.marker (evidence)" in invoke(
-        "check", "--repo", str(root)
-    ).output
+    assert "annotation guidance.marker (evidence)" in invoke("check", "--repo", str(root)).output
 
     explained = client.call("explain", path="src/proof.py", repo=str(root)).structured
     assert explained["scopes"][0]["invariants"][0]["annotations"] == [expected]
-    assert explained["budget"]["active_bytes"] == len(
-        (root / "AGENTS.md").read_bytes()
-    )
+    assert explained["budget"]["active_bytes"] == len((root / "AGENTS.md").read_bytes())
     assert "Evidence provenance: `guidance.marker`" in (root / "AGENTS.md").read_text(
         encoding="utf-8"
     )
@@ -85,12 +81,10 @@ def test_valid_annotation_provenance_has_one_additive_record_on_every_surface(tm
     inventory = client.call("inventory", repo=str(root)).structured
     status = client.call("status", repo=str(root)).structured
     assert inventory["annotations"] == status["annotations"] == [expected]
-    assert "annotation guidance.marker (evidence)" in invoke(
-        "inventory", "--repo", str(root)
-    ).output
-    assert "annotation guidance.marker (evidence)" in invoke(
-        "status", "--repo", str(root)
-    ).output
+    assert (
+        "annotation guidance.marker (evidence)" in invoke("inventory", "--repo", str(root)).output
+    )
+    assert "annotation guidance.marker (evidence)" in invoke("status", "--repo", str(root)).output
 
 
 def test_invalid_annotation_is_only_a_check_finding_not_active_provenance(tmp_path: Path):
@@ -99,7 +93,7 @@ def test_invalid_annotation_is_only_a_check_finding_not_active_provenance(tmp_pa
     _repo(root)
     source = root / "src" / "proof.py"
     source.write_text(
-        "# murlocs:annotation/v1 evidence \"other.marker\"\nVALUE = 1\n",
+        '# murlocs:annotation/v1 evidence "other.marker"\nVALUE = 1\n',
         encoding="utf-8",
     )
 
@@ -123,7 +117,7 @@ def test_compile_rejects_invalid_annotation_without_rewriting_existing_provenanc
     agents_before = (root / "AGENTS.md").read_bytes()
     lock_before = (root / ".murlocs" / "lock.json").read_bytes()
     (root / "src" / "proof.py").write_text(
-        "# murlocs:annotation/v1 evidence \"other.marker\"\nVALUE = 1\n",
+        '# murlocs:annotation/v1 evidence "other.marker"\nVALUE = 1\n',
         encoding="utf-8",
     )
 

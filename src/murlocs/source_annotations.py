@@ -470,7 +470,7 @@ def _is_ignored(root: Path, path: Path) -> bool:
             if len(raw) > MAX_FILE_BYTES:
                 return True
             lines = raw.decode("utf-8").splitlines()
-        except (OSError, UnicodeDecodeError):
+        except OSError, UnicodeDecodeError:
             return True
         relative = "/".join(parts[depth:])
         for line in lines:
@@ -494,10 +494,7 @@ def _ignore_pattern_matches(pattern: str, relative: str) -> bool:
     if directory:
         if anchored or "/" in pattern:
             return relative == pattern or relative.startswith(pattern + "/")
-        return any(
-            fnmatchcase(part, pattern)
-            for part in relative.split("/")[:-1]
-        )
+        return any(fnmatchcase(part, pattern) for part in relative.split("/")[:-1])
     if anchored or "/" in pattern:
         return fnmatchcase(relative, pattern)
     return any(fnmatchcase(part, pattern) for part in relative.split("/"))
@@ -531,11 +528,12 @@ def _read_declared_file(candidate: Path) -> tuple[bytes | None, str | None]:
         current = candidate.stat(follow_symlinks=False)
     except OSError:
         return None, "annotation.excluded"
-    if (
-        (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns)
-        != (opened.st_dev, opened.st_ino, opened.st_size, opened.st_mtime_ns)
-        or (current.st_dev, current.st_ino) != (opened.st_dev, opened.st_ino)
-    ):
+    if (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns) != (
+        opened.st_dev,
+        opened.st_ino,
+        opened.st_size,
+        opened.st_mtime_ns,
+    ) or (current.st_dev, current.st_ino) != (opened.st_dev, opened.st_ino):
         return None, "annotation.resource-limit"
     return raw, None
 
@@ -593,7 +591,7 @@ def _python_comment_bodies(text: str) -> list[tuple[int, str]]:
             for token in tokens
             if token.type == tokenize.COMMENT
         ]
-    except (tokenize.TokenError, IndentationError):
+    except tokenize.TokenError, IndentationError:
         # An incomplete source file cannot safely establish a comment boundary.
         return []
 
@@ -789,9 +787,7 @@ def _html_comment_bodies(text: str) -> list[tuple[int, str]]:
         if not in_script:
             stripped = line.strip(" \t")
             if stripped.startswith("<!--") and stripped.endswith("-->"):
-                comments.append(
-                    (number, stripped[4:-3].removeprefix(" ").removesuffix(" "))
-                )
+                comments.append((number, stripped[4:-3].removeprefix(" ").removesuffix(" ")))
         if "<script" in lowered and "</script" not in lowered:
             in_script = True
     return comments

@@ -184,9 +184,7 @@ def _annotation_finding(
     inferred_identifier = (
         related[0].annotation.identifier
         if finding.identifier is None
-        and len(
-            {item.annotation.identifier for item in related if item.annotation is not None}
-        )
+        and len({item.annotation.identifier for item in related if item.annotation is not None})
         == 1
         else None
     )
@@ -241,17 +239,13 @@ def _ownership_findings(manifest: Manifest) -> list[Finding]:
     if manifest.require_layer_owners:
         for source in manifest.sources:
             if not source.owners:
-                findings.append(
-                    Finding("ownership", f"{_source_label(source)} declares no owner")
-                )
+                findings.append(Finding("ownership", f"{_source_label(source)} declares no owner"))
     if manifest.validate_codeowners:
         findings.extend(_codeowners_findings(manifest, manifest.sources))
     return findings
 
 
-def _codeowners_findings(
-    manifest: Manifest, sources: tuple[LayerSource, ...]
-) -> list[Finding]:
+def _codeowners_findings(manifest: Manifest, sources: tuple[LayerSource, ...]) -> list[Finding]:
     codeowners = find_codeowners(manifest.root)
     if codeowners is None:
         return [
@@ -359,9 +353,7 @@ def _command_path_findings(root: Path, name: str, invoke: str) -> list[Finding]:
             findings.append(Finding("check", str(exc)))
             continue
         if not local.exists():
-            findings.append(
-                Finding("check", f"{name} command path does not exist: {candidate}")
-            )
+            findings.append(Finding("check", f"{name} command path does not exist: {candidate}"))
     return findings
 
 
@@ -379,14 +371,11 @@ def _coverage_findings(manifest: Manifest) -> list[Finding]:
             findings.append(Finding("coverage", f"coverage root does not exist: {root_name}"))
             continue
         candidates = [(coverage_root, False)]
-        candidates.extend(
-            (path, True) for path in coverage_root.iterdir() if path.is_dir()
-        )
+        candidates.extend((path, True) for path in coverage_root.iterdir() if path.is_dir())
         for candidate, recursive in candidates:
             children = candidate.rglob("*") if recursive else candidate.iterdir()
             has_source = any(
-                child.is_file() and child.suffix in manifest.source_suffixes
-                for child in children
+                child.is_file() and child.suffix in manifest.source_suffixes for child in children
             )
             if not has_source:
                 continue

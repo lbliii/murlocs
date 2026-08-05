@@ -5,25 +5,179 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  schedule:
+    # Weekly, so dependency and toolchain drift surfaces without a push.
+    - cron: "0 2 * * 0"
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-permissions:
-  contents: read
-
 jobs:
-  test:
+  lint:
+    name: Lint (ruff)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v9.0.0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v9.0.0
         with:
           python-version: "3.14"
           prune-cache: true
+
+      - name: Cache uv dependencies
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/uv
+          key: uv-${{ runner.os }}-${{ hashFiles('pyproject.toml', 'uv.lock') }}
+          restore-keys: |
+            uv-${{ runner.os }}-
+
       - run: uv sync --group dev
-      - run: uv run ruff check .
-      - run: uv run pytest
-      - run: uv run murlocs check
-      - run: uv run milo verify src/murlocs/cli.py
+
+      - name: Ruff (lint)
+        run: uv run ruff check .
+
+      - name: Ruff (format)
+        run: uv run ruff format --check .
+
+  typecheck:
+    name: Type check (ty)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v9.0.0
+        with:
+          python-version: "3.14"
+          prune-cache: true
+
+      - name: Cache uv dependencies
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/uv
+          key: uv-${{ runner.os }}-${{ hashFiles('pyproject.toml', 'uv.lock') }}
+          restore-keys: |
+            uv-${{ runner.os }}-
+
+      - run: uv sync --group dev
+
+      # Advisory while the existing diagnostics are burned down. The ratchet
+      # below is the gate: it fails when the count grows. Delete this job's
+      # `continue-on-error` once the count reaches zero.
+      - name: Ty type checker (advisory)
+        run: uv run ty check src/murlocs
+        continue-on-error: true
+
+      - name: Ty diagnostic ratchet
+        run: uv run python scripts/ty_ratchet.py
+
+  test:
+    name: Tests (${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.14", "3.14t"]
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v9.0.0
+        with:
+          python-version: ${{ matrix.python-version }}
+          prune-cache: true
+
+      - name: Cache uv dependencies
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/uv
+          key: uv-${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('pyproject.toml', 'uv.lock') }}
+          restore-keys: |
+            uv-${{ runner.os }}-${{ matrix.python-version }}-
+
+      - run: uv sync --group dev
+
+      - name: Pytest
+        env:
+          CI: "true"
+        run: uv run pytest -q
+
+  guidance:
+    name: Guidance network
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v9.0.0
+        with:
+          python-version: "3.14"
+          prune-cache: true
+
+      - name: Cache uv dependencies
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/uv
+          key: uv-${{ runner.os }}-${{ hashFiles('pyproject.toml', 'uv.lock') }}
+          restore-keys: |
+            uv-${{ runner.os }}-
+
+      - run: uv sync --group dev
+
+      - name: Generated maps, proofs, coverage, and drift are current
+        run: uv run murlocs check
+
+      - name: Typed CLI, discovery, and MCP surfaces agree
+        run: uv run milo verify src/murlocs/cli.py
+
+  package:
+    name: Distribution
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v9.0.0
+        with:
+          python-version: "3.14"
+          prune-cache: true
+
+      - name: Build wheel and sdist
+        run: uv build
+
+      - name: Check distribution metadata
+        run: uvx twine check dist/*
+
+      # The published artifact is what users get, so exercise it the way they
+      # will: installed, from a directory that is not the checkout.
+      - name: Installed wheel runs outside the checkout
+        run: |
+          uv venv /tmp/wheel-smoke --python 3.14
+          uv pip install --python /tmp/wheel-smoke/bin/python dist/*.whl
+          mkdir -p /tmp/wheel-smoke-repo
+          cd /tmp/wheel-smoke-repo
+          git init --quiet .
+          /tmp/wheel-smoke/bin/murlocs --version
+          /tmp/wheel-smoke/bin/mrr --version
+          /tmp/wheel-smoke/bin/murlocs init --name "Wheel Smoke"
+          /tmp/wheel-smoke/bin/murlocs check
+          /tmp/wheel-smoke/bin/python - <<'PY'
+          from importlib.metadata import metadata
+          from importlib.resources import files
+
+          assert files("murlocs").joinpath("py.typed").is_file(), "py.typed missing from the wheel"
+          assert not metadata("murlocs").get_all("Provides-Extra"), "unexpected published extra"
+          print("packaging contract holds")
+          PY

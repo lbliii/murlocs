@@ -327,13 +327,8 @@ def test_longitudinal_summary_distinguishes_lifecycle_and_preserves_evidence(tmp
         "rejected",
         "pruning",
     ]
-    assert all(
-        item["time_to_decision_seconds"] == 3600
-        for item in result["active_bytes_timeline"]
-    )
-    assert result["active_bytes_timeline"][-1][
-        "cumulative_recorded_active_bytes_delta"
-    ] == -10
+    assert all(item["time_to_decision_seconds"] == 3600 for item in result["active_bytes_timeline"])
+    assert result["active_bytes_timeline"][-1]["cumulative_recorded_active_bytes_delta"] == -10
     evidence = result["raw_evidence"][0]
     assert evidence["proposal_id"] == "addition"
     assert evidence["lifecycle_state"] == "superseded"
@@ -517,9 +512,7 @@ def test_longitudinal_cli_writes_only_explicit_result(tmp_path, capsys):
 
 
 @pytest.mark.parametrize("link_kind", ["symlink", "hardlink"])
-def test_longitudinal_save_replaces_links_without_mutating_external_target(
-    tmp_path, link_kind
-):
+def test_longitudinal_save_replaces_links_without_mutating_external_target(tmp_path, link_kind):
     result = analyze_longitudinal(load_longitudinal(build_series(tmp_path / "series")))
     output = tmp_path / "results"
     output.mkdir()
@@ -609,9 +602,7 @@ def test_physical_snapshot_cannot_be_attributed_to_unrelated_proposals(tmp_path)
         for item in payload["observations"]
         if item["proposal_id"] == "pruning" and item["phase"] == "before"
     )
-    rejected = next(
-        item for item in payload["observations"] if item["proposal_id"] == "rejected"
-    )
+    rejected = next(item for item in payload["observations"] if item["proposal_id"] == "rejected")
     copied_task = tmp_path / "tasks/copied-unrelated.toml"
     copied_runs = tmp_path / "runs/copied-unrelated.json"
     copied_task.write_bytes((tmp_path / pruning["task"]).read_bytes())
@@ -651,16 +642,12 @@ def test_adjacent_after_to_before_snapshot_reuse_is_explicitly_safe(tmp_path):
     assert len(result["comparisons"]) == 3
 
 
-@pytest.mark.parametrize(
-    "disconnect", ["revision", "chain_bytes", "unapplied", "cross_source"]
-)
+@pytest.mark.parametrize("disconnect", ["revision", "chain_bytes", "unapplied", "cross_source"])
 def test_linear_series_rejects_disconnected_or_branching_history(tmp_path, disconnect):
     path = build_series(tmp_path)
     payload = json.loads(path.read_text(encoding="utf-8"))
     replacement = next(
-        item
-        for item in payload["proposals"]
-        if item["record"].endswith("replacement.toml")
+        item for item in payload["proposals"] if item["record"].endswith("replacement.toml")
     )
     if disconnect == "revision":
         replacement["revisions"]["repository_before"] = "branch-x"
@@ -670,9 +657,7 @@ def test_linear_series_rejects_disconnected_or_branching_history(tmp_path, disco
         expected = "affected chain bytes conflict"
     elif disconnect == "unapplied":
         rejected = next(
-            item
-            for item in payload["proposals"]
-            if item["record"].endswith("rejected.toml")
+            item for item in payload["proposals"] if item["record"].endswith("rejected.toml")
         )
         rejected["revisions"]["guidance_before"] = "disconnected-guidance"
         expected = "unapplied proposal.*disconnected"

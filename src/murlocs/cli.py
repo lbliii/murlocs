@@ -192,9 +192,7 @@ class MurlocsCLI(CLI):
         finally:
             self._repeatable_value_tokens = {}
 
-    def _build_run_kwargs(
-        self, args: Any, ctx: Context, command: Any
-    ) -> dict[str, Any]:
+    def _build_run_kwargs(self, args: Any, ctx: Context, command: Any) -> dict[str, Any]:
         """Restore protected dash-leading values after Milo validates the namespace."""
         kwargs = super()._build_run_kwargs(args, ctx, command)
         protected = getattr(self, "_repeatable_value_tokens", {})
@@ -209,10 +207,7 @@ def _command_index(
 ) -> int | None:
     """Locate the selected leaf command without mistaking a root option value for it."""
     value_flags = {
-        flag
-        for option in root_options
-        if option.action == "store"
-        for flag in option.flags
+        flag for option in root_options if option.action == "store" for flag in option.flags
     }
     path = [*groups, command]
     index = 0
@@ -794,9 +789,7 @@ def _outcome_failure(
     """Preserve legacy failure fields and exits while adding the v1 sidecar."""
     message = str(error)
     try:
-        outcome = build_failure_outcome(
-            operation, code, message, correlation_id=correlation_id
-        )
+        outcome = build_failure_outcome(operation, code, message, correlation_id=correlation_id)
     except MurlocsError:
         outcome = build_failure_outcome(operation, code, message)
     return CommandResult(
@@ -894,9 +887,7 @@ def init_command(
                 ),
             )
         manifest_path.parent.mkdir(parents=True, exist_ok=True)
-        manifest_path.write_text(
-            render_manifest(network, tuple(coverage_roots)), encoding="utf-8"
-        )
+        manifest_path.write_text(render_manifest(network, tuple(coverage_roots)), encoding="utf-8")
         protocol_path.write_text(PROTOCOL_TEMPLATE, encoding="utf-8")
         manifest = load_manifest(root)
         initial_findings = validate(manifest)
@@ -905,9 +896,7 @@ def init_command(
             [item for item in initial_findings if item.code == "coverage"],
         )
         blocking = [
-            item
-            for item in initial_findings
-            if item.code not in {"coverage", "drift", "lock"}
+            item for item in initial_findings if item.code not in {"coverage", "drift", "lock"}
         ]
         if blocking:
             messages = "; ".join(str(item) for item in blocking)
@@ -947,9 +936,9 @@ def _normalize_coverage_roots(root: Path, entries: list[str]) -> list[str]:
 
 def _coverage_payload(roots: list[str], findings: list[Finding]) -> CoveragePayload:
     if not roots:
-        state: Literal[
-            "unconfigured", "structurally_incomplete", "structurally_complete"
-        ] = "unconfigured"
+        state: Literal["unconfigured", "structurally_incomplete", "structurally_complete"] = (
+            "unconfigured"
+        )
     elif findings:
         state = "structurally_incomplete"
     else:
@@ -1023,9 +1012,7 @@ def _compile_preview(manifest: Manifest) -> tuple[list[str], list[str]]:
     return changed, unchanged
 
 
-def _render_compile_result(
-    written: list[str], unchanged: list[str] | None, dry_run: bool
-) -> str:
+def _render_compile_result(written: list[str], unchanged: list[str] | None, dry_run: bool) -> str:
     if not dry_run:
         return "\n".join(f"wrote {relative}" for relative in written)
     lines = [f"would write {relative}" for relative in written]
@@ -1086,9 +1073,7 @@ def repair_command(
         changed = plan.paths if dry_run else apply_repair(plan)
         outcome = build_check_outcome(manifest, findings)
     except MurlocsError as exc:
-        return _outcome_failure(
-            "MURLOCS_REPAIR", exc, operation="check", correlation_id=None
-        )
+        return _outcome_failure("MURLOCS_REPAIR", exc, operation="check", correlation_id=None)
     return CommandResult(
         _repair_payload(
             changed=changed,
@@ -1115,9 +1100,7 @@ def _repair_payload(
         updates = [
             {
                 "path": item.path,
-                "before_sha256": (
-                    None if item.before is None else sha256_bytes(item.before)
-                ),
+                "before_sha256": (None if item.before is None else sha256_bytes(item.before)),
                 "after_sha256": sha256_bytes(item.after),
             }
             for item in plan.updates
@@ -1512,10 +1495,7 @@ def check_command(
         return CommandResult(
             {
                 "ok": False,
-                "findings": [
-                    _finding_payload(item)
-                    for item in findings
-                ],
+                "findings": [_finding_payload(item) for item in findings],
                 "summary": summary,
                 "coverage": coverage,
                 "annotations": annotations,
@@ -1551,8 +1531,7 @@ def _finding_payload(item: Finding) -> FindingPayload:
                 "invariant_ids": list(item.invariant_ids),
                 "scopes": list(item.scopes),
                 "locations": [
-                    {"file": location.file, "line": location.line}
-                    for location in item.locations
+                    {"file": location.file, "line": location.line} for location in item.locations
                 ],
                 "declaration_sources": list(item.declaration_sources),
             }
@@ -1641,9 +1620,7 @@ def explain_command(
         )
         lines.extend(["", f"[{scope.id}] {scope.map}", f"  {scope.point_of_view}"])
         if layer_payloads:
-            trace = ", ".join(
-                f"{layer['id']} ({layer['kind']})" for layer in layer_payloads
-            )
+            trace = ", ".join(f"{layer['id']} ({layer['kind']})" for layer in layer_payloads)
             lines.append(f"  from: {trace}")
             owners = sorted({owner for layer in layer_payloads for owner in layer["owners"]})
             if owners:
@@ -1758,9 +1735,7 @@ def _focused_checks(manifest: Manifest, scopes: list[Any]) -> list[FocusedCheckP
         if check is None or check.name in seen:
             continue
         seen.add(check.name)
-        ordered.append(
-            {"name": check.name, "invoke": check.invoke, "location": check.location}
-        )
+        ordered.append({"name": check.name, "invoke": check.invoke, "location": check.location})
     return ordered
 
 
@@ -1785,9 +1760,7 @@ def impact_command(
         if not path and revision_range is None:
             raise MurlocsError("provide at least one --path or --revision-range")
         explicit = normalize_changed_paths(root, path or ())
-        from_git = (
-            changed_paths_from_revision(root, revision_range) if revision_range else ()
-        )
+        from_git = changed_paths_from_revision(root, revision_range) if revision_range else ()
         changed = tuple(sorted(set(explicit) | set(from_git)))
         report = build_impact_report(
             manifest,
@@ -1851,9 +1824,7 @@ def inventory_command(
             f"legacy network: {legacy['scopes']} scope(s), {legacy['invariants']} invariant(s), "
             f"{legacy['checks']} check(s), {legacy['proof_debt']} proof-debt item(s)"
         )
-    lines.extend(
-        f"{item['generator']:>8}  {item['path']}" for item in inventory["instructions"]
-    )
+    lines.extend(f"{item['generator']:>8}  {item['path']}" for item in inventory["instructions"])
     annotations = cast(list[AnnotationProvenancePayload], inventory["annotations"])
     lines.extend(_annotation_terminal_lines(annotations))
     return CommandResult(
@@ -1876,12 +1847,9 @@ def status_command(
         return _failure("MURLOCS_STATUS", exc)
     lines = [f"state: {status['state']}"]
     lines.extend(
-        f"evidence {item['id']}: {item['path']} — {item['detail']}"
-        for item in status["evidence"]
+        f"evidence {item['id']}: {item['path']} — {item['detail']}" for item in status["evidence"]
     )
-    lines.extend(
-        f"blocker {item['id']}: {item['message']}" for item in status["blockers"]
-    )
+    lines.extend(f"blocker {item['id']}: {item['message']}" for item in status["blockers"])
     lines.extend(
         f"next {item['id']}: {item['command']} — {item['reason']}"
         for item in status["next_actions"]
@@ -1939,10 +1907,7 @@ def import_command(
     else:
         terminal = "\n".join(
             [
-                *(
-                    f"{'would write' if dry_run else 'wrote'} {path}"
-                    for path in written
-                ),
+                *(f"{'would write' if dry_run else 'wrote'} {path}" for path in written),
                 *finding_lines,
             ]
         )
@@ -2044,9 +2009,7 @@ def rollback_command(
         ctx: Milo host context used to honor dry-run policy.
     """
     try:
-        result = rollback_migration(
-            _root(repo), dry_run=bool(ctx is not None and ctx.dry_run)
-        )
+        result = rollback_migration(_root(repo), dry_run=bool(ctx is not None and ctx.dry_run))
     except (MurlocsError, OSError, ValueError) as exc:
         return _failure("MURLOCS_ROLLBACK", exc)
     verb = "would roll back" if ctx is not None and ctx.dry_run else "rolled back"
@@ -2427,8 +2390,7 @@ def curate_review_command(
         "Decisions:",
         *(
             f"  - {item['state']} by {item['actor']} at {item['at']}: "
-            f"{item['rationale']}"
-            + (f" ({item['review_ref']})" if item["review_ref"] else "")
+            f"{item['rationale']}" + (f" ({item['review_ref']})" if item["review_ref"] else "")
             for item in report["decisions"]
         ),
         "",

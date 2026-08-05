@@ -159,9 +159,7 @@ def test_completed_repair_journal_finalization_reports_every_changed_path(tmp_pa
         target.write_bytes(update.after)
     after_repair = snapshot(root)
 
-    preview = invoke(
-        "--dry-run", "repair", "--recover", "--repo", str(root), "--format", "json"
-    )
+    preview = invoke("--dry-run", "repair", "--recover", "--repo", str(root), "--format", "json")
     preview_payload = json.loads(preview.output)
 
     assert preview.exit_code == 0

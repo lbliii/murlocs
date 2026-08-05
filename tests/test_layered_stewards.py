@@ -36,9 +36,7 @@ def make_layered_repo(tmp_path: Path) -> tuple[Path, dict[str, str]]:
     (root / ".stewards" / "manifest.toml").write_text(
         (FIXTURE / "manifest.toml").read_text(encoding="utf-8"), encoding="utf-8"
     )
-    (root / ".stewards" / "PROTOCOL.md").write_text(
-        "# Legacy review protocol\n", encoding="utf-8"
-    )
+    (root / ".stewards" / "PROTOCOL.md").write_text("# Legacy review protocol\n", encoding="utf-8")
     for name in ("base", "widget", "overlay"):
         (stewards / f"{name}.toml").write_text(
             (FIXTURE / "layers" / f"{name}.toml").read_text(encoding="utf-8"), encoding="utf-8"
@@ -79,8 +77,9 @@ def test_translation_preserves_layer_order_kinds_owners_and_overrides():
 
 def test_import_writes_layer_files_and_registers_them(tmp_path):
     root, _ = make_layered_repo(tmp_path)
-    result = invoke("import", "--repo", str(root), "--from", "stewards", "--output",
-                    ".murlocs/manifest.toml")
+    result = invoke(
+        "import", "--repo", str(root), "--from", "stewards", "--output", ".murlocs/manifest.toml"
+    )
     assert result.exit_code == 0
     manifest = (root / ".murlocs" / "manifest.toml").read_text(encoding="utf-8")
     assert "[[layers]]" in manifest
@@ -95,8 +94,9 @@ def test_import_and_dry_run_perform_no_unintended_writes(tmp_path):
     invoke("import", "--repo", str(root), "--from", "stewards")  # stdout only
     assert not (root / ".murlocs").exists()
     # Dry-run adoption writes nothing either.
-    invoke("import", "--repo", str(root), "--from", "stewards", "--output",
-           ".murlocs/manifest.toml")
+    invoke(
+        "import", "--repo", str(root), "--from", "stewards", "--output", ".murlocs/manifest.toml"
+    )
     invoke("--dry-run", "adopt", "--repo", str(root))
     assert not (root / ".murlocs" / "migration.json").exists()
 
@@ -124,8 +124,9 @@ def test_inventory_reports_layered_network(tmp_path):
 
 def test_adoption_and_rollback_are_byte_safe(tmp_path):
     root, maps = make_layered_repo(tmp_path)
-    invoke("import", "--repo", str(root), "--from", "stewards", "--output",
-           ".murlocs/manifest.toml")
+    invoke(
+        "import", "--repo", str(root), "--from", "stewards", "--output", ".murlocs/manifest.toml"
+    )
     adopt_manifest(root)
     assert invoke("check", "--repo", str(root)).exit_code == 0
     # The adopted map carries layer provenance.
@@ -148,8 +149,9 @@ def test_unsupported_composition_is_blocking(tmp_path):
     )
     candidate = candidate_from_stewards(root)
     assert any(f.level == "blocking" for f in candidate.findings)
-    result = invoke("import", "--repo", str(root), "--from", "stewards", "--output",
-                    ".murlocs/manifest.toml")
+    result = invoke(
+        "import", "--repo", str(root), "--from", "stewards", "--output", ".murlocs/manifest.toml"
+    )
     assert result.exit_code == 1
     assert "blocking loss" in result.stderr
     assert not (root / ".murlocs").exists()

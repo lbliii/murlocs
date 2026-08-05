@@ -82,9 +82,7 @@ def discover_git(root: Path, deadline: Deadline) -> GitContext:
         root,
         ["rev-parse", "--path-format=absolute", "--git-common-dir"],
     ).stdout.rstrip(b"\n")
-    object_format = _git(
-        deadline, root, ["rev-parse", "--show-object-format"]
-    ).stdout.rstrip(b"\n")
+    object_format = _git(deadline, root, ["rev-parse", "--show-object-format"]).stdout.rstrip(b"\n")
     try:
         top_path = Path(os.fsdecode(top)).resolve()
         git_path = Path(os.fsdecode(git_dir)).resolve()
@@ -118,9 +116,7 @@ def capture_head(context: GitContext, deadline: Deadline) -> GitSnapshot | None:
     return capture_commit(context, oid, deadline)
 
 
-def capture_commit(
-    context: GitContext, commit_oid: str, deadline: Deadline
-) -> GitSnapshot:
+def capture_commit(context: GitContext, commit_oid: str, deadline: Deadline) -> GitSnapshot:
     _validated_oid(commit_oid.encode("ascii", errors="strict"), context.object_format)
     completed = _git(
         deadline,
@@ -131,9 +127,7 @@ def capture_commit(
     return _snapshot("commit", commit_oid, entries, context.object_format)
 
 
-def resolve_commit(
-    context: GitContext, object_id: str, deadline: Deadline
-) -> str:
+def resolve_commit(context: GitContext, object_id: str, deadline: Deadline) -> str:
     _validated_oid(object_id.encode("ascii", errors="strict"), context.object_format)
     completed = _git(
         deadline,
@@ -143,17 +137,11 @@ def resolve_commit(
     return _validated_oid(completed.stdout.rstrip(b"\n"), context.object_format)
 
 
-def changed_paths(
-    before: GitSnapshot | None, after: GitSnapshot
-) -> tuple[str, ...]:
+def changed_paths(before: GitSnapshot | None, after: GitSnapshot) -> tuple[str, ...]:
     """Return a deterministic delete/add representation of one tree delta."""
     old = {} if before is None else {entry.path_bytes: entry for entry in before.entries}
     new = {entry.path_bytes: entry for entry in after.entries}
-    changed = sorted(
-        path
-        for path in set(old) | set(new)
-        if old.get(path) != new.get(path)
-    )
+    changed = sorted(path for path in set(old) | set(new) if old.get(path) != new.get(path))
     return tuple(_decode_path(path) for path in changed)
 
 
@@ -206,9 +194,7 @@ def materialize(
             except OSError as exc:
                 raise MurlocsError(f"could not materialize Git path {relative}: {exc}") from exc
         total += len(content)
-    (destination / ".git").write_text(
-        f"gitdir: {context.git_dir}\n", encoding="utf-8"
-    )
+    (destination / ".git").write_text(f"gitdir: {context.git_dir}\n", encoding="utf-8")
     return {
         "entries": len(snapshot.entries),
         "blob_bytes": total,
@@ -393,17 +379,17 @@ def run_git(
     try:
         completed = subprocess.run(
             [
-            "git",
-            "--no-lazy-fetch",
-            "--no-pager",
-            "--no-replace-objects",
-            "-c",
-            "core.fsmonitor=false",
-            "-c",
-            "core.untrackedCache=false",
-            "-c",
-            "core.preloadIndex=false",
-            *args,
+                "git",
+                "--no-lazy-fetch",
+                "--no-pager",
+                "--no-replace-objects",
+                "-c",
+                "core.fsmonitor=false",
+                "-c",
+                "core.untrackedCache=false",
+                "-c",
+                "core.preloadIndex=false",
+                *args,
             ],
             cwd=root,
             check=False,

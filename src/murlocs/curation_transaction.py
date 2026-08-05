@@ -171,9 +171,7 @@ def apply_recovery(root: Path, plan: RecoveryPlan) -> None:
         raise MurlocsError("curation recovery plan changed before apply; preview it again")
     if current.updates:
         raise AssertionError("journal inspection may never supply writable updates")
-    expected_source_path = repo_path(
-        root, plan.expected_source, field="recovery source"
-    )
+    expected_source_path = repo_path(root, plan.expected_source, field="recovery source")
     _require_guards(root, list(plan.guards))
     for update in plan.updates:
         if update.role != "source" or update.path != expected_source_path:
@@ -332,9 +330,7 @@ def _normalize_tree_guards(root: Path, guards: tuple[TreeGuard, ...]) -> list[Tr
         if target in seen:
             continue
         seen.add(target)
-        normalized.append(
-            TreeGuard(target, tuple(sorted(guard.suffixes)), guard.before_sha256)
-        )
+        normalized.append(TreeGuard(target, tuple(sorted(guard.suffixes)), guard.before_sha256))
     return normalized
 
 
@@ -426,9 +422,7 @@ def _rollback_trusted_plan(root: Path, updates: list[FileUpdate]) -> None:
 
 
 def _require_before(root: Path, update: FileUpdate) -> None:
-    _reject_symlinks(
-        root, relative_posix(root, update.path), label="transaction target"
-    )
+    _reject_symlinks(root, relative_posix(root, update.path), label="transaction target")
     if not update.path.is_file() or update.path.read_bytes() != update.before:
         raise MurlocsError(
             "curation plan is stale; repository bytes changed before commit: "
@@ -438,9 +432,7 @@ def _require_before(root: Path, update: FileUpdate) -> None:
 
 def _require_guards(root: Path, guards: list[FileGuard]) -> None:
     for guard in guards:
-        _reject_symlinks(
-            root, relative_posix(root, guard.path), label="preflight dependency"
-        )
+        _reject_symlinks(root, relative_posix(root, guard.path), label="preflight dependency")
         current = guard.path.read_bytes() if guard.path.is_file() else None
         if current != guard.before:
             raise MurlocsError(

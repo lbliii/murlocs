@@ -74,9 +74,7 @@ def load_task(path: Path) -> TaskDefinition:
         )
     threshold = _number(data.get("correctness_threshold", 1.0), f"{path}: correctness_threshold")
     if not 0 < threshold <= 1:
-        raise ValueError(
-            f"{path}: correctness_threshold must be greater than 0 and at most 1"
-        )
+        raise ValueError(f"{path}: correctness_threshold must be greater than 0 and at most 1")
     return TaskDefinition(
         id=_task_id(_nonempty_string(data, "id", str(path)), f"{path}: id"),
         prompt=_nonempty_string(data, "prompt", str(path)),
@@ -131,9 +129,7 @@ def load_runs(path: Path, task: TaskDefinition) -> list[RunRecord]:
         )
         arm = _nonempty_string(run, "arm", context)
         if arm not in ARMS:
-            raise ValueError(
-                f"{context}.arm must be one of {', '.join(ARMS)}; got {arm!r}"
-            )
+            raise ValueError(f"{context}.arm must be one of {', '.join(ARMS)}; got {arm!r}")
         if arm in seen_arms:
             raise ValueError(f"{context}: duplicate recorded run for arm {arm!r}")
         seen_arms.add(arm)
@@ -205,11 +201,7 @@ def _schema_version(data: dict[str, Any], path: Path) -> None:
 
 
 def _task_id(value: str, context: str) -> str:
-    if (
-        len(value) > MAX_TASK_ID_LENGTH
-        or ".." in value
-        or TASK_ID_PATTERN.fullmatch(value) is None
-    ):
+    if len(value) > MAX_TASK_ID_LENGTH or ".." in value or TASK_ID_PATTERN.fullmatch(value) is None:
         raise ValueError(
             f"{context} must be 1-{MAX_TASK_ID_LENGTH} ASCII letters, digits, dots, "
             "underscores, or hyphens; it must start and end with a letter or digit and "

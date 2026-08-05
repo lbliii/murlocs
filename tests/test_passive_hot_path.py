@@ -33,11 +33,10 @@ def test_passive_hot_path_budgets_cover_required_operations_and_shapes(tmp_path:
         "history_limit": 64,
         "conservative": True,
     }
-    assert result["shapes"]["scale-91"]["measurements"]["task_start_discovery"][
-        "files_read"
-    ] > result["shapes"]["small"]["measurements"]["task_start_discovery"][
-        "files_read"
-    ]
+    assert (
+        result["shapes"]["scale-91"]["measurements"]["task_start_discovery"]["files_read"]
+        > result["shapes"]["small"]["measurements"]["task_start_discovery"]["files_read"]
+    )
     operation_names = set()
     for shape in result["shapes"].values():
         measurements = shape["measurements"]
@@ -48,8 +47,7 @@ def test_passive_hot_path_budgets_cover_required_operations_and_shapes(tmp_path:
             assert measurements["drifted_checks"]["payload"]["repository"]["blocking"] is True
         if "staged_impact" in measurements:
             assert (
-                measurements["staged_impact"]["payload"]["metrics"]["operation_subprocesses"]
-                == 2
+                measurements["staged_impact"]["payload"]["metrics"]["operation_subprocesses"] == 2
             )
         if "completion_gating" in measurements:
             completion = measurements["completion_gating"]
@@ -61,10 +59,7 @@ def test_passive_hot_path_budgets_cover_required_operations_and_shapes(tmp_path:
             assert measurement["warm_ms"] <= result["budget"]["warm_ms"]
             assert measurement["git_subprocesses"] <= result["budget"]["git_subprocesses"]
             assert measurement["files_read"] <= result["budget"]["files_read"]
-            assert (
-                measurement["peak_memory_bound_bytes"]
-                <= result["budget"]["peak_memory_bytes"]
-            )
+            assert measurement["peak_memory_bound_bytes"] <= result["budget"]["peak_memory_bytes"]
     assert operation_names == {
         "task_start_discovery",
         "explicit_impact",

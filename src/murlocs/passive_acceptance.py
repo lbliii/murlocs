@@ -165,8 +165,7 @@ def _validate_observation(value: object) -> tuple[str, str | None]:
 def _scenario_assertions(item: Mapping[str, Any], scenario: str) -> None:
     session = _mapping(item["session"], "session")
     calls = {
-        (call["event"], call["operation"], call["result"])
-        for call in _list(item["calls"], "calls")
+        (call["event"], call["operation"], call["result"]) for call in _list(item["calls"], "calls")
     }
     operation_results = {(operation, result) for _, operation, result in calls}
     outcomes = {
@@ -186,14 +185,19 @@ def _scenario_assertions(item: Mapping[str, Any], scenario: str) -> None:
         remediation = _mapping(item["remediation"], "remediation")
         if remediation["deterministic"] is not True or remediation["revalidated"] is not True:
             raise PassiveAcceptanceError("generated drift must be repaired and revalidated")
-        if not {
-            ("check", "finding"),
-            ("repair", "pass"),
-            ("check", "pass"),
-        } <= operation_results or not {
-            ("deterministic_repair", False),
-            ("pass", True),
-        } <= outcomes:
+        if (
+            not {
+                ("check", "finding"),
+                ("repair", "pass"),
+                ("check", "pass"),
+            }
+            <= operation_results
+            or not {
+                ("deterministic_repair", False),
+                ("pass", True),
+            }
+            <= outcomes
+        ):
             raise PassiveAcceptanceError(
                 "generated drift requires finding, repair, revalidation, and typed outcomes"
             )
