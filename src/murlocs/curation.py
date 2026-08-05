@@ -10,14 +10,13 @@ from __future__ import annotations
 import copy
 import difflib
 import json
-import os
 import re
-import tempfile
 import tomllib
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
+from murlocs.atomic import atomic_create_text
 from murlocs.codeowners import (
     CODEOWNERS_LOCATIONS,
     find_codeowners,
@@ -636,7 +635,7 @@ def propose_record(
     report = review_record(root, record)
     text = render_record(record)
     if not dry_run:
-        _atomic_write_new(path, text)
+        atomic_create_text(path, text)
     return {
         "ok": True,
         "id": proposal_id,
@@ -2285,21 +2284,3 @@ def _toml_key(value: str) -> str:
     # deterministic and avoids Python's Unicode-aware ``isalnum`` accepting keys
     # that TOML's ASCII-only bare-key grammar rejects.
     return _toml(value)
-
-
-def _atomic_write_new(path: Path, content: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    descriptor, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
-    try:
-        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as handle:
-            handle.write(content)
-        try:
-            os.link(temporary, path)
-        except FileExistsError as exc:
-            raise MurlocsError(
-                f"refusing to replace existing curation record: {path.name}"
-            ) from exc
-        Path(temporary).unlink()
-    except BaseException:
-        Path(temporary).unlink(missing_ok=True)
-        raise

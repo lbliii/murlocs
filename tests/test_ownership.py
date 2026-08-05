@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 from murlocs.cli import build_cli
@@ -242,3 +243,47 @@ def test_reordering_layers_changes_provenance_and_lock(tmp_path):
     assert [s["path"] for s in forward_lock["sources"]] != [
         s["path"] for s in reverse_lock["sources"]
     ]
+
+
+def test_generated_files_honour_the_process_umask(tmp_path):
+    """Generated output must be readable by anyone the umask allows.
+
+    Regression: `tempfile.mkstemp` creates 0600 and `os.replace` preserves it,
+    so every generated map and lockfile landed owner-only. Git does not track
+    the read bit, so this was invisible in a diff and only surfaced in shared
+    checkouts and CI containers.
+    """
+    root = tmp_path / "repo"
+    root.mkdir()
+    (root / "README.md").write_text("# Mode\n", encoding="utf-8")
+    assert invoke("init", "--repo", str(root), "--name", "Mode").exit_code == 0
+
+    previous = os.umask(0o022)
+    try:
+        assert invoke("compile", "--repo", str(root)).exit_code == 0
+        expected = 0o666 & ~0o022
+    finally:
+        os.umask(previous)
+
+    for relative in ("AGENTS.md", ".murlocs/lock.json"):
+        mode = (root / relative).stat().st_mode & 0o777
+        assert mode == expected, f"{relative} is {mode:o}, expected {expected:o}"
+
+
+def test_compile_preserves_an_explicit_mode_on_a_managed_map(tmp_path):
+    """Replacing a file must not silently reset permissions the user chose."""
+    root = tmp_path / "repo"
+    root.mkdir()
+    (root / "README.md").write_text("# Mode\n", encoding="utf-8")
+    assert invoke("init", "--repo", str(root), "--name", "Mode").exit_code == 0
+
+    agents = root / "AGENTS.md"
+    agents.chmod(0o640)
+    manifest = root / ".murlocs" / "manifest.toml"
+    manifest.write_text(
+        manifest.read_text(encoding="utf-8").replace('network = "Mode"', 'network = "Mode Two"'),
+        encoding="utf-8",
+    )
+    assert invoke("compile", "--repo", str(root)).exit_code == 0
+
+    assert agents.stat().st_mode & 0o777 == 0o640

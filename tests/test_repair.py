@@ -107,7 +107,7 @@ def test_interrupted_repair_leaves_exact_recovery_state_then_rolls_back(
     introduce_source_drift(root)
     before = snapshot(root)
     plan = plan_repair_from_root(root)
-    original = repair_module._atomic_write
+    original = repair_module.atomic_write_bytes
     agents_writes = 0
 
     def interrupted(path: Path, content: bytes) -> None:
@@ -119,13 +119,13 @@ def test_interrupted_repair_leaves_exact_recovery_state_then_rolls_back(
             raise OSError("simulated repair interruption")
         original(path, content)
 
-    monkeypatch.setattr(repair_module, "_atomic_write", interrupted)
+    monkeypatch.setattr(repair_module, "atomic_write_bytes", interrupted)
     with pytest.raises(OSError, match="simulated repair interruption"):
         apply_repair(plan)
 
     journal = root / ".murlocs" / "repair" / ".transaction"
     assert journal.is_dir()
-    monkeypatch.setattr(repair_module, "_atomic_write", original)
+    monkeypatch.setattr(repair_module, "atomic_write_bytes", original)
 
     blocked = invoke("repair", "--repo", str(root), "--format", "json")
     blocked_payload = json.loads(blocked.output)
