@@ -152,9 +152,7 @@ def compose(
     # `None` made a layered manifest look complete to the parser, so a missing
     # `network` compiled to `# None: root` instead of failing validation.
     merged: dict[str, Any] = {
-        key: root_data[key]
-        for key in ("schema_version", "network", "protocol")
-        if key in root_data
+        key: root_data[key] for key in ("schema_version", "network", "protocol") if key in root_data
     }
     if "max_active_bytes" in root_data:
         merged["max_active_bytes"] = root_data["max_active_bytes"]
