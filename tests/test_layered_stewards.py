@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import tomllib
 from pathlib import Path
 
@@ -157,10 +158,15 @@ def test_unsupported_composition_is_blocking(tmp_path):
     assert not (root / ".murlocs").exists()
 
 
-def test_unknown_layer_field_is_refused(tmp_path):
+def test_unknown_layer_field_is_reported_as_cumulative_blocking_loss(tmp_path):
     root, _ = make_layered_repo(tmp_path)
     base = root / ".stewards" / "layers" / "base.toml"
     base.write_text('mystery = ["nope"]\n' + base.read_text(encoding="utf-8"), encoding="utf-8")
-    result = invoke("import", "--repo", str(root), "--from", "stewards")
+    # Read-only stdout import surfaces the unknown field as a blocking loss finding
+    # (naming it) and exits non-zero, rather than fail-fasting on the first mismatch.
+    result = invoke("import", "--repo", str(root), "--from", "stewards", "--format", "json")
     assert result.exit_code == 1
-    assert "unsupported fields" in result.stderr
+    payload = json.loads(result.output)
+    blocking = [f for f in payload["findings"] if f["level"] == "blocking"]
+    assert any(f["code"] == "unsupported-field" for f in blocking)
+    assert any("mystery" in subject for f in blocking for subject in f["subjects"])

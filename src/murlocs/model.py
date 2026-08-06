@@ -56,6 +56,7 @@ class Invariant:
     enforced_by: str | None = None
     evidence_file: str | None = None
     anchor: str | None = None
+    proof_contains: str | None = None
     annotation: SourceAnnotation | None = None
 
 

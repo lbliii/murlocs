@@ -1,0 +1,65 @@
+network = "Legacynet"
+protocol = ".stewards/PROTOCOL.md"
+max_active_bytes = 24576
+coverage_roots = ["src"]
+pillars = ["Every strong claim names how it is verified."]
+search_policy = ["Read the root map before repository discovery."]
+operating_rules = ["Move public behavior with proof and documentation."]
+stop_and_ask = ["A change weakens a P0 invariant."]
+done_criteria = ["Named checks pass."]
+
+# A check taxonomy: `kind` and `proves` are not modeled and must be reported as
+# named, cumulative loss rather than aborting on the first one.
+[check.arch-isolation]
+invoke = "uv run pytest tests/test_arch.py -q"
+location = "tests/test_arch.py"
+kind = "arch"
+proves = "Architecture boundaries hold."
+
+[check.contract-suite]
+invoke = "uv run pytest tests/test_contract.py -q"
+location = "tests/test_contract.py"
+proof_contains = "test_contract"
+kind = "test"
+proves = "The public contract is enforced."
+
+[[steward]]
+id = "root"
+path = "AGENTS.md"
+point_of_view = "Repository-wide proof discipline."
+
+[[steward]]
+id = "core"
+path = "src/AGENTS.md"
+point_of_view = "One deterministic core."
+guardrails = ["Keep the core deterministic."]
+
+[steward.owns]
+code = ["src/"]
+tests = ["tests/"]
+
+[judgment.core]
+advocate = ["Deterministic code owns compilation and checks."]
+do_not = ["Hide unproven claims."]
+
+# `invariant.proof_contains` is supported (allowlist reconciled with checks) and is
+# preserved through import rather than dropped or reported as loss.
+[[invariant]]
+id = "arch-boundaries"
+steward = "root"
+statement = "Architecture boundaries are enforced."
+severity = "P0"
+verification = "machine"
+enforced_by = "arch-isolation"
+proof_contains = "ArchBoundaryError"
+
+[[invariant]]
+id = "contract-enforced"
+steward = "core"
+statement = "The public contract is enforced with proof."
+severity = "P1"
+verification = "machine"
+enforced_by = "contract-suite"
+evidence_file = "src/contract.py"
+anchor = "Contract"
+proof_contains = "assert_contract"

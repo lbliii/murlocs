@@ -1,0 +1,3 @@
+# Portability inventory - an out-of-scope sidecar construct.
+default_archetype = "python-infra"
+archetypes = ["python-infra", "gpu-ml-pipeline"]

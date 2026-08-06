@@ -488,11 +488,18 @@ class MurlocsStatusPayload(TypedDict):
     migration: bool
 
 
+class SidecarPayload(TypedDict):
+    path: str
+    construct: str
+
+
 class InventoryPayload(TypedDict):
     ok: bool
     root: str
     instructions: list[InventoryInstructionPayload]
     legacy_stewards: LegacySummaryPayload | None
+    sidecars: list[SidecarPayload]
+    untranslatable: list[TranslationFindingPayload]
     murlocs: MurlocsStatusPayload
     ownership_conflicts: list[str]
     annotations: list[AnnotationProvenancePayload]
@@ -1945,6 +1952,8 @@ def inventory_command(
     except (MurlocsError, OSError, ValueError) as exc:
         return _failure("MURLOCS_INVENTORY", exc)
     legacy = inventory["legacy_stewards"]
+    untranslatable = inventory["untranslatable"]
+    sidecars = inventory["sidecars"]
     lines = [f"found {len(inventory['instructions'])} instruction file(s)"]
     if legacy:
         lines.append(
@@ -1952,11 +1961,22 @@ def inventory_command(
             f"{legacy['checks']} check(s), {legacy['proof_debt']} proof-debt item(s)"
         )
     lines.extend(f"{item['generator']:>8}  {item['path']}" for item in inventory["instructions"])
+    lines.extend(
+        f"untranslatable: {item['code']} ({len(item['subjects'])}) — {item['message']}"
+        for item in untranslatable
+    )
+    lines.extend(
+        f"out-of-scope sidecar: {item['path']} ({item['construct']})" for item in sidecars
+    )
     annotations = cast(list[AnnotationProvenancePayload], inventory["annotations"])
     lines.extend(_annotation_terminal_lines(annotations))
+    # A zero exit is reserved for a fully clean survey: no untranslatable constructs
+    # and no unmodeled sidecars. Everything else surfaces the survey and exits non-zero.
+    clean = not untranslatable and not sidecars
     return CommandResult(
-        {"ok": True, **inventory},
+        {"ok": clean, **inventory},
         terminal_text="\n".join(lines),
+        exit_code=0 if clean else 1,
     )
 
 
@@ -2038,9 +2058,13 @@ def import_command(
                 *finding_lines,
             ]
         )
+    # Blocking loss means the candidate omits fields it cannot represent; surface a
+    # non-zero exit even on the read-only stdout path so the loss is never mistaken
+    # for a clean import.
+    has_blocking = any(item.level == "blocking" for item in candidate.findings)
     return CommandResult(
         {
-            "ok": True,
+            "ok": not has_blocking,
             "source": source,
             "manifest": candidate.manifest_toml,
             "findings": findings,
@@ -2048,6 +2072,7 @@ def import_command(
             "dry_run": dry_run,
         },
         terminal_text=terminal,
+        exit_code=1 if has_blocking else 0,
     )
 
 
