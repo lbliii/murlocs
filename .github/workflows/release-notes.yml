@@ -1,0 +1,49 @@
+name: Release notes
+
+# When a GitHub release is published, pull that version's section out of
+# CHANGELOG.md and write it into the release body. This keeps the release notes
+# and the changelog in agreement without hand-copying.
+#
+# If the changelog has no section for the tag (for example a pre-release cut
+# before the entry lands), the job logs that and leaves whatever notes the
+# release already has, rather than failing the release.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to refresh notes for (e.g. v0.1.0)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release-notes:
+    name: Sync notes from changelog
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Extract changelog section for the tag
+        id: extract
+        env:
+          TAG: ${{ github.event.release.tag_name || github.event.inputs.tag }}
+        run: |
+          python3 scripts/changelog_extract.py "${TAG#v}" > release-notes.md
+          if [ -s release-notes.md ]; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No CHANGELOG.md section for ${TAG#v}; leaving existing release notes."
+          fi
+
+      - name: Update release body
+        if: steps.extract.outputs.found == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name || github.event.inputs.tag }}
+        run: gh release edit "$TAG" --notes-file release-notes.md
