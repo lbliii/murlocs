@@ -484,6 +484,20 @@ def _rollback_migration_locked(root: Path, *, dry_run: bool = False) -> dict[str
 
 def _restore_adoption(root: Path, state: dict[str, Any], *, verify_current: bool) -> None:
     backup = repo_path(root, state["backup"], field="migration backup")
+    # Pre-flight: confirm the whole backup is intact before mutating anything.
+    # Reading a missing backup file mid-loop would otherwise raise a raw
+    # FileNotFoundError after some files were already restored, leaving the
+    # working tree half-restored.
+    if not backup.is_dir():
+        raise MurlocsError(
+            f"migration backup is missing; cannot restore: {relative_posix(root, backup)}"
+        )
+    required = [backup / "files" / relative for relative in state["originals"]]
+    if state["lock_existed"]:
+        required.append(backup / "files" / LOCK_PATH)
+    missing = sorted(relative_posix(root, path) for path in required if not path.is_file())
+    if missing:
+        raise MurlocsError("migration backup is incomplete; cannot restore: " + ", ".join(missing))
     if verify_current:
         for relative, expected in state["adopted_sha256"].items():
             target = repo_path(root, relative, field="rollback map")
@@ -511,7 +525,7 @@ def _active_state(root: Path) -> dict[str, Any] | None:
     path = root / MIGRATION_STATE
     if not path.is_file():
         return None
-    data = json.loads(path.read_text(encoding="utf-8"))
+    data = _read_state(path)
     return data if data.get("status") in {"adopted", "pruned"} else None
 
 
@@ -519,9 +533,25 @@ def _require_state(root: Path, statuses: set[str]) -> dict[str, Any]:
     path = root / MIGRATION_STATE
     if not path.is_file():
         raise MurlocsError("migration state does not exist")
-    data = json.loads(path.read_text(encoding="utf-8"))
+    data = _read_state(path)
     if data.get("status") not in statuses:
         raise MurlocsError(f"migration state is {data.get('status')}, expected {sorted(statuses)}")
+    return data
+
+
+def _read_state(path: Path) -> dict[str, Any]:
+    """Load migration state, surfacing corruption as a clean MurlocsError.
+
+    A truncated or hand-edited ``migration.json`` otherwise raises a raw
+    ``JSONDecodeError`` (or ``UnicodeDecodeError``) traceback from deep inside a
+    migration command instead of a deterministic, user-facing failure.
+    """
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise MurlocsError(f"migration state is corrupt and cannot be parsed: {path.name}") from exc
+    if not isinstance(data, dict):
+        raise MurlocsError(f"migration state is not a JSON object: {path.name}")
     return data
 
 

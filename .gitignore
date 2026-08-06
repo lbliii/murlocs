@@ -7,3 +7,9 @@ dist/
 build/
 *.egg-info/
 .DS_Store
+
+# Coverage (pytest-cov)
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
