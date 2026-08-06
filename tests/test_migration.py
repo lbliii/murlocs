@@ -203,7 +203,8 @@ def test_concurrent_migration_operations_are_refused(tmp_path):
     root, _ = make_legacy_repo(tmp_path)
     write_candidate(root, candidate_from_stewards(root), ".murlocs/manifest.toml")
 
-    with _migration_lock(root), pytest.raises(
-        MurlocsError, match="another migration operation is in progress"
+    with (
+        _migration_lock(root),
+        pytest.raises(MurlocsError, match="another migration operation is in progress"),
     ):
         adopt_manifest(root)

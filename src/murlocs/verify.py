@@ -181,9 +181,7 @@ def _annotation_finding(
             }
         )
     )
-    identifiers = {
-        item.annotation.identifier for item in related if item.annotation is not None
-    }
+    identifiers = {item.annotation.identifier for item in related if item.annotation is not None}
     inferred_identifier = (
         next(iter(identifiers)) if finding.identifier is None and len(identifiers) == 1 else None
     )
