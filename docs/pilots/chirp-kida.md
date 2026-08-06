@@ -137,3 +137,32 @@ The v0.2 pilot is successful when:
 
 Only after both repositories meet the same acceptance contract should Murlocs generalize adapters
 or use a third repository as validation.
+
+## Proof-anchor audit: location is not proof
+
+During the furatena migration rehearsal ([#179](https://github.com/lbliii/murlocs/issues/179)),
+Murlocs surfaced a check that had been green under legacy location-only verification:
+
+```toml
+[check.changelog-draft]
+invoke   = "make changelog-draft"
+location = "changelog.d/README.md"
+```
+
+`changelog.d/README.md` is contributor prose about fragment naming. It does not define,
+reference, or prove the `make changelog-draft` target — that definition lives in `Makefile`.
+
+Because the file existed, a location-only scheme reported success. Murlocs's required
+`proof_contains` anchor forces the question *"what string in that file proves this?"* and
+there was no answer. The upstream fix is to point `location` at `Makefile` and anchor on the
+target definition:
+
+```toml
+[check.changelog-draft]
+invoke = "make changelog-draft"
+location = "Makefile"
+proof_contains = "changelog-draft:"
+```
+
+This is the clearest evidence so far that the proof-anchor requirement earns its cost: decorative
+wiring can stay invisible until something asks for the actual proof text.

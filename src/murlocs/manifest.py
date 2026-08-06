@@ -20,6 +20,46 @@ from murlocs.model import (
     SourceAnnotation,
 )
 
+DEFAULT_SOURCE_SUFFIXES = (".py", ".ts", ".tsx", ".js", ".jsx", ".rs", ".go", ".java")
+_INFER_SKIP_DIRS = frozenset(
+    {".git", ".venv", "node_modules", "dist", "build", "__pycache__", ".murlocs"}
+)
+
+
+def infer_coverage_roots(
+    root: Path,
+    source_suffixes: tuple[str, ...] = DEFAULT_SOURCE_SUFFIXES,
+) -> list[str]:
+    """Infer plausible coverage roots from a repository tree.
+
+    Prefer a conventional ``src/`` layout, then any other top-level directory
+    that contains source files matching ``source_suffixes``.
+    """
+    inferred: list[str] = []
+
+    def contains_source(directory: Path) -> bool:
+        for path in directory.rglob("*"):
+            if path.is_file() and path.suffix in source_suffixes:
+                return True
+        return False
+
+    src = root / "src"
+    if src.is_dir() and contains_source(src):
+        inferred.append("src")
+
+    for entry in sorted(root.iterdir(), key=lambda path: path.name):
+        if not entry.is_dir():
+            continue
+        name = entry.name
+        if name.startswith(".") or name in _INFER_SKIP_DIRS:
+            continue
+        if name in inferred:
+            continue
+        if contains_source(entry):
+            inferred.append(name)
+    return inferred
+
+
 MANIFEST_TEMPLATE = """schema_version = 1
 network = "{network}"
 protocol = ".murlocs/PROTOCOL.md"

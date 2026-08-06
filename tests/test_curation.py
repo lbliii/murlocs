@@ -8,17 +8,13 @@ from milo.testing import MCPClient
 
 from murlocs.cli import build_cli
 from murlocs.curation import load_record, stable_list_key
-
-
-def invoke(*argv: str):
-    return build_cli().invoke(list(argv))
+from tests.support import initialize_repo, invoke
 
 
 def initialize(root: Path) -> None:
     (root / "src").mkdir(parents=True)
     (root / "src" / "app.py").write_text("VALUE = 1\n", encoding="utf-8")
-    result = invoke("init", "--repo", str(root), "--name", "Curation Test")
-    assert result.exit_code == 0, result.stderr
+    initialize_repo(root, "--name", "Curation Test")
 
 
 def proposal_args(root: Path, proposal_id: str = "add-review-rule") -> list[str]:

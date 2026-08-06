@@ -12,8 +12,12 @@ from murlocs.layers import resolve_manifest
 from murlocs.manifest import parse_manifest_data
 from murlocs.outcome import build_check_outcome
 from murlocs.serialization import render_manifest_data
-from murlocs.source_annotations import AnnotationResolverFinding, resolve_annotations
-from murlocs.verify import annotation_findings
+from murlocs.source_annotations import (
+    AnnotationLocation,
+    AnnotationResolverFinding,
+    resolve_annotations,
+)
+from murlocs.verify import _annotation_finding, annotation_findings
 
 CORPUS = Path(__file__).parent / "fixtures" / "source-annotation-contract" / "v1"
 
@@ -804,3 +808,29 @@ def test_layered_annotation_declarations_render_and_override_deterministically(t
         item for item in annotation_findings(parsed) if item.code == "annotation.missing"
     )
     assert finding.declaration_sources == ("overlay@.murlocs/layers/overlay.toml",)
+
+
+def test_annotation_finding_infers_identifier_from_annotated_invariant(tmp_path):
+    from murlocs.model import Invariant
+
+    manifest_model = manifest(tmp_path, [annotation("shared.marker", "shared.py")])
+    unannotated = Invariant(
+        id="invariant-a",
+        scope="root",
+        statement="No annotation.",
+        severity="important",
+        verification="unknown",
+        annotation=None,
+    )
+    annotated = next(item for item in manifest_model.invariants if item.annotation is not None)
+    finding = AnnotationResolverFinding(
+        "annotation.missing",
+        None,
+        "invariant-a",
+        AnnotationLocation("shared.py", 1),
+    )
+    declared_files = {"shared.py": [unannotated, annotated]}
+
+    result = _annotation_finding(manifest_model, finding, {}, declared_files)
+
+    assert result.annotation_id == "shared.marker"

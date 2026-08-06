@@ -4,8 +4,12 @@ import json
 import tomllib
 from pathlib import Path
 
+import pytest
+
 from murlocs.cli import build_cli
+from murlocs.errors import MurlocsError
 from murlocs.migration import (
+    _migration_lock,
     adopt_manifest,
     candidate_from_stewards,
     diff_stewards_candidate,
@@ -193,3 +197,13 @@ def test_rollback_refuses_modified_adopted_map(tmp_path):
     assert result.exit_code == 1
     assert "modified adopted map" in result.stderr
     assert (root / "AGENTS.md").read_text() == "post-adoption edit\n"
+
+
+def test_concurrent_migration_operations_are_refused(tmp_path):
+    root, _ = make_legacy_repo(tmp_path)
+    write_candidate(root, candidate_from_stewards(root), ".murlocs/manifest.toml")
+
+    with _migration_lock(root), pytest.raises(
+        MurlocsError, match="another migration operation is in progress"
+    ):
+        adopt_manifest(root)

@@ -186,10 +186,21 @@ def prepare_manifest(manifest: Manifest) -> dict[str, str]:
     expected = set(outputs)
     if lock:
         orphaned = sorted(set(lock.generated) - expected)
-        if orphaned:
-            joined = ", ".join(orphaned)
+        unreleased: list[str] = []
+        for relative in orphaned:
+            target = repo_path(manifest.root, relative, field="scopes[].map")
+            if not target.is_file():
+                continue
+            actual = sha256_bytes(target.read_bytes())
+            if actual != lock.generated[relative]:
+                unreleased.append(relative)
+                continue
+            target.unlink()
+        if unreleased:
+            joined = ", ".join(unreleased)
             raise MurlocsError(
-                f"lockfile owns maps no longer declared: {joined}; remove them explicitly"
+                f"lockfile owns maps no longer declared: {joined}; "
+                "restore the manifest declaration or revert local edits before compiling"
             )
 
     for relative in outputs:

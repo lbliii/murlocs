@@ -4,6 +4,7 @@ import shutil
 from pathlib import Path
 
 from murlocs.cli import build_cli
+from tests.support import initialize_repo
 
 ROOT = Path(__file__).parents[1]
 THREAT_FIXTURE = ROOT / "tests" / "fixtures" / "source-annotation-threats"
@@ -29,8 +30,7 @@ def test_annotation_shaped_source_content_never_enters_generated_guidance(tmp_pa
         path.relative_to(root).as_posix(): path.read_bytes() for path in (root / "src").iterdir()
     }
 
-    initialized = invoke("init", "--repo", str(root), "--name", "Threat Fixture")
-    assert initialized.exit_code == 0, initialized.stderr
+    initialize_repo(root, "--name", "Threat Fixture")
     compiled = invoke("compile", "--repo", str(root))
     assert compiled.exit_code == 0, compiled.stderr
 

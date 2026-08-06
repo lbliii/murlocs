@@ -33,6 +33,7 @@ from murlocs.impact import (
 from murlocs.lockfile import LOCK_PATH, render_lock, sha256_bytes
 from murlocs.manifest import (
     PROTOCOL_TEMPLATE,
+    infer_coverage_roots,
     load_manifest,
     parse_manifest_data,
     render_manifest,
@@ -859,7 +860,8 @@ def init_command(
                 "migrate it into the manifest before compiling"
             )
         network = name or root.name
-        coverage_roots = _normalize_coverage_roots(root, coverage_root or [])
+        entries = infer_coverage_roots(root) if coverage_root is None else coverage_root
+        coverage_roots = _normalize_coverage_roots(root, entries)
         preview = parse_manifest_data(
             root,
             tomllib.loads(render_manifest(network, tuple(coverage_roots))),

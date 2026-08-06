@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import difflib
+import fcntl
 import json
 import os
 import shutil
 import tempfile
 import tomllib
 import uuid
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -329,6 +331,11 @@ def diff_stewards_candidate(root: Path) -> dict[str, Any]:
 
 
 def adopt_manifest(root: Path, *, dry_run: bool = False) -> dict[str, Any]:
+    with _migration_lock(root):
+        return _adopt_manifest_locked(root, dry_run=dry_run)
+
+
+def _adopt_manifest_locked(root: Path, *, dry_run: bool = False) -> dict[str, Any]:
     if _active_state(root) is not None:
         raise MurlocsError("an active migration already exists; rollback it first")
     manifest = load_manifest(root)
@@ -375,17 +382,34 @@ def adopt_manifest(root: Path, *, dry_run: bool = False) -> dict[str, Any]:
     migration_id = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid.uuid4().hex[:8]
     backup = root / BACKUP_ROOT / migration_id
     files_backup = backup / "files"
-    for relative in originals:
-        source = repo_path(root, relative, field="backup source")
-        destination = files_backup / relative
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source, destination)
-    lock = root / LOCK_PATH
-    lock_existed = lock.is_file()
-    if lock_existed:
-        destination = files_backup / LOCK_PATH
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(lock, destination)
+    try:
+        for relative in originals:
+            source = repo_path(root, relative, field="backup source")
+            destination = files_backup / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, destination)
+        lock = root / LOCK_PATH
+        lock_existed = lock.is_file()
+        if lock_existed:
+            destination = files_backup / LOCK_PATH
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(lock, destination)
+        for relative in originals:
+            source = repo_path(root, relative, field="backup source")
+            backed = files_backup / relative
+            if not backed.is_file():
+                raise MurlocsError(f"backup incomplete: {relative}")
+            if sha256_bytes(backed.read_bytes()) != sha256_bytes(source.read_bytes()):
+                raise MurlocsError(f"backup verification failed: {relative}")
+        if lock_existed:
+            backed_lock = files_backup / LOCK_PATH
+            if not backed_lock.is_file() or sha256_bytes(backed_lock.read_bytes()) != sha256_bytes(
+                lock.read_bytes()
+            ):
+                raise MurlocsError("backup verification failed: .murlocs/lock.json")
+    except BaseException:
+        shutil.rmtree(backup, ignore_errors=True)
+        raise
     state = {
         "version": 1,
         "id": migration_id,
@@ -410,6 +434,11 @@ def adopt_manifest(root: Path, *, dry_run: bool = False) -> dict[str, Any]:
 
 
 def prune_legacy(root: Path, *, dry_run: bool = False) -> dict[str, Any]:
+    with _migration_lock(root):
+        return _prune_legacy_locked(root, dry_run=dry_run)
+
+
+def _prune_legacy_locked(root: Path, *, dry_run: bool = False) -> dict[str, Any]:
     state = _require_state(root, {"adopted"})
     legacy = root / ".stewards"
     if not legacy.is_dir():
@@ -433,6 +462,11 @@ def prune_legacy(root: Path, *, dry_run: bool = False) -> dict[str, Any]:
 
 
 def rollback_migration(root: Path, *, dry_run: bool = False) -> dict[str, Any]:
+    with _migration_lock(root):
+        return _rollback_migration_locked(root, dry_run=dry_run)
+
+
+def _rollback_migration_locked(root: Path, *, dry_run: bool = False) -> dict[str, Any]:
     state = _require_state(root, {"adopted", "pruned"})
     if dry_run:
         return {
@@ -518,3 +552,21 @@ def _write_bytes_atomic(path: Path, content: bytes) -> None:
     except BaseException:
         Path(temporary).unlink(missing_ok=True)
         raise
+
+
+@contextmanager
+def _migration_lock(root: Path):
+    lock_path = root / ".murlocs" / "migration.lock"
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    handle = lock_path.open("a+")
+    try:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError as exc:
+        handle.close()
+        raise MurlocsError("another migration operation is in progress") from exc
+    try:
+        yield
+    finally:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        handle.close()
+        lock_path.unlink(missing_ok=True)
