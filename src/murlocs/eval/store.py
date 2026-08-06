@@ -177,10 +177,12 @@ def save_results(
     task: TaskDefinition,
     summary: ComparisonSummary,
     records: list[RunRecord],
+    *,
+    illustrative: bool = False,
 ) -> Path:
     """Write the comparison summary and raw evidence deterministically as JSON."""
     _task_id(task.id, "task id")
-    payload = {
+    payload: dict[str, Any] = {
         "schema_version": SCHEMA_VERSION,
         "task": asdict(task),
         "summary": asdict(summary),
@@ -188,7 +190,15 @@ def save_results(
             asdict(record) for record in sorted(records, key=lambda item: ARMS.index(item.arm))
         ],
     }
-    target = directory / f"{task.id}.json"
+    if illustrative:
+        payload["illustrative"] = True
+        payload["illustrative_note"] = (
+            "Synthetic FORMAT EXAMPLE produced by --demo. Not a measured result; "
+            "the figures are hand-authored and imply no verdict."
+        )
+        target = directory / f"{task.id}.illustrative-example.json"
+    else:
+        target = directory / f"{task.id}.json"
     return atomic_write_text(target, json.dumps(payload, indent=2, sort_keys=True) + "\n")
 
 
@@ -260,7 +270,17 @@ def _nonnegative_integer(data: dict[str, Any], key: str, context: str) -> int:
     return value
 
 
-def render_summary(summary: ComparisonSummary) -> str:
+ILLUSTRATIVE_BANNER: tuple[str, ...] = (
+    "=" * 72,
+    "FORMAT EXAMPLE - illustrative synthetic data, NOT a measured result.",
+    "The model, ADE, and efficiency figures below are hand-authored to show",
+    "the shape of a real comparison. They are not evidence, they were not",
+    "measured, and they imply no verdict about any guidance arm.",
+    "=" * 72,
+)
+
+
+def render_summary(summary: ComparisonSummary, *, illustrative: bool = False) -> str:
     """A compact, human-readable comparison table."""
     lines = [
         f"task: {summary.task_id} @ {summary.repository_revision}",
@@ -283,7 +303,12 @@ def render_summary(summary: ComparisonSummary) -> str:
             f"{efficiency.estimated_prompt_tokens:>8}"
         )
     lines.append("")
-    if summary.most_efficient_arm is None:
+    if illustrative:
+        lines.append(
+            "verdict: withheld - illustrative synthetic data implies no efficiency "
+            "comparison and names no most-efficient arm"
+        )
+    elif summary.most_efficient_arm is None:
         lines.append("most efficient correct arm: none met the correctness threshold")
     else:
         lines.append(f"most efficient correct arm: {summary.most_efficient_arm}")
@@ -291,4 +316,6 @@ def render_summary(summary: ComparisonSummary) -> str:
         model = summary.scores[0].model
         ade = summary.scores[0].ade
         lines.append(f"model/ADE: {model} / {ade}")
+    if illustrative:
+        return "\n".join([*ILLUSTRATIVE_BANNER, "", *lines])
     return "\n".join(lines)

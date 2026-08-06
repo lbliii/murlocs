@@ -25,7 +25,11 @@ def main(argv: list[str] | None = None) -> int:
         description="Score recorded agent runs; this command never invokes a model.",
     )
     source = parser.add_mutually_exclusive_group(required=True)
-    source.add_argument("--demo", action="store_true", help="score the bundled example records")
+    source.add_argument(
+        "--demo",
+        action="store_true",
+        help="render the bundled FORMAT EXAMPLE (illustrative synthetic data, not a result)",
+    )
     source.add_argument("--task", type=Path, help="versioned TOML task definition")
     source.add_argument(
         "--longitudinal",
@@ -63,9 +67,9 @@ def main(argv: list[str] | None = None) -> int:
     except ValueError as exc:
         parser.error(str(exc))
     summary = compare_runs(task, records)
-    print(render_summary(summary))
+    print(render_summary(summary, illustrative=args.demo))
     if args.output is not None:
-        target = save_results(args.output, task, summary, records)
+        target = save_results(args.output, task, summary, records, illustrative=args.demo)
         print(f"\nwrote {target}")
     return 0
 
