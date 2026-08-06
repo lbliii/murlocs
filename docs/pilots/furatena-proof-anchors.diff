@@ -1,0 +1,108 @@
+diff --git a/.stewards/manifest.toml b/.stewards/manifest.toml
+index 94d41326..5e80f1f9 100644
+--- a/.stewards/manifest.toml
++++ b/.stewards/manifest.toml
+@@ -107,82 +107,102 @@ proof_contains = "test:"
+ [check.autodoc-suite]
+ invoke = "uv run pytest tests/test_chirp_contract_inventory.py tests/test_docs_reference.py -q"
+ location = "tests/test_docs_reference.py"
++proof_contains = "test_committed_reference_matches_active_implementation"
+ 
+ [check.directives-suite]
+ invoke = "uv run pytest tests/test_chirp_docs_directives.py tests/test_chirp_docs_list_table.py -q"
+ location = "tests/test_chirp_docs_directives.py"
++proof_contains = "test_tabs_use_alpine_and_chirpui_with_theme_skin"
+ 
+ [check.inventory-suite]
+ invoke = "uv run pytest tests/test_chirp_docs_link_and_inventory_contracts.py tests/test_docs_inventory.py -q"
+ location = "tests/test_docs_inventory.py"
++proof_contains = "test_inventory_collects_every_public_surface_kind"
+ 
+ [check.migration-suite]
+ invoke = "uv run pytest tests/test_chirp_docs_mdx_migration.py tests/test_migration_playbooks.py -q"
+ location = "tests/test_chirp_docs_mdx_migration.py"
++proof_contains = "test_lowers_jsx_block_to_directive"
+ 
+ [check.references-suite]
+ invoke = "uv run pytest tests/test_chirp_docs_reference_resolution.py -q"
+ location = "tests/test_chirp_docs_reference_resolution.py"
++proof_contains = "test_longest_prefix_match"
+ 
+ [check.sources-suite]
+ invoke = "uv run pytest tests/test_chirp_docs_sources.py tests/test_chirp_docs_ast_roundtrip.py -q"
+ location = "tests/test_chirp_docs_sources.py"
++proof_contains = "test_registered_formats"
+ 
+ [check.schema-suite]
+ invoke = "uv run pytest tests/test_capability_schemas.py tests/test_preview_schemas.py tests/test_publication_schemas.py tests/test_validation_snapshots.py -q"
+ location = "tests/test_validation_snapshots.py"
++proof_contains = "test_snapshot_reuses_content_and_config_until_their_keys_change"
+ 
+ [check.cli-suite]
+ invoke = "uv run pytest tests/test_cli_entrypoint_smoke.py tests/test_fura_cli_standalone.py -q"
+ location = "tests/test_cli_entrypoint_smoke.py"
++proof_contains = "test_installed_fura_entrypoint"
+ 
+ [check.cli-commands-suite]
+ invoke = "uv run pytest tests/test_cli_command_modules.py -q"
+ location = "tests/test_cli_command_modules.py"
++proof_contains = "test_every_top_level_command_is_owned_by_a_command_module"
+ 
+ [check.theme-suite]
+ invoke = "uv run pytest tests/test_builtin_layouts.py tests/test_chirp_docs_theming.py tests/test_chirp_docs_template_stack.py tests/test_theme_lint.py tests/test_theme_pack.py tests/test_theme_preset.py -q"
+ location = "tests/test_chirp_docs_theming.py"
++proof_contains = "test_home_uses_home_view"
+ 
+ [check.runtime-suite]
+ invoke = "uv run pytest tests/test_chirp_docs_runtime.py tests/test_render_context.py tests/test_chirp_docs_response_conformance.py -q"
+ location = "tests/test_chirp_docs_runtime.py"
++proof_contains = "test_bundle_produces_single_file"
+ 
+ [check.content-suite]
+ invoke = "uv run pytest tests/test_chirp_docs_content_ir.py tests/test_chirp_docs_content_lint.py tests/test_docs_journeys.py -q"
+ location = "tests/test_chirp_docs_content_ir.py"
++proof_contains = "test_extracts_headings_links_and_directives"
+ 
+ [check.docs-suite]
+ invoke = "uv run pytest tests/test_docs_quality.py tests/test_docs_reference.py tests/test_support_policy.py -q"
+ location = "tests/test_docs_quality.py"
++proof_contains = "test_repository_docs_quality_gate_is_clean"
+ 
+ [check.benchmark-suite]
+ invoke = "uv run pytest tests/test_benchmark_harness.py tests/test_author_benchmark_harness.py tests/test_retrieval_benchmarks.py -q"
+ location = "tests/test_benchmark_harness.py"
++proof_contains = "test_harness_explains_gil_enabled_runtime"
+ 
+ [check.changelog-draft]
+ invoke = "make changelog-draft"
+-location = "changelog.d/README.md"
++location = "Makefile"
++proof_contains = "changelog-draft:"
+ 
+ [check.examples-suite]
+ invoke = "uv run pytest tests/test_starter_repositories.py -q"
+ location = "tests/test_starter_repositories.py"
++proof_contains = "test_starter_runs_from_init_through_static_export"
+ 
+ [check.github-suite]
+ invoke = "uv run pytest tests/test_ci_lanes.py tests/test_release_publishing.py -q"
+ location = "tests/test_ci_lanes.py"
++proof_contains = "test_makefile_exposes_documented_ci_lanes"
+ 
+ [check.scripts-suite]
+ invoke = "uv run pytest tests/test_ty_diagnostic_ratchet.py tests/test_core_coverage_policy.py tests/test_verify_live_artifacts.py -q"
+ location = "tests/test_ty_diagnostic_ratchet.py"
++proof_contains = "test_checked_in_baseline_is_complete_and_categorized"
+ 
+ [check.eval-suite]
+ invoke = "uv run pytest tests/test_retrieval_dataset.py tests/test_retrieval_conformance.py tests/test_afdocs_score_lane.py -q"
+ location = "tests/test_retrieval_dataset.py"
++proof_contains = "test_known_answer_dataset_covers_required_query_and_content_classes"
+ 
+ [check.fixtures-suite]
+ invoke = "uv run pytest tests/test_preview_fixtures.py tests/test_publication_fixtures.py tests/test_validation_snapshots.py -q"
+ location = "tests/test_preview_fixtures.py"
++proof_contains = "test_preview_fixtures_round_trip_without_contract_drift"
+ 
+ [[steward]]
+ id = "root"
