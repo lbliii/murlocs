@@ -34,7 +34,7 @@ summary.
 ## Running it
 
 ```bash
-# Explicitly run the bundled demonstration.
+# Render the bundled FORMAT EXAMPLE (illustrative synthetic data, not a measured result).
 python -m murlocs.eval --demo
 python -m murlocs.eval --demo --output ./eval-results
 
@@ -50,9 +50,10 @@ python -m murlocs.eval \
   --output ./eval-results
 ```
 
-The bundled `import-graph` task ships with a small fixture repository whose import graph is
-objectively checkable. The demonstration is never selected implicitly: production use must provide
-both `--task` and `--runs`. `--output` is optional; without it the command prints the comparison but
+The bundled `import-graph` task describes an illustrative import-graph question. Its `--demo`
+output is a FORMAT EXAMPLE built from hand-authored synthetic records: it is banner-marked as
+such, withholds any efficiency verdict, and any `--output` artifact is flagged `illustrative`.
+The example is never selected implicitly: production use must provide both `--task` and `--runs`. `--output` is optional; without it the command prints the comparison but
 does not write a result. Result writes atomically replace their output-directory entry instead of
 following an existing symlink or hardlink, so a linked file outside that directory is not modified.
 

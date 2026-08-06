@@ -364,3 +364,39 @@ def test_deterministic_core_does_not_import_the_harness():
         if "murlocs.eval" in path.read_text(encoding="utf-8"):
             offenders.append(path.name)
     assert offenders == [], f"core modules must not import the eval harness: {offenders}"
+
+
+def test_demo_output_is_labeled_illustrative_and_withholds_verdict(capsys):
+    assert eval_main(["--demo"]) == 0
+    out = capsys.readouterr().out
+    # The banner marks the demo as a non-measured format example.
+    assert "FORMAT EXAMPLE" in out
+    assert "illustrative synthetic data, NOT a measured result" in out
+    # The bare efficiency verdict is suppressed so synthetic figures crown no winner.
+    assert "most efficient correct arm:" not in out
+    assert "no most-efficient arm" in out
+
+
+def test_non_demo_paths_keep_the_efficiency_verdict_without_the_banner(capsys):
+    assert eval_main(["--task", str(TASK_FIXTURE), "--runs", str(RUNS_FIXTURE)]) == 0
+    out = capsys.readouterr().out
+    assert "most efficient correct arm: murlocs" in out
+    assert "FORMAT EXAMPLE" not in out
+    assert "illustrative synthetic data" not in out
+
+
+def test_demo_output_artifact_is_flagged_illustrative(tmp_path):
+    output = tmp_path / "demo-results"
+    assert eval_main(["--demo", "--output", str(output)]) == 0
+    written = list(output.iterdir())
+    assert written == [output / "import-graph.illustrative-example.json"]
+    payload = json.loads(written[0].read_text(encoding="utf-8"))
+    assert payload["illustrative"] is True
+    assert "not a measured result" in payload["illustrative_note"].lower()
+    # A real recorded-run artifact keeps the plain filename and no illustrative flag.
+    real = tmp_path / "real-results"
+    real_argv = ["--task", str(TASK_FIXTURE), "--runs", str(RUNS_FIXTURE), "--output", str(real)]
+    assert eval_main(real_argv) == 0
+    assert list(real.iterdir()) == [real / "import-graph.json"]
+    real_payload = json.loads((real / "import-graph.json").read_text(encoding="utf-8"))
+    assert "illustrative" not in real_payload
