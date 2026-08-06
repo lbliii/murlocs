@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import posixpath
 import shlex
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from murlocs import __version__
 from murlocs.codeowners import find_codeowners, normalize_path, parse_codeowners
@@ -518,3 +519,78 @@ def _maximum_active_bytes(manifest: Manifest, outputs: dict[str, str]) -> int:
             active += sizes[candidate.map]
         maximum = max(maximum, active)
     return maximum
+
+
+def proof_anchor_advisories(manifest: Manifest) -> list[Finding]:
+    """Surface anchors that prove a strict minority of the suite they invoke.
+
+    A registered check satisfies the proof contract by pinning one string in
+    ``location``.  When ``invoke`` runs several source files, an anchor on one of
+    them proves that file exists but says nothing about the rest of the suite.
+    This advisory makes that breadth gap visible.  It never judges test quality,
+    executes the command, or changes the check exit code -- it only names the
+    check and a suggested remediation, in keeping with the tool's "surface it,
+    don't silently accept it" stance (issue #198).
+
+    The signal is deliberately conservative, because a wrong signal is worse than
+    none: it fires only when the command names two or more recognized source
+    files and the anchor's ``location`` is one of them.  Commands that do not
+    clearly name a file set (``make changelog-draft``) or that run a single-file
+    suite produce no finding.
+    """
+    suffixes = set(manifest.source_suffixes)
+    if not suffixes:
+        return []
+    findings: list[Finding] = []
+    for name in sorted(manifest.checks):
+        check = manifest.checks[name]
+        invoked = _invoked_source_files(check.invoke, suffixes)
+        if len(invoked) < 2:
+            continue
+        location = _normalize_repo_path(check.location)
+        if location not in invoked:
+            continue
+        findings.append(
+            Finding(
+                "proof-anchor-breadth",
+                f"check {name} anchors proof in 1 of {len(invoked)} invoked source "
+                f"files ({location}); repoint proof_contains at a headline contract "
+                f"test that exercises the whole suite",
+            )
+        )
+    return findings
+
+
+def _invoked_source_files(invoke: str, suffixes: set[str]) -> set[str]:
+    """Return the recognized source files a check's command names, if any.
+
+    Parsing mirrors ``_command_path_findings``: tokens are split with ``shlex``,
+    a pytest node id selector (``file::test``) is reduced to its file, and flags,
+    assignments, urls, and globbed tokens are ignored.  A token counts as a
+    source file only when its suffix is one the manifest recognizes, so command
+    words (``uv``, ``run``, ``pytest``, ``make``) never register.
+    """
+    try:
+        tokens = shlex.split(invoke)
+    except ValueError:
+        return set()
+    files: set[str] = set()
+    for token in tokens:
+        candidate = token.split("::", 1)[0]
+        if (
+            not candidate
+            or candidate.startswith("-")
+            or "://" in candidate
+            or "=" in candidate
+            or any(character in candidate for character in "*?[]{}")
+        ):
+            continue
+        if PurePosixPath(candidate).suffix not in suffixes:
+            continue
+        files.add(_normalize_repo_path(candidate))
+    return files
+
+
+def _normalize_repo_path(raw: str) -> str:
+    """Normalize a repo-relative path for stable set comparison."""
+    return posixpath.normpath(PurePosixPath(raw).as_posix())
