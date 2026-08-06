@@ -19,6 +19,8 @@ versioning and backward-compatibility rules.
 
 from __future__ import annotations
 
+import hashlib
+import os
 from pathlib import Path
 from typing import Any, Literal, TypedDict, cast
 
@@ -33,6 +35,7 @@ from murlocs.gitview import (
     capture_index,
     changed_paths,
     discover_git,
+    run_git,
 )
 from murlocs.impact import (
     build_impact_report,
@@ -184,7 +187,7 @@ class ReviewChangesPayload(TaskEnvelopePayload):
 class CompletionPayload(TypedDict):
     registered_checks: list[dict[str, str]]
     executed_checks: bool
-    curation_validated: bool
+    curation_validation_ran: bool
 
 
 class FinishPayload(TaskEnvelopePayload):
@@ -450,6 +453,38 @@ def _selected_view(
     return cast(GitViewKind, selected[0])
 
 
+def _untracked_paths(root: Path, deadline: Deadline) -> tuple[str, ...]:
+    """List untracked, non-ignored working-tree files that `git diff HEAD` omits."""
+    completed = run_git(
+        deadline, root, ["ls-files", "--others", "--exclude-standard", "-z"]
+    )
+    decoded = [os.fsdecode(part) for part in completed.stdout.split(b"\0") if part]
+    return normalize_changed_paths(root, decoded)
+
+
+def _working_tree_state_id(root: Path, changed: tuple[str, ...]) -> str:
+    """Fingerprint the working-tree content of the changed paths for freshness.
+
+    The state id changes whenever the reviewed working-tree content changes, so a
+    stale pre-edit receipt is detected even for an unstaged edit that never
+    touches the Git index.
+    """
+    digest = hashlib.sha256(b"murlocs-working-tree-view-v1\0")
+    for path in sorted(changed):
+        encoded = os.fsencode(path)
+        digest.update(len(encoded).to_bytes(4, "big"))
+        digest.update(encoded)
+        try:
+            content = (root / path).read_bytes()
+        except (OSError, ValueError):
+            digest.update(b"\0absent\0")
+        else:
+            digest.update(b"\0blob\0")
+            digest.update(len(content).to_bytes(8, "big"))
+            digest.update(hashlib.sha256(content).digest())
+    return "sha256:" + digest.hexdigest()
+
+
 def _resolve_change_view(
     root: Path,
     *,
@@ -501,9 +536,13 @@ def _resolve_change_view(
         detail = "staged index versus HEAD"
         used_range = None
     elif kind == "working-tree":
-        changed = changed_paths_from_revision(root, "HEAD")
-        state_id = capture_index(context, deadline).state_id
-        detail = "working tree versus HEAD"
+        tracked = changed_paths_from_revision(root, "HEAD")
+        untracked = _untracked_paths(root, deadline)
+        changed = tuple(sorted(set(tracked) | set(untracked)))
+        # Anchor freshness to actual working-tree content, not the index: an
+        # unstaged edit must invalidate a prior receipt. See docs/task-commands.md.
+        state_id = _working_tree_state_id(root, changed)
+        detail = "working tree versus HEAD (tracked changes and untracked files)"
         used_range = None
     else:  # revision
         assert revision_range is not None
@@ -669,7 +708,10 @@ def _orientation(manifest: Manifest, root: Path, relative: str) -> OrientationPa
         for item in related:
             all_related[(item["direction"], item["scope"], item["type"], item["what"])] = item
 
-    active_bytes = sum(len(outputs.get(scope.map, "").encode("utf-8")) for scope in applicable)
+    active_bytes = sum(
+        len(outputs.get(map_name, "").encode("utf-8"))
+        for map_name in {scope.map for scope in applicable}
+    )
     return {
         "path": relative,
         "scopes": scope_payloads,
@@ -905,7 +947,7 @@ def build_finish(
     result["completion"] = {
         "registered_checks": _registered_checks(manifest),
         "executed_checks": False,
-        "curation_validated": True,
+        "curation_validation_ran": True,
     }
     return result
 

@@ -457,7 +457,7 @@ def test_finish_names_registered_checks_without_running_them(tmp_path):
     envelope = call("finish", root, path=["src/api/app/service.py"])
     completion = envelope["completion"]
     assert completion["executed_checks"] is False
-    assert completion["curation_validated"] is True
+    assert completion["curation_validation_ran"] is True
     assert any(check["name"] == "api-test" for check in completion["registered_checks"])
     assert not (root / "MUST_NOT_EXIST").exists()
 
@@ -492,6 +492,52 @@ def test_finish_stale_receipt_cannot_complete(tmp_path):
     assert stale["blocking"] is True
     assert stale["status"] == "blocking"
     assert any(action["codes"] == [STALE_RECEIPT_CODE] for action in stale["actions"])
+
+
+def test_finish_working_tree_stale_receipt_detects_unstaged_edit(tmp_path):
+    root = tmp_path / "repo"
+    build(root)
+    git_init(root)
+    commit_all(root, "base")
+
+    fresh = call("finish", root, working_tree=True)
+    baseline_state = fresh["freshness"]["view_state_id"]
+    assert baseline_state is not None
+
+    # An UNSTAGED edit to a tracked file must invalidate the pre-edit receipt,
+    # even though the Git index is unchanged.
+    (root / "src/worker/job.py").write_text("VALUE = 99\n", encoding="utf-8")
+    stale = call("finish", root, working_tree=True, receipt_state_id=baseline_state)
+
+    assert stale["freshness"]["view_state_id"] != baseline_state
+    assert stale["freshness"]["stale"] is True
+    assert stale["blocking"] is True
+    assert stale["status"] == "blocking"
+    result = invoke(
+        "finish",
+        "--working-tree",
+        "--receipt-state-id",
+        baseline_state,
+        "--repo",
+        str(root),
+    )
+    assert result.exit_code == 1
+
+
+def test_working_tree_view_surfaces_untracked_files(tmp_path):
+    root = tmp_path / "repo"
+    build(root)
+    git_init(root)
+    commit_all(root, "base")
+    (root / "src/worker/new_source.py").write_text("VALUE = 1\n", encoding="utf-8")
+
+    envelope = call("review-changes", root, working_tree=True)
+    assert "src/worker/new_source.py" in envelope["git_view"]["paths"]
+    # A subsequent edit to the untracked file also changes the freshness anchor.
+    first_state = call("finish", root, working_tree=True)["freshness"]["view_state_id"]
+    (root / "src/worker/new_source.py").write_text("VALUE = 2\n", encoding="utf-8")
+    second_state = call("finish", root, working_tree=True)["freshness"]["view_state_id"]
+    assert first_state != second_state
 
 
 def test_finish_receipt_state_id_requires_git_view(tmp_path):

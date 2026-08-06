@@ -80,9 +80,22 @@ when a supplied receipt is stale. `impact` routing is advisory and never changes
 - **Correlation** ids are validated and carried unchanged into the granular receipts.
 - **Freshness** is explicit. `orient` and `review-changes` are `inspection` lifecycle; `finish` is
   `completion` lifecycle. A Git-backed view records the observed `view_state_id` and the freshness
-  `dependencies`. `finish` MAY be given a `receipt_state_id` for an index-bound view; when it does not
-  equal the freshly observed state the receipt is `stale`, which produces a blocking action. A stale
-  pre-edit receipt therefore cannot satisfy completion.
+  `dependencies`. `finish` MAY be given a `receipt_state_id` for a `--staged` or `--working-tree`
+  view; when it does not equal the freshly observed state the receipt is `stale`, which produces a
+  blocking action. A stale pre-edit receipt therefore cannot satisfy completion. A `receipt_state_id`
+  is rejected for the `--revision-range` view (an immutable commit range has no mutable receipt) and
+  for the `--path` view (no Git state is observed).
+
+### Git view semantics
+
+- **`--staged`** compares the index against HEAD; its `view_state_id` is the index snapshot, so any
+  re-staging invalidates a prior receipt.
+- **`--working-tree`** compares the working tree against HEAD. It includes tracked modifications and
+  deletions **and** untracked, non-ignored files (which `git diff HEAD` alone omits), so a newly
+  created guidance source is never a silent gap. Its `view_state_id` is a deterministic hash over the
+  reviewed working-tree **content** — not the index — so an unstaged edit that never touches the Git
+  index still invalidates a prior receipt.
+- **`--revision-range`** reports the changed paths of an immutable Git revision range.
 
 ### Compact and silent-capable output
 
