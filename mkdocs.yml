@@ -50,6 +50,7 @@ nav:
       - Layered manifests: layers.md
       - Product positioning: product-positioning.md
   - Operate:
+      - Intent-shaped task commands: task-commands.md
       - Outcome envelope: outcome-envelope.md
       - Changed-path guidance impact: impact.md
       - Adoption status and coverage: adoption.md

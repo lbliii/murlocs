@@ -37,7 +37,9 @@ def test_all_array_options_are_discovered_from_command_schemas():
         "hook.run": ("--path",),
         "hook.uninstall": ("--event",),
         "impact": ("--path",),
+        "finish": ("--path",),
         "init": ("--coverage-root",),
+        "review-changes": ("--path",),
         "split-layers": (
             "--check",
             "--coverage-exemption",
@@ -550,8 +552,11 @@ def test_milo_agent_surface_is_read_only_by_default():
         "curate.review",
         "diff",
         "explain",
+        "finish",
         "impact",
         "inventory",
+        "orient",
+        "review-changes",
         "status",
         "version",
     }
@@ -561,6 +566,9 @@ def test_milo_agent_surface_is_read_only_by_default():
     assert "**status**" in discovery
     assert "**diff**" in discovery
     assert "**impact**" in discovery
+    assert "**orient**" in discovery
+    assert "**review-changes**" in discovery
+    assert "**finish**" in discovery
     assert "**version**" in discovery
     assert "## Create and inspect inert guidance curation proposals" in discovery
     assert "- **check**: Validate inert curation records" in discovery

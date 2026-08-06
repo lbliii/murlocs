@@ -115,6 +115,20 @@ murlocs impact --path src/my_package/feature.py --path docs/feature.md
 `explain` returns the scope chain and its rules. `impact` shows what a changed path needs reviewed,
 without starting an agent or running repository commands. See [changed-path impact](https://github.com/lbliii/murlocs/blob/main/docs/impact.md).
 
+### Or use the task-shaped front door
+
+```bash
+murlocs orient src/my_package/feature.py
+murlocs review-changes --path src/my_package/feature.py --path docs/feature.md
+murlocs finish --staged
+```
+
+`orient` before unfamiliar work, `review-changes` over an explicit path or Git view, and `finish`
+for a fresh completion receipt. These read-only commands compose `check`, `impact`, adoption, and
+curation validation into one classified, freshness-bound envelope; they never execute a registered
+check or change repository state. See
+[intent-shaped task commands](https://github.com/lbliii/murlocs/blob/main/docs/task-commands.md).
+
 ### Change safely and repair only ordinary drift
 
 ```bash
