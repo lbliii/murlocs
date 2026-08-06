@@ -10,6 +10,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). While the
 
 ### Added
 
+- Intent-shaped read-only task commands `orient`, `review-changes`, and `finish`
+  over the existing primitives, on the CLI, MCP, and discovery surfaces. They
+  share one versioned `io.murlocs.task` composition envelope
+  (`src/murlocs/task_commands.py`, specified in `docs/task-commands.md`) that
+  classifies each composite action as blocking, authority-required,
+  agent-action, or recommended; makes repository state, the exact Git view,
+  correlation, and freshness dependencies explicit; keeps healthy output compact
+  and silent-capable; fails visibly on an ambiguous or unavailable change view;
+  and rejects a stale pre-edit completion receipt. The commands never execute a
+  registered check or mutate repository state, and the granular `status`,
+  `explain`, `impact`, and `check` surfaces are unchanged.
 - Continuous-integration and release automation: a GitHub Pages docs site built
   from `docs/` with MkDocs Material (`pages.yml`, `mkdocs.yml`), release notes
   synced from `CHANGELOG.md` when a release is published (`release-notes.yml`,
