@@ -181,12 +181,9 @@ def _annotation_finding(
             }
         )
     )
+    identifiers = {item.annotation.identifier for item in related if item.annotation is not None}
     inferred_identifier = (
-        related[0].annotation.identifier
-        if finding.identifier is None
-        and len({item.annotation.identifier for item in related if item.annotation is not None})
-        == 1
-        else None
+        next(iter(identifiers)) if finding.identifier is None and len(identifiers) == 1 else None
     )
     annotation_id = finding.identifier or inferred_identifier
     identifier = annotation_id or "<unknown>"
@@ -371,7 +368,11 @@ def _coverage_findings(manifest: Manifest) -> list[Finding]:
             findings.append(Finding("coverage", f"coverage root does not exist: {root_name}"))
             continue
         candidates = [(coverage_root, False)]
-        candidates.extend((path, True) for path in coverage_root.iterdir() if path.is_dir())
+        candidates.extend(
+            (path, True)
+            for path in sorted(coverage_root.iterdir(), key=lambda item: item.name)
+            if path.is_dir()
+        )
         for candidate, recursive in candidates:
             children = candidate.rglob("*") if recursive else candidate.iterdir()
             has_source = any(
@@ -385,9 +386,10 @@ def _coverage_findings(manifest: Manifest) -> list[Finding]:
             reason = exemptions.get(relative, "").strip()
             if not reason:
                 findings.append(Finding("coverage", f"source-bearing unit has no map: {relative}"))
-    for path, reason in exemptions.items():
+    for path, reason in sorted(exemptions.items()):
         if not reason.strip():
             findings.append(Finding("coverage", f"exemption has no reason: {path}"))
+    findings.sort(key=lambda item: item.message)
     return findings
 
 

@@ -101,7 +101,9 @@ murlocs compile
 murlocs check
 ```
 
-Coverage is opt-in. Initialization records only the roots you name; it never guesses them.
+Coverage roots are inferred from the repository layout during `init` — typically `src/` and other
+top-level directories that contain source files. Pass `--coverage-root` explicitly to override
+inference or add additional roots.
 
 ### Understand a task before changing code
 

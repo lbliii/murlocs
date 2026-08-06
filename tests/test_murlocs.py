@@ -3,11 +3,17 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
 from milo import generate_llms_txt
 from milo.testing import MCPClient
 
 from murlocs.cli import _repeatable_option_flags, build_cli
+from murlocs.errors import MurlocsError
 from murlocs.lockfile import sha256_bytes
+from murlocs.manifest import load_manifest
+from murlocs.render import compile_manifest
+from murlocs.verify import validate
+from tests.support import initialize_repo, invoke
 
 
 def make_repo(tmp_path: Path) -> Path:
@@ -15,10 +21,6 @@ def make_repo(tmp_path: Path) -> Path:
     (root / "src" / "pkg").mkdir(parents=True)
     (root / "src" / "pkg" / "core.py").write_text("VALUE = 1\n", encoding="utf-8")
     return root
-
-
-def invoke(*argv: str):
-    return build_cli().invoke(list(argv))
 
 
 def test_all_array_options_are_discovered_from_command_schemas():
@@ -188,25 +190,29 @@ def test_repeatable_option_help_matches_supported_terminal_syntax():
 
 
 def initialize(root: Path, name: str | None = None) -> None:
-    argv = ["init", "--repo", str(root)]
+    argv: list[str] = []
     if name is not None:
         argv.extend(["--name", name])
-    result = invoke(*argv)
-    assert result.exit_code == 0, result.stderr
+    initialize_repo(root, *argv)
 
 
 def test_init_compile_check_and_explain(tmp_path):
     root = make_repo(tmp_path)
-    initialize(root, "Example Shoal")
+    argv = ["init", "--repo", str(root), "--name", "Example Shoal"]
+    result = invoke(*argv)
+    assert result.exit_code == 0, result.stderr
 
     assert (root / "AGENTS.md").is_file()
     assert (root / ".murlocs" / "lock.json").is_file()
-    assert invoke("compile", "--repo", str(root)).exit_code == 0
+    compile_result = invoke("compile", "--repo", str(root))
+    assert compile_result.exit_code == 1
+    assert "src/pkg" in compile_result.stderr
     checked = invoke("check", "--repo", str(root))
     explained = invoke("explain", "src/pkg/core.py", "--repo", str(root))
 
-    assert checked.exit_code == 0
-    assert "coverage unconfigured: no source roots were evaluated" in checked.output
+    assert checked.exit_code == 1
+    assert "src/pkg" in checked.stderr
+    assert "coverage incomplete" in checked.stderr
     assert explained.exit_code == 0
     assert "Example Shoal" in (root / "AGENTS.md").read_text(encoding="utf-8")
     assert "[root] AGENTS.md" in explained.output
@@ -222,12 +228,42 @@ def test_compile_is_deterministic(tmp_path):
 
 def test_init_dry_run_writes_nothing(tmp_path):
     root = make_repo(tmp_path)
-    result = invoke("--dry-run", "init", "--repo", str(root))
+    result = invoke("--dry-run", "init", "--repo", str(root), "--format", "json")
     assert result.exit_code == 0
-    assert "would write .murlocs/manifest.toml" in result.output
-    assert "coverage unconfigured" in result.output
+    payload = json.loads(result.output)
+    assert payload["coverage"]["roots"] == ["src"]
+    assert payload["dry_run"] is True
     assert not (root / ".murlocs").exists()
     assert not (root / "AGENTS.md").exists()
+
+
+def test_init_infers_coverage_roots_from_repository_layout(tmp_path):
+    root = make_repo(tmp_path)
+    (root / "tests").mkdir()
+    (root / "tests" / "test_core.py").write_text("def test_core(): pass\n", encoding="utf-8")
+
+    result = invoke("init", "--repo", str(root), "--format", "json")
+
+    assert result.exit_code == 0, result.stderr
+    payload = json.loads(result.output)
+    assert payload["coverage"]["roots"] == ["src", "tests"]
+    manifest = (root / ".murlocs" / "manifest.toml").read_text(encoding="utf-8")
+    assert 'roots = ["src", "tests"]' in manifest
+
+
+def test_init_leaves_coverage_unconfigured_without_source_files(tmp_path):
+    root = tmp_path / "repo"
+    root.mkdir()
+    (root / "README.md").write_text("# Docs only\n", encoding="utf-8")
+
+    result = invoke("init", "--repo", str(root))
+
+    assert result.exit_code == 0, result.stderr
+    manifest = (root / ".murlocs" / "manifest.toml").read_text(encoding="utf-8")
+    assert "roots = []" in manifest
+    checked = invoke("check", "--repo", str(root))
+    assert checked.exit_code == 0
+    assert "coverage unconfigured" in checked.output
 
 
 def test_init_accepts_explicit_coverage_roots_and_reports_structural_gaps(tmp_path):
@@ -430,12 +466,7 @@ def test_check_detects_missing_manual_proof(tmp_path):
 
 def test_check_detects_uncovered_source_unit(tmp_path):
     root = make_repo(tmp_path)
-    initialize(root)
-    manifest = root / ".murlocs" / "manifest.toml"
-    manifest.write_text(
-        manifest.read_text(encoding="utf-8").replace("roots = []", 'roots = ["src"]'),
-        encoding="utf-8",
-    )
+    invoke("init", "--repo", str(root))
     result = invoke("check", "--repo", str(root))
     assert result.exit_code == 1
     assert "src/pkg" in result.stderr
@@ -446,12 +477,7 @@ def test_check_detects_source_unit_with_only_nested_files(tmp_path):
     nested = root / "src" / "pkg" / "nested"
     nested.mkdir(parents=True)
     (nested / "feature.py").write_text("VALUE = 1\n", encoding="utf-8")
-    initialize(root)
-    manifest = root / ".murlocs" / "manifest.toml"
-    manifest.write_text(
-        manifest.read_text(encoding="utf-8").replace("roots = []", 'roots = ["src"]'),
-        encoding="utf-8",
-    )
+    invoke("init", "--repo", str(root))
 
     result = invoke("check", "--repo", str(root))
 
@@ -462,12 +488,6 @@ def test_check_detects_source_unit_with_only_nested_files(tmp_path):
 def test_reasoned_coverage_exemption(tmp_path):
     root = make_repo(tmp_path)
     initialize(root)
-    manifest = root / ".murlocs" / "manifest.toml"
-    text = manifest.read_text(encoding="utf-8")
-    text = text.replace("roots = []", 'roots = ["src"]')
-    text = text.replace("[coverage.exemptions]", '[coverage.exemptions]\n"src/pkg" = "small leaf"')
-    manifest.write_text(text, encoding="utf-8")
-    assert invoke("compile", "--repo", str(root)).exit_code == 0
     checked = invoke("check", "--repo", str(root), "--format", "json")
     assert json.loads(checked.output)["coverage"] == {
         "state": "structurally_complete",
@@ -574,9 +594,9 @@ def test_mcp_check_and_explain_return_structured_results(tmp_path):
     assert checked.structured["ok"] is True
     assert checked.structured["summary"]["issues"] == 0
     assert checked.structured["coverage"] == {
-        "state": "unconfigured",
-        "roots": [],
-        "evaluated": False,
+        "state": "structurally_complete",
+        "roots": ["src"],
+        "evaluated": True,
     }
     assert explained.is_error is False
     assert explained.structured["path"] == "src/pkg/core.py"
@@ -595,3 +615,69 @@ def test_short_alias_uses_its_own_program_name():
     assert result.exit_code == 0
     assert result.output.startswith("mrr ")
     assert not result.output.startswith("murlocs ")
+
+
+def test_coverage_findings_are_emitted_in_stable_order(tmp_path):
+    root = tmp_path / "repo"
+    (root / "src" / "alpha").mkdir(parents=True)
+    (root / "src" / "beta").mkdir(parents=True)
+    (root / "src" / "alpha" / "a.py").write_text("A = 1\n", encoding="utf-8")
+    (root / "src" / "beta" / "b.py").write_text("B = 1\n", encoding="utf-8")
+    assert invoke("init", "--repo", str(root)).exit_code == 0
+
+    findings = [str(item) for item in validate(load_manifest(root)) if item.code == "coverage"]
+
+    assert findings == sorted(findings)
+    assert any("src/alpha" in item for item in findings)
+    assert any("src/beta" in item for item in findings)
+
+
+def test_compile_releases_unmodified_orphaned_maps(tmp_path):
+    root = make_repo(tmp_path)
+    initialize(root)
+    manifest_path = root / ".murlocs" / "manifest.toml"
+    base_manifest = manifest_path.read_text(encoding="utf-8")
+    extra_scope = """
+
+[[scopes]]
+id = "pkg"
+path = "src/pkg"
+map = "src/pkg/AGENTS.md"
+point_of_view = "Package guidance."
+"""
+    manifest_path.write_text(base_manifest + extra_scope, encoding="utf-8")
+    compile_manifest(load_manifest(root))
+    orphan = root / "src" / "pkg" / "AGENTS.md"
+    assert orphan.is_file()
+
+    manifest_path.write_text(base_manifest, encoding="utf-8")
+    compile_manifest(load_manifest(root))
+
+    assert not orphan.exists()
+    lock = json.loads((root / ".murlocs" / "lock.json").read_text(encoding="utf-8"))
+    assert "src/pkg/AGENTS.md" not in lock["generated"]
+
+
+def test_compile_refuses_modified_orphaned_maps(tmp_path):
+    root = make_repo(tmp_path)
+    initialize(root)
+    manifest_path = root / ".murlocs" / "manifest.toml"
+    base_manifest = manifest_path.read_text(encoding="utf-8")
+    extra_scope = """
+
+[[scopes]]
+id = "pkg"
+path = "src/pkg"
+map = "src/pkg/AGENTS.md"
+point_of_view = "Package guidance."
+"""
+    manifest_path.write_text(base_manifest + extra_scope, encoding="utf-8")
+    compile_manifest(load_manifest(root))
+    orphan = root / "src" / "pkg" / "AGENTS.md"
+    orphan.write_text(orphan.read_text(encoding="utf-8") + "\n# edited\n", encoding="utf-8")
+    manifest_path.write_text(base_manifest, encoding="utf-8")
+
+    with pytest.raises(MurlocsError) as exc:
+        compile_manifest(load_manifest(root))
+
+    assert "lockfile owns maps no longer declared" in str(exc.value)

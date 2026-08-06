@@ -7,19 +7,15 @@ from pathlib import Path
 import pytest
 
 import murlocs.repair as repair_module
-from murlocs.cli import build_cli
 from murlocs.repair import apply_repair, plan_repair_from_root, recover_repair
-
-
-def invoke(*argv: str):
-    return build_cli().invoke(list(argv))
+from tests.support import initialize_repo, invoke
 
 
 def repository(tmp_path: Path) -> Path:
     root = tmp_path / "repo"
     (root / "src").mkdir(parents=True)
     (root / "src" / "app.py").write_text("VALUE = 1\n", encoding="utf-8")
-    assert invoke("init", "--repo", str(root)).exit_code == 0
+    initialize_repo(root)
     return root
 
 

@@ -6,12 +6,12 @@ from pathlib import Path
 
 import pytest
 
-from murlocs.cli import build_cli
 from murlocs.curation import apply_record, load_record, stable_list_key
 from murlocs.curation_transaction import FileUpdate, apply_transaction, plan_recovery
 from murlocs.errors import MurlocsError
 from murlocs.lockfile import sha256_bytes
 from murlocs.serialization import render_manifest_data
+from tests.support import initialize_repo, invoke
 
 CROSS_SCOPE_MANIFEST = """schema_version = 1
 network = "Cross-scope curation"
@@ -77,14 +77,10 @@ edges = []
 """
 
 
-def invoke(*argv: str):
-    return build_cli().invoke(list(argv))
-
-
 def initialize(root: Path) -> None:
     (root / "src").mkdir(parents=True)
     (root / "src" / "app.py").write_text("VALUE = 1\n", encoding="utf-8")
-    assert invoke("init", "--repo", str(root), "--name", "Lifecycle Test").exit_code == 0
+    initialize_repo(root, "--name", "Lifecycle Test")
     manifest = root / ".murlocs" / "manifest.toml"
     text = manifest.read_text(encoding="utf-8")
     manifest.write_text(
@@ -651,14 +647,15 @@ def test_coverage_topology_and_codeowners_precedence_are_commit_guards(tmp_path)
     root = tmp_path / "repo"
     initialize(root)
     manifest = root / ".murlocs/manifest.toml"
-    manifest.write_text(
-        manifest.read_text(encoding="utf-8")
-        .replace("roots = []", 'roots = ["src"]')
-        .replace(
+    text = manifest.read_text(encoding="utf-8")
+    exemptions = text.split("[coverage.exemptions]", 1)[1].split("\n[", 1)[0]
+    if '"src"' not in exemptions:
+        text = text.replace(
             "[coverage.exemptions]\n",
             '[coverage.exemptions]\n"src" = "Root source unit is explicitly exempt."\n',
         )
-        .replace(
+    manifest.write_text(
+        text.replace(
             "require_scope_invariants = false",
             "require_scope_invariants = false\nvalidate_codeowners = true",
         ),

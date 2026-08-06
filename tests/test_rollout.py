@@ -4,10 +4,7 @@ import json
 from pathlib import Path
 
 from murlocs.cli import build_cli
-
-
-def invoke(*argv: str):
-    return build_cli().invoke(list(argv))
+from tests.support import invoke, stabilize_inferred_coverage
 
 
 def root_only(tmp_path: Path) -> Path:
@@ -18,7 +15,9 @@ def root_only(tmp_path: Path) -> Path:
     (root / "docs" / "api" / "x.md").write_text("x\n", encoding="utf-8")
     (root / "legacy").mkdir()
     (root / "legacy" / "old.py").write_text("OLD = 1\n", encoding="utf-8")
-    assert invoke("init", "--repo", str(root), "--name", "Roll").exit_code == 0
+    result = invoke("init", "--repo", str(root), "--name", "Roll", "--coverage-root", "src")
+    assert result.exit_code == 0, result.stderr
+    stabilize_inferred_coverage(root)
     return root
 
 
@@ -173,7 +172,17 @@ def test_nested_path_produces_root_to_scope_chain(tmp_path):
 
 
 def test_deferred_area_is_recorded_as_reasoned_exemption(tmp_path):
-    root = root_only(tmp_path)
+    root = tmp_path / "repo"
+    (root / "src" / "pkg").mkdir(parents=True)
+    (root / "src" / "pkg" / "core.py").write_text("VALUE = 1\n", encoding="utf-8")
+    (root / "docs" / "api").mkdir(parents=True)
+    (root / "docs" / "api" / "x.md").write_text("x\n", encoding="utf-8")
+    (root / "legacy").mkdir()
+    (root / "legacy" / "old.py").write_text("OLD = 1\n", encoding="utf-8")
+    assert (
+        invoke("init", "--repo", str(root), "--name", "Roll", "--coverage-root", "src").exit_code
+        == 0
+    )
     result = invoke(
         "add-scope",
         "docs",
