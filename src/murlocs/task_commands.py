@@ -277,8 +277,7 @@ def _action_summary(classification: TaskClassification, source: TaskSource, buck
     if classification == "recommended":
         return f"Consider reviewing recommended scope(s): {scopes}."
     return (
-        f"Inspect {bucket.count} {source} finding(s) and the affected guidance; "
-        f"scope(s): {scopes}."
+        f"Inspect {bucket.count} {source} finding(s) and the affected guidance; scope(s): {scopes}."
     )
 
 
@@ -447,17 +446,13 @@ def _selected_view(
             "select exactly one change view: --path, --staged, --working-tree, or --revision"
         )
     if len(selected) > 1:
-        raise MurlocsError(
-            "ambiguous change view; select only one of: " + ", ".join(selected)
-        )
+        raise MurlocsError("ambiguous change view; select only one of: " + ", ".join(selected))
     return cast(GitViewKind, selected[0])
 
 
 def _untracked_paths(root: Path, deadline: Deadline) -> tuple[str, ...]:
     """List untracked, non-ignored working-tree files that `git diff HEAD` omits."""
-    completed = run_git(
-        deadline, root, ["ls-files", "--others", "--exclude-standard", "-z"]
-    )
+    completed = run_git(deadline, root, ["ls-files", "--others", "--exclude-standard", "-z"])
     decoded = [os.fsdecode(part) for part in completed.stdout.split(b"\0") if part]
     return normalize_changed_paths(root, decoded)
 
@@ -476,7 +471,7 @@ def _working_tree_state_id(root: Path, changed: tuple[str, ...]) -> str:
         digest.update(encoded)
         try:
             content = (root / path).read_bytes()
-        except (OSError, ValueError):
+        except OSError, ValueError:
             digest.update(b"\0absent\0")
         else:
             digest.update(b"\0blob\0")
@@ -630,9 +625,7 @@ def _scope_focused_checks(manifest: Manifest, scope: Scope) -> list[dict[str, st
         if check is None or check.name in seen:
             continue
         seen.add(check.name)
-        checks.append(
-            {"name": check.name, "invoke": check.invoke, "location": check.location}
-        )
+        checks.append({"name": check.name, "invoke": check.invoke, "location": check.location})
     return sorted(checks, key=lambda item: item["name"])
 
 

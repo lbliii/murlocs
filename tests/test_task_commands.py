@@ -258,9 +258,7 @@ def test_orient_reports_orientation_for_path(tmp_path):
     assert any(
         "Version the API contract." in scope["guardrails"] for scope in orientation["scopes"]
     )
-    assert any(
-        related["scope"] == "worker" for related in orientation["related_scopes"]
-    )
+    assert any(related["scope"] == "worker" for related in orientation["related_scopes"])
     assert orientation["budget"]["max_active_bytes"] == 24576
     assert envelope["git_view"]["kind"] == "path"
 
@@ -298,9 +296,7 @@ def test_review_changes_requires_explicit_view(tmp_path):
 def test_review_changes_ambiguous_view_fails(tmp_path):
     root = tmp_path / "repo"
     build(root)
-    result = invoke(
-        "review-changes", "--path", "README.md", "--staged", "--repo", str(root)
-    )
+    result = invoke("review-changes", "--path", "README.md", "--staged", "--repo", str(root))
     assert result.exit_code == 1
     assert "ambiguous change view" in result.stderr
 
@@ -308,9 +304,7 @@ def test_review_changes_ambiguous_view_fails(tmp_path):
 def test_review_changes_echoes_repo_and_view(tmp_path):
     root = tmp_path / "repo"
     build(root)
-    result = invoke(
-        "review-changes", "--path", "src/api/app/service.py", "--repo", str(root)
-    )
+    result = invoke("review-changes", "--path", "src/api/app/service.py", "--repo", str(root))
     assert result.exit_code == 0
     assert str(root) in result.output
     assert "view: paths" in result.output
@@ -625,6 +619,4 @@ def test_existing_granular_commands_still_pass(tmp_path):
     build(root)
     assert invoke("check", "--repo", str(root)).exit_code == 0
     assert invoke("explain", "src/api/app/service.py", "--repo", str(root)).exit_code == 0
-    assert (
-        invoke("impact", "--path", "src/api/app/service.py", "--repo", str(root)).exit_code == 0
-    )
+    assert invoke("impact", "--path", "src/api/app/service.py", "--repo", str(root)).exit_code == 0
