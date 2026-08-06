@@ -126,3 +126,42 @@ every adopted map still has its recorded hash, then restores original maps and t
 and removes the adoption lock when none existed before. A post-adoption edit therefore blocks
 rollback instead of being overwritten. Candidate manifests, migration records, and backups remain
 for review; cleanup is a separate future policy rather than an implicit destructive side effect.
+
+
+## Concurrency and thread safety
+
+Murlocs is designed and tested as a one-shot CLI. Hosts that embed it as a
+library under a threaded server -- for example the `--mcp` surface or the
+Claude and Copilot adapters dispatching read-only handlers concurrently --
+should treat its two halves differently.
+
+Read-only, in-memory operations are reentrant and safe to run concurrently.
+Loading (`load_manifest`), layer resolution and merge (`layers.compose`,
+`layers.resolve_manifest`), validation (`verify.validate`), in-memory rendering,
+and source-annotation resolution hold no shared mutable state: there are no
+module-level mutable globals, no call-time memoization or caches, and
+`compose` builds a fresh result while treating the fragments it reads as
+read-only (it shallow-copies each incoming entry before rebinding keys, and
+never mutates a caller's nested lists or dicts in place). A `Manifest` is an
+immutable value object rebuilt per load, so a single instance may be shared
+read-only across threads. Its `dict` fields (`checks`, `coverage_exemptions`,
+`scope_layers`, `invariant_layers`) are plain mutable dictionaries, so a host
+must not mutate them while other threads read; treat a shared manifest as
+frozen.
+
+The write path is not thread-safe and must not run concurrently against the
+same repository. Every generated output goes through `atomic._write`, which
+derives file modes via a process-wide `os.umask(0)`-then-restore
+read-modify-write: two threads writing at once can observe each other's
+temporary `0` umask and create files with the wrong permissions. Compilation
+(`render.prepare_manifest` / `render.compile_manifest`) also performs unguarded
+check-then-act on shared repository files -- it reads the lockfile, compares
+hashes, unlinks orphaned maps, then replaces outputs -- with no lock protecting
+the sequence. There is no in-process writer lock.
+
+Supported integration: embed Murlocs in-process for read-only guidance queries
+under a threaded host, sharing manifests as immutable values. Serialize any
+mutating operation behind a single writer, or shell out to the `murlocs` CLI so
+each compilation runs in its own process. Do not dispatch concurrent
+compilations in-process until the umask read-modify-write and the compile
+check-then-act sequence are guarded.

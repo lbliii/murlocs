@@ -128,6 +128,44 @@ class Manifest:
     invariant_layers: dict[str, str] = field(default_factory=dict)
     overrides: tuple[Override, ...] = ()
 
+    def __hash__(self) -> int:
+        # `frozen=True` asks the dataclass to synthesize `__hash__`, but four
+        # fields (`coverage_exemptions`, `checks`, `scope_layers`,
+        # `invariant_layers`) are plain dicts, so the synthesized version raises
+        # `TypeError: unhashable type: 'dict'` the moment a manifest is used as a
+        # set member or dict key. Fold those dicts into sorted item tuples so the
+        # hash is total and stays consistent with the field-wise `__eq__`
+        # (equal manifests hash equal); every other field is already an
+        # immutable scalar, tuple, or frozen dataclass.
+        return hash(
+            (
+                self.root,
+                self.schema_version,
+                self.network,
+                self.protocol,
+                self.max_active_bytes,
+                self.pillars,
+                self.search_policy,
+                self.operating_rules,
+                self.stop_and_ask,
+                self.done_criteria,
+                self.coverage_roots,
+                self.source_suffixes,
+                tuple(sorted(self.coverage_exemptions.items())),
+                self.require_scope_invariants,
+                self.scopes,
+                self.invariants,
+                tuple(sorted(self.checks.items())),
+                self.require_layer_owners,
+                self.validate_codeowners,
+                self.layered,
+                self.sources,
+                tuple(sorted(self.scope_layers.items())),
+                tuple(sorted(self.invariant_layers.items())),
+                self.overrides,
+            )
+        )
+
     @property
     def manifest_path(self) -> Path:
         return self.root / ".murlocs" / "manifest.toml"
