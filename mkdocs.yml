@@ -1,0 +1,77 @@
+# Documentation site configuration.
+#
+# The docs are plain Markdown that already cross-link with relative paths, so
+# MkDocs Material renders them into a browsable site without touching the
+# sources. `docs/README.md` is treated as the site index. The build is exercised
+# under `--strict` in `.github/workflows/pages.yml`, so a broken internal link or
+# a page missing from the nav fails CI rather than shipping silently.
+site_name: Murlocs
+site_description: Compile and verify repository-local guidance maps for coding agents.
+site_url: https://lbliii.github.io/murlocs/
+repo_url: https://github.com/lbliii/murlocs
+repo_name: lbliii/murlocs
+edit_uri: edit/main/docs/
+
+docs_dir: docs
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.top
+    - content.action.edit
+    - search.suggest
+
+markdown_extensions:
+  - admonition
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.highlight
+  - pymdownx.superfences
+
+nav:
+  - Home: README.md
+  - Start:
+      - Primary user journeys: journeys.md
+      - Architecture: architecture.md
+      - Layered manifests: layers.md
+      - Product positioning: product-positioning.md
+  - Operate:
+      - Outcome envelope: outcome-envelope.md
+      - Changed-path guidance impact: impact.md
+      - Adoption status and coverage: adoption.md
+      - Governed guidance curation: curation.md
+      - Passive Git hooks: git-hooks.md
+      - Activation lifecycle: activation-lifecycle.md
+      - Runtime build identity: runtime-identity.md
+      - Source annotation authority model: source-annotation-authority.md
+      - Roadmap: roadmap.md
+  - Integrate:
+      - Agent-host adapter contract: adapter-conformance.md
+      - Claude Code adapter: claude-code-adapter.md
+      - GitHub Copilot adapter: github-copilot-adapter.md
+      - Source annotation contract v1: source-annotation-contract-v1.md
+      - Source annotation resolver: source-annotation-resolver.md
+      - Source annotation provenance: source-annotation-provenance.md
+  - Research and evidence:
+      - Guidance efficiency evaluation: evaluation.md
+      - Passive-agent acceptance harness: passive-agent-acceptance.md
+      - Pilots:
+          - Chirp and Kida paired-pilot audit: pilots/chirp-kida.md
+          - Synthetic 91-map scale pilot: pilots/scale-network.md
+          - Fresh-session passive-agent acceptance: pilots/passive-agent-acceptance-2026-08-03.md
+          - Compact outcome blind reveal: pilots/compact-outcome-blind-reveal.md
+          - Textual evidence markers: pilots/textual-evidence-markers.md

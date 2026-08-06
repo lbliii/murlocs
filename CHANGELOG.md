@@ -6,6 +6,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). While the major version is
 `0`, the manifest schema and generated map format may change between minor releases.
 
+## [Unreleased]
+
+### Added
+
+- Continuous-integration and release automation: a GitHub Pages docs site built
+  from `docs/` with MkDocs Material (`pages.yml`, `mkdocs.yml`), release notes
+  synced from `CHANGELOG.md` when a release is published (`release-notes.yml`,
+  `scripts/changelog_extract.py`), and a lightweight changelog gate that asks
+  behaviour-changing pull requests to update `CHANGELOG.md`, with a
+  `skip-changelog` label escape hatch (`changelog.yml`).
+
+### Changed
+
+- The `Documentation` project URL now points at the published Pages site,
+  `https://lbliii.github.io/murlocs/`, instead of a Markdown blob on GitHub.
+
 ## [0.1.0] - 2026-08-05
 
 First published release.

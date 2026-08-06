@@ -1,0 +1,64 @@
+name: Changelog
+
+# A lightweight gate: a pull request that changes behaviour should also record a
+# CHANGELOG.md entry. It is intentionally forgiving so it does not nag on trivial
+# work:
+#
+#   * Docs-only, test-only, and CI/tooling-only PRs are exempt automatically.
+#   * Any PR can opt out by adding the `skip-changelog` label.
+#
+# It fails only when a PR touches product code, has no changelog entry, and
+# carries no `skip-changelog` label. This is a deliberately simple stand-in for a
+# fragment tool like towncrier; see the PR that introduced it for the tradeoff.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: changelog-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  changelog:
+    name: Changelog entry present
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Honour the escape hatch without any repository work.
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'skip-changelog') }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Require a changelog entry for behaviour changes
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          git fetch --quiet origin "$BASE_REF"
+          changed="$(git diff --name-only "origin/${BASE_REF}...HEAD")"
+          echo "Changed files:"
+          echo "$changed"
+
+          if echo "$changed" | grep -qx "CHANGELOG.md"; then
+            echo "CHANGELOG.md was updated."
+            exit 0
+          fi
+
+          # Files that never require a changelog entry on their own.
+          exempt='^(docs/|tests/|\.github/|mkdocs\.yml$|.*\.md$|LICENSE$)'
+          code_changes="$(echo "$changed" | grep -vE "$exempt" || true)"
+
+          if [ -z "$code_changes" ]; then
+            echo "Only docs/tests/tooling changed; no changelog entry required."
+            exit 0
+          fi
+
+          echo "::error::This PR changes product code but does not update CHANGELOG.md."
+          echo "Add an entry under the Unreleased section, or apply the 'skip-changelog' label if this genuinely needs none."
+          echo "Behaviour-changing files without a changelog entry:"
+          echo "$code_changes"
+          exit 1

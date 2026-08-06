@@ -30,7 +30,7 @@ dependencies = [
 
 [project.urls]
 Homepage = "https://github.com/lbliii/murlocs"
-Documentation = "https://github.com/lbliii/murlocs/blob/main/docs/README.md"
+Documentation = "https://lbliii.github.io/murlocs/"
 Repository = "https://github.com/lbliii/murlocs"
 Issues = "https://github.com/lbliii/murlocs/issues"
 Changelog = "https://github.com/lbliii/murlocs/blob/main/CHANGELOG.md"
