@@ -25,6 +25,9 @@ class Lock:
     generated: dict[str, str]
     manifest_sha256: str
     sources: tuple[LockSource, ...] = ()
+    # The tool version that produced the lockfile. Older lockfiles predate the
+    # field, so an empty string means "unknown" and is treated as compatible.
+    tool_version: str = ""
 
 
 def sha256_bytes(value: bytes) -> str:
@@ -58,6 +61,9 @@ def read_lock(root: Path) -> Lock | None:
             generated=generated,
             manifest_sha256=str(data["manifest_sha256"]),
             sources=sources,
+            # Missing on lockfiles written before the field existed; default to
+            # "" so read_lock never raises on an older, otherwise-valid file.
+            tool_version=str(data.get("tool_version", "")),
         )
     except (json.JSONDecodeError, KeyError, TypeError) as exc:
         raise MurlocsError(f"invalid lockfile: {path}") from exc

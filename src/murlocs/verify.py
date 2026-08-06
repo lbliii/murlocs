@@ -4,8 +4,10 @@ import shlex
 from dataclasses import dataclass
 from pathlib import Path
 
+from murlocs import __version__
 from murlocs.codeowners import find_codeowners, normalize_path, parse_codeowners
 from murlocs.errors import MurlocsError
+from murlocs.layers import ROOT_SOURCE_PATH
 from murlocs.lockfile import Lock, read_lock, sha256_bytes, sha256_text
 from murlocs.model import Invariant, LayerSource, Manifest, Scope
 from murlocs.paths import relative_posix, repo_path, repo_path_within, resolve_root
@@ -99,6 +101,10 @@ def validate(manifest: Manifest) -> list[Finding]:
         elif invariant.verification != "unknown":
             findings.append(Finding("proof", f"{invariant.id} has invalid verification mode"))
 
+    # One readdir of the repository root, shared across every registered check.
+    # This used to run inside the loop below, so an N-check manifest performed N
+    # identical root sweeps of unchanged data (issue #187).
+    top_level = {path.name for path in manifest.root.iterdir()}
     for name, check in manifest.checks.items():
         if not check.proof_contains:
             findings.append(Finding("proof-debt", f"check {name} has no proof_contains anchor"))
@@ -114,7 +120,7 @@ def validate(manifest: Manifest) -> list[Finding]:
                 )
         elif not _contains(manifest.root, check.location, check.proof_contains, findings):
             findings.append(Finding("check", f"{name} proof was not found at {check.location}"))
-        findings.extend(_command_path_findings(manifest.root, name, check.invoke))
+        findings.extend(_command_path_findings(manifest.root, name, check.invoke, top_level))
 
     protocol = _safe_path(manifest.root, manifest.protocol, "protocol", findings)
     if protocol is not None and not protocol.is_file():
@@ -311,13 +317,14 @@ def normalize_severity(value: str) -> str | None:
     return SEVERITY_EQUIVALENTS.get(value)
 
 
-def _command_path_findings(root: Path, name: str, invoke: str) -> list[Finding]:
+def _command_path_findings(
+    root: Path, name: str, invoke: str, top_level: set[str]
+) -> list[Finding]:
     try:
         tokens = shlex.split(invoke)
     except ValueError as exc:
         return [Finding("check", f"{name} command cannot be parsed: {exc}")]
 
-    top_level = {path.name for path in root.iterdir()}
     findings: list[Finding] = []
     checked: set[str] = set()
     for token in tokens:
@@ -419,6 +426,7 @@ def _drift_findings(manifest: Manifest) -> list[Finding]:
         return [Finding("lock", str(exc))]
     if lock is None:
         return findings + [Finding("lock", "lockfile is missing; run murlocs compile")]
+    findings.extend(_tool_version_findings(lock))
     if lock.manifest_sha256 != sha256_bytes(manifest.manifest_path.read_bytes()):
         findings.append(Finding("drift", "manifest changed since the last compile"))
     findings.extend(_source_drift(manifest, lock))
@@ -437,6 +445,31 @@ def _drift_findings(manifest: Manifest) -> list[Finding]:
     return findings
 
 
+def _tool_version_findings(lock: Lock) -> list[Finding]:
+    """Advise a recompile when a lockfile was written by a different tool build.
+
+    The lockfile records the ``tool_version`` that produced it. Compatibility is
+    deliberately conservative and reported once per lockfile:
+
+    * An empty value marks a lockfile written before the field existed. It is
+      treated as compatible so older repositories keep validating without noise.
+    * A value equal to the running ``__version__`` is compatible; no finding.
+    * Any other value means the generated maps and hashes were produced by a
+      different Murlocs build whose output format may not match this one. That
+      is not proof of corruption, so it is surfaced as a single advisory finding
+      recommending a recompile rather than a hard failure.
+    """
+    if not lock.tool_version or lock.tool_version == __version__:
+        return []
+    return [
+        Finding(
+            "tool-version",
+            f"lockfile was written by murlocs {lock.tool_version}; this is "
+            f"murlocs {__version__} — run murlocs compile to refresh it",
+        )
+    ]
+
+
 def _source_drift(manifest: Manifest, lock: Lock) -> list[Finding]:
     """Verify the ordered layer set and its content hashes against the lockfile."""
     if not lock.sources:
@@ -450,7 +483,7 @@ def _source_drift(manifest: Manifest, lock: Lock) -> list[Finding]:
         findings.append(Finding("drift", "layer set changed since the last compile"))
         return findings
     for (path, expected), (_, actual) in zip(locked, current, strict=True):
-        if expected != actual and path != ".murlocs/manifest.toml":
+        if expected != actual and path != ROOT_SOURCE_PATH:
             findings.append(Finding("drift", f"layer changed since the last compile: {path}"))
     return findings
 

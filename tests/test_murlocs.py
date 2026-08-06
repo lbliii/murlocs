@@ -7,12 +7,13 @@ import pytest
 from milo import generate_llms_txt
 from milo.testing import MCPClient
 
+from murlocs import __version__
 from murlocs.cli import _repeatable_option_flags, build_cli
 from murlocs.errors import MurlocsError
-from murlocs.lockfile import sha256_bytes
+from murlocs.lockfile import read_lock, render_lock, sha256_bytes
 from murlocs.manifest import load_manifest
 from murlocs.render import compile_manifest
-from murlocs.verify import validate
+from murlocs.verify import _tool_version_findings, validate
 from tests.support import initialize_repo, invoke
 
 
@@ -681,3 +682,89 @@ point_of_view = "Package guidance."
         compile_manifest(load_manifest(root))
 
     assert "lockfile owns maps no longer declared" in str(exc.value)
+
+
+def test_render_lock_records_tool_version_and_read_lock_round_trips():
+    rendered = render_lock(b"manifest bytes", {"AGENTS.md": "content"})
+    assert json.loads(rendered)["tool_version"] == __version__
+
+
+def test_matching_tool_version_yields_no_finding(tmp_path):
+    root = make_repo(tmp_path)
+    initialize(root)
+    lock = read_lock(root)
+    assert lock is not None
+    assert lock.tool_version == __version__
+    assert _tool_version_findings(lock) == []
+    assert not any(item.code == "tool-version" for item in validate(load_manifest(root)))
+
+
+def test_mismatched_tool_version_emits_one_advisory_finding(tmp_path):
+    root = make_repo(tmp_path)
+    initialize(root)
+    lock_path = root / ".murlocs" / "lock.json"
+    data = json.loads(lock_path.read_text(encoding="utf-8"))
+    data["tool_version"] = "0.0.0-incompatible"
+    lock_path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    lock = read_lock(root)
+    assert lock is not None
+    assert lock.tool_version == "0.0.0-incompatible"
+
+    version_findings = [
+        item for item in validate(load_manifest(root)) if item.code == "tool-version"
+    ]
+    assert len(version_findings) == 1
+    assert "0.0.0-incompatible" in version_findings[0].message
+
+
+def test_missing_tool_version_does_not_crash_or_warn(tmp_path):
+    root = make_repo(tmp_path)
+    initialize(root)
+    lock_path = root / ".murlocs" / "lock.json"
+    data = json.loads(lock_path.read_text(encoding="utf-8"))
+    del data["tool_version"]
+    lock_path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    lock = read_lock(root)
+    assert lock is not None
+    assert lock.tool_version == ""
+    assert _tool_version_findings(lock) == []
+    assert not any(item.code == "tool-version" for item in validate(load_manifest(root)))
+
+
+def test_validate_reads_repository_root_once_regardless_of_check_count(tmp_path, monkeypatch):
+    root = make_repo(tmp_path)
+    initialize(root)
+    manifest_path = root / ".murlocs" / "manifest.toml"
+    # Four command checks, one of which names a missing local path. Before the
+    # fix each check triggered its own root readdir; behavior is unchanged.
+    extra = "\n".join(
+        f"[checks.check{index}]\n"
+        f'invoke = "pytest src/pkg/missing{index}.py"\n'
+        f'location = "README.md"\n'
+        f'proof_contains = "protocol"\n'
+        for index in range(4)
+    )
+    manifest_path.write_text(
+        manifest_path.read_text(encoding="utf-8") + "\n" + extra,
+        encoding="utf-8",
+    )
+
+    resolved_root = root.resolve()
+    original_iterdir = Path.iterdir
+    root_reads = 0
+
+    def counting_iterdir(self):
+        nonlocal root_reads
+        if self.resolve() == resolved_root:
+            root_reads += 1
+        return original_iterdir(self)
+
+    monkeypatch.setattr(Path, "iterdir", counting_iterdir)
+
+    findings = validate(load_manifest(root))
+
+    assert root_reads == 1
+    # The shared listing still drives per-check command-path resolution.
+    assert any(item.code == "check" and "missing0.py" in item.message for item in findings)
