@@ -35,6 +35,8 @@ then checks what applies and what a change may affect.
 
 - [Guidance efficiency evaluation](evaluation.md) — compare and score recorded runs.
 - [Chirp and Kida paired-pilot audit](pilots/chirp-kida.md) — a migration audit of two personal projects.
+- [Furatena migration pilot](pilots/furatena.md) — first fully executed migration, with verified rollback.
+- [Dori hard-parity pilot](pilots/dori.md) — adversarial parity audit of an exotic legacy manifest.
 - [Synthetic 91-map scale pilot](pilots/scale-network.md) — measured scale and governance limits.
 - [No-prompt passive-agent acceptance harness](passive-agent-acceptance.md) — acceptance protocol and evidence boundary.
 - [Fresh-session passive-agent acceptance pilot](pilots/passive-agent-acceptance-2026-08-03.md) — recorded pilot results.
