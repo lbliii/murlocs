@@ -208,3 +208,140 @@ def test_concurrent_migration_operations_are_refused(tmp_path):
         pytest.raises(MurlocsError, match="another migration operation is in progress"),
     ):
         adopt_manifest(root)
+
+
+def test_adoption_write_failure_restores_operator_maps_byte_for_byte(tmp_path, monkeypatch):
+    """A fault partway through adoption must restore the operator's maps exactly."""
+    from murlocs import migration as mmig
+
+    root, legacy_maps = make_legacy_repo(tmp_path)
+    assert len(legacy_maps) >= 2  # a partial write is only meaningful with >1 map
+    legacy_bytes = {path: (root / path).read_bytes() for path in legacy_maps}
+    write_candidate(root, candidate_from_stewards(root), ".murlocs/manifest.toml")
+
+    real_write = mmig._write_bytes_atomic
+    calls = {"n": 0}
+
+    def flaky(path, content):
+        calls["n"] += 1
+        # Fail on the second adopted-map write: the first map has already been
+        # overwritten, so this exercises the
+        # `except BaseException: _restore_adoption(...)` recovery, not a no-op.
+        if calls["n"] == 2:
+            raise OSError("injected write failure")
+        return real_write(path, content)
+
+    monkeypatch.setattr(mmig, "_write_bytes_atomic", flaky)
+
+    with pytest.raises(OSError, match="injected write failure"):
+        adopt_manifest(root)
+
+    # Every operator map is restored byte-for-byte, and no migration artifact
+    # survives the aborted adoption.
+    for path in legacy_maps:
+        assert (root / path).read_bytes() == legacy_bytes[path]
+    assert not (root / ".murlocs" / "migration.json").exists()
+    assert not (root / ".murlocs" / "lock.json").exists()
+
+
+def test_prune_failure_moves_stewards_back(tmp_path, monkeypatch):
+    """A state-write fault after the legacy move must roll the move back."""
+    from murlocs import migration as mmig
+
+    root, _ = make_legacy_repo(tmp_path)
+    write_candidate(root, candidate_from_stewards(root), ".murlocs/manifest.toml")
+    adopt_manifest(root)
+    before = {
+        path.relative_to(root).as_posix(): path.read_bytes()
+        for path in (root / ".stewards").rglob("*")
+        if path.is_file()
+    }
+
+    def boom(path, data):
+        raise OSError("injected state write failure")
+
+    monkeypatch.setattr(mmig, "_write_json_atomic", boom)
+
+    with pytest.raises(OSError, match="injected state write failure"):
+        prune_legacy(root)
+
+    # The compensating shutil.move restored .stewards intact.
+    assert (root / ".stewards").is_dir()
+    after = {
+        path.relative_to(root).as_posix(): path.read_bytes()
+        for path in (root / ".stewards").rglob("*")
+        if path.is_file()
+    }
+    assert after == before
+    assert json.loads((root / ".murlocs" / "migration.json").read_text())["status"] == "adopted"
+
+
+def test_rollback_missing_backup_fails_before_mutation(tmp_path):
+    """Removing the backup directory yields a MurlocsError, not a raw traceback,
+    and leaves the adopted maps untouched rather than half-restored."""
+    import shutil
+
+    root, _ = make_legacy_repo(tmp_path)
+    write_candidate(root, candidate_from_stewards(root), ".murlocs/manifest.toml")
+    adopted = adopt_manifest(root)
+    adopted_bytes = {path: (root / path).read_bytes() for path in adopted["adopted_sha256"]}
+
+    shutil.rmtree(root / ".murlocs" / "backups")
+
+    with pytest.raises(MurlocsError, match="backup is missing"):
+        rollback_migration(root)
+
+    for path, data in adopted_bytes.items():
+        assert (root / path).read_bytes() == data
+    assert json.loads((root / ".murlocs" / "migration.json").read_text())["status"] == "adopted"
+
+
+def test_rollback_incomplete_backup_fails_before_mutation(tmp_path):
+    """A single missing backup file is caught pre-flight, before any restore."""
+    root, _ = make_legacy_repo(tmp_path)
+    write_candidate(root, candidate_from_stewards(root), ".murlocs/manifest.toml")
+    adopted = adopt_manifest(root)
+    files = root / ".murlocs" / "backups" / adopted["id"] / "files"
+    victim = next(path for path in sorted(files.rglob("*")) if path.is_file())
+    victim.unlink()
+    adopted_bytes = {path: (root / path).read_bytes() for path in adopted["adopted_sha256"]}
+
+    with pytest.raises(MurlocsError, match="backup is incomplete"):
+        rollback_migration(root)
+
+    for path, data in adopted_bytes.items():
+        assert (root / path).read_bytes() == data
+
+
+def test_corrupt_migration_state_raises_murlocs_error(tmp_path):
+    """A truncated migration.json surfaces as a clean MurlocsError."""
+    root, _ = make_legacy_repo(tmp_path)
+    write_candidate(root, candidate_from_stewards(root), ".murlocs/manifest.toml")
+    adopt_manifest(root)
+    (root / ".murlocs" / "migration.json").write_text('{"status": "ado', encoding="utf-8")
+
+    with pytest.raises(MurlocsError, match="corrupt"):
+        rollback_migration(root)
+    with pytest.raises(MurlocsError, match="corrupt"):
+        prune_legacy(root)
+
+
+def test_double_adopt_is_refused(tmp_path):
+    """Adopting twice is a deterministic MurlocsError, not silent double state."""
+    root, _ = make_legacy_repo(tmp_path)
+    write_candidate(root, candidate_from_stewards(root), ".murlocs/manifest.toml")
+    adopt_manifest(root)
+
+    with pytest.raises(MurlocsError, match="active migration already exists"):
+        adopt_manifest(root)
+
+
+def test_double_rollback_is_refused(tmp_path):
+    """Rolling back an already-rolled-back migration fails cleanly."""
+    root, _ = make_legacy_repo(tmp_path)
+    write_candidate(root, candidate_from_stewards(root), ".murlocs/manifest.toml")
+    adopt_manifest(root)
+    rollback_migration(root)
+
+    with pytest.raises(MurlocsError, match="expected"):
+        rollback_migration(root)

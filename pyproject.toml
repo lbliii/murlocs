@@ -46,6 +46,7 @@ murlocs-claude-adapter = "murlocs.claude_adapter:main"
 [dependency-groups]
 dev = [
   "pytest>=8",
+  "pytest-cov>=5",
   "ruff>=0.9",
   "ty>=0.0.1a10", # Type checker; gated through scripts/ty_ratchet.py while the backlog burns down.
 ]
