@@ -185,7 +185,7 @@ def test_changed_paths_include_staged_unstaged_deleted_and_untracked_nul_names(t
     assert adapter._changed_paths(root) == ["deleted.py", "modified.py", staged, untracked]
 
 
-def test_pre_completion_blocks_once_then_downgrades_under_active_stop_guard(
+def test_pre_completion_surfaces_blocking_findings_without_gating(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
     root = _repo(tmp_path)
@@ -211,14 +211,11 @@ def test_pre_completion_blocks_once_then_downgrades_under_active_stop_guard(
 
     monkeypatch.setattr(adapter, "_run", run)
 
-    # A fresh Stop with a blocking outcome routes the newline path and gates once.
-    first = adapter.handle("pre-completion", {"cwd": str(root), "session_id": "one"})
+    response = adapter.handle("pre-completion", {"cwd": str(root), "session_id": "one"})
     assert observed == [untracked]
-    assert first["decision"] == "block"
-    assert "MURLOCS_OUTCOME_DETERMINISTIC_REPAIR" in first["reason"]
+    assert "decision" not in response
+    assert "MURLOCS_OUTCOME_DETERMINISTIC_REPAIR" in response["systemMessage"]
 
-    # Once Claude Code is replaying the Stop-hook continuation, the same gate
-    # downgrades to advisory so it can never loop into the runaway guard.
     replay = adapter.handle(
         "pre-completion",
         {"cwd": str(root), "session_id": "one", "stop_hook_active": True},
@@ -299,7 +296,7 @@ def test_non_commit_shell_does_not_run_index_gate(tmp_path: Path, monkeypatch: p
         ("prospective-impact", "hookSpecificOutput", "PreToolUse"),
         ("pre-commit", "hookSpecificOutput", "PreToolUse"),
         ("post-edit", "hookSpecificOutput", "PostToolUse"),
-        ("pre-completion", "decision", "block"),
+        ("pre-completion", "systemMessage", "Murlocs adapter unavailable"),
     ],
 )
 def test_entrypoint_reports_host_owned_failure_in_the_correct_event_shape(
@@ -316,5 +313,5 @@ def test_entrypoint_reports_host_owned_failure_in_the_correct_event_shape(
     if field == "hookSpecificOutput":
         assert response[field]["hookEventName"] == expected
     else:
-        assert response[field] == expected
+        assert expected in response[field]
     assert "Murlocs adapter unavailable: boom" in json.dumps(response)

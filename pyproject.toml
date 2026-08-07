@@ -62,6 +62,9 @@ exclude = ["docs/assets"]
 [tool.pytest.ini_options]
 addopts = "-q"
 testpaths = ["tests"]
+markers = [
+  "issue: associate a test with the GitHub issue(s) whose acceptance criteria it proves (see docs/backlog-truth.md)",
+]
 
 [tool.ruff]
 line-length = 100

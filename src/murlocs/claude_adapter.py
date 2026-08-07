@@ -236,22 +236,7 @@ def _run(root: Path, event: str, paths: Sequence[str], correlation: str) -> list
         checks.append(_outcome(check_command(repo=str(root), correlation_id=correlation)))
     if event != "task-start":
         if not paths:
-            return [
-                {
-                    "code": "MURLOCS_ACTIVATION_UNAVAILABLE",
-                    "resolution_class": "agent_action",
-                    "silent": False,
-                    "summary": "No changed paths were available for Murlocs impact.",
-                    "next_actions": [
-                        {
-                            "operation": "use_fallback",
-                            "arguments": {"fallback": "git-hook"},
-                            "effect": "read_repository",
-                            "authority": "integration",
-                        }
-                    ],
-                }
-            ]
+            return []
         checks.append(
             _outcome(impact_command(path=list(paths), repo=str(root), correlation_id=correlation))
         )
@@ -305,21 +290,9 @@ def handle(event: str, payload: Mapping[str, Any]) -> dict[str, Any]:
     if event == "pre-completion":
         paths = _changed_paths(root)
         if not paths:
-            # Clean tree at completion: nothing changed this turn, so there is
-            # nothing to gate.  Stop cleanly rather than blocking the agent and
-            # re-firing every turn until the host's runaway guard trips.
             return {}
         outcomes = _run(root, event, paths, correlation)
         packet = _packet(outcomes)
-        blocking = any(item.get("blocking") is True for item in outcomes)
-        # Block at most once.  When Claude Code is already replaying a Stop-hook
-        # continuation, downgrade to advisory so a persistent gate cannot loop
-        # the agent into the eight-block runaway guard.
-        if blocking and not payload.get("stop_hook_active"):
-            return {
-                "decision": "block",
-                "reason": packet or "Murlocs completion evidence is unavailable.",
-            }
         return {"systemMessage": packet} if packet else {}
     outcomes = _run(root, event, paths, correlation)
     packet = _packet(outcomes)
@@ -337,7 +310,7 @@ def main(argv: list[str] | None = None) -> None:
     except (OSError, ValueError, subprocess.TimeoutExpired) as exc:
         message = f"Murlocs adapter unavailable: {exc}"
         if args[0] == "pre-completion":
-            response = {"decision": "block", "reason": message}
+            response = {"systemMessage": message}
         elif args[0] == "prospective-impact":
             response = _context("PreToolUse", message)
         elif args[0] == "pre-commit":

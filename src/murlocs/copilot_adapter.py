@@ -22,6 +22,8 @@ from typing import Any
 from murlocs import __version__
 from murlocs.adapter_conformance import (
     ADAPTER_CONTRACT,
+    CONTINUOUS_SURFACES,
+    EMPTY_CHANGE_SET,
     REQUIRED_CAPABILITIES,
     ConformanceContext,
     opaque_file_token,
@@ -401,6 +403,13 @@ class LifecycleAdapterDriver:
             "token_scope": scope,
             "state_id": state_before,
         }
+        if control.get("change_set") == EMPTY_CHANGE_SET:
+            return {
+                "trusted_context": trusted,
+                "response": self._empty_change_set_response(
+                    request, trusted, cache=control["cache"]
+                ),
+            }
         if "impact" in calls:
             trusted["impact_dependency_id"] = dependency_before
         if control["cache"] in {"hit", "rejected"}:
@@ -528,9 +537,32 @@ class LifecycleAdapterDriver:
             silent=resolution == "pass",
             fallback=[],
             next_actions=[],
-            blocking=resolution == "deterministic_repair",
+            blocking=(
+                resolution == "deterministic_repair" and request["event"] not in CONTINUOUS_SURFACES
+            ),
         )
         return {"trusted_context": trusted, "response": response}
+
+    @classmethod
+    def _empty_change_set_response(
+        cls,
+        request: Mapping[str, Any],
+        trusted: Mapping[str, Any],
+        *,
+        cache: str,
+    ) -> dict[str, Any]:
+        return cls._base_response(
+            request,
+            trusted,
+            execution={"status": "no_changed_paths", "code": "MURLOCS_NO_CHANGED_PATHS"},
+            operations=[],
+            cache=cache,
+            outcome=None,
+            silent=True,
+            fallback=[],
+            next_actions=[],
+            blocking=False,
+        )
 
     @staticmethod
     def _calls(event: str, fault: str | None, cache: str) -> tuple[str, ...]:
@@ -752,22 +784,7 @@ def _run(root: Path, event: str, paths: Sequence[str], correlation: str) -> list
             checks.append(_outcome(check_command(repo=str(root), correlation_id=correlation)))
             continue
         if not paths:
-            return [
-                {
-                    "code": "MURLOCS_ACTIVATION_UNAVAILABLE",
-                    "resolution_class": "agent_action",
-                    "silent": False,
-                    "summary": "No changed paths were available for Murlocs impact.",
-                    "next_actions": [
-                        {
-                            "operation": "use_fallback",
-                            "arguments": {"fallback": "git-hook"},
-                            "effect": "read_repository",
-                            "authority": "integration",
-                        }
-                    ],
-                }
-            ]
+            return []
         checks.append(
             _outcome(impact_command(path=list(paths), repo=str(root), correlation_id=correlation))
         )
@@ -816,23 +833,15 @@ def handle(event: str, payload: Mapping[str, Any]) -> dict[str, Any]:
         return {"permissionDecision": "allow"}
     if event == "pre-completion":
         paths = _changed_paths(root)
+        if not paths:
+            return {"decision": "allow"}
+        outcomes = _run(root, event, paths, correlation)
+        packet = _packet(outcomes)
+        if packet:
+            return {"decision": "allow", "reason": packet}
+        return {"decision": "allow"}
     outcomes = _run(root, event, paths, correlation)
     packet = _packet(outcomes)
-    blocking = any(item.get("blocking") is True for item in outcomes)
-    if event == "pre-completion":
-        unavailable = not outcomes or outcomes[0].get("code") == "MURLOCS_ACTIVATION_UNAVAILABLE"
-        if blocking or unavailable:
-            reason = packet or "Murlocs completion evidence is unavailable."
-            if payload.get("stop_hook_active") is True:
-                reason += (
-                    " Copilot reports an active stop-hook continuation; its eight-block "
-                    "runaway guard may ultimately override this gate."
-                )
-            return {
-                "decision": "block",
-                "reason": reason,
-            }
-        return {"decision": "allow"}
     return {"additionalContext": packet} if packet else {}
 
 

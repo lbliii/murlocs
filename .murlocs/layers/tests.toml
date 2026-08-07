@@ -14,3 +14,8 @@ statement = "Generated ownership and path boundaries have regression tests."
 severity = "important"
 verification = "command"
 enforced_by = "pytest"
+
+[[work_items]]
+id = "206"
+issue = 206
+acceptance = "pytest:issue(206)"

@@ -97,6 +97,23 @@ edges = []
 """
 
 
+def add_annotation(root: Path) -> None:
+    source = root / "src/api/app/service.py"
+    source.write_text(
+        '# murlocs:annotation/v1 evidence "api.marker"\nVALUE = 1\n',
+        encoding="utf-8",
+    )
+    layer = root / ".murlocs/layers/api.toml"
+    layer.write_text(
+        layer.read_text(encoding="utf-8").replace(
+            'anchor = "API design"',
+            'anchor = "API design"\nannotation = { id = "api.marker", '
+            'kind = "evidence", file = "src/api/app/service.py", version = "v1" }',
+        ),
+        encoding="utf-8",
+    )
+
+
 def invoke(*argv: str):
     return build_cli().invoke(list(argv))
 
@@ -163,7 +180,7 @@ def test_root_owned_change_requires_root_review(tmp_path):
     }
     assert "@platform" in root_scope["owners"]
     assert by_id(report, "api")["status"] == "unaffected"
-    assert report["policy"]["version"] == 2
+    assert report["policy"]["version"] == 3
 
 
 def test_nested_owned_change_reports_chain_layers_owners_and_proof(tmp_path):
@@ -1319,6 +1336,236 @@ def test_revision_content_inspection_never_executes_textconv(tmp_path):
 
     assert report["summary"] == {"required": 3, "recommended": 0, "unaffected": 0}
     assert not sentinel.exists()
+
+
+def test_annotation_explicit_path_is_conservative_path_only_routing(tmp_path):
+    root = tmp_path / "repo"
+    build(root)
+    add_annotation(root)
+
+    report = structured(root, path=["src/api/app/service.py"])
+
+    assert report["annotations"] == {
+        "comparison": "path-only",
+        "changes": [],
+        "uncertainty": [],
+    }
+    assert by_id(report, "api")["status"] == "required"
+    assert any("path-only evidence" in item for item in by_id(report, "api")["reasons"])
+    assert (
+        "does not claim that guidance is false"
+        in invoke("impact", "--path", "src/api/app/service.py", "--repo", str(root)).output
+    )
+
+
+def test_annotation_revision_reports_move_without_claiming_semantic_staleness(tmp_path):
+    root = tmp_path / "repo"
+    build(root)
+    add_annotation(root)
+    subprocess.run(["git", "init"], cwd=root, check=True, capture_output=True)
+    commit_all(root, "annotation baseline")
+    source = root / "src/api/app/service.py"
+    source.write_text(
+        'VALUE = 1\n# murlocs:annotation/v1 evidence "api.marker"\n', encoding="utf-8"
+    )
+
+    report = structured(root, revision_range="HEAD")
+
+    assert report["annotations"]["comparison"] == "compared"
+    assert report["annotations"]["changes"] == [
+        {
+            "id": "api.marker",
+            "kind": "moved",
+            "invariant": "api-design",
+            "scope": "api",
+            "owners": ["@api"],
+            "before": [{"file": "src/api/app/service.py", "line": 1}],
+            "after": [{"file": "src/api/app/service.py", "line": 2}],
+        }
+    ]
+    reason = next(item for item in by_id(report, "api")["reasons"] if "attachment moved" in item)
+    assert "does not assert that the invariant is semantically false" in reason
+    terminal = invoke("impact", "--revision-range", "HEAD", "--repo", str(root)).output
+    assert "Annotation comparison: compared" in terminal
+    assert "api.marker: moved" in terminal
+
+
+@pytest.mark.parametrize(
+    ("content", "kind"),
+    [
+        ("VALUE = 1\n", "removed"),
+        (
+            '# murlocs:annotation/v1 evidence "api.marker"\n'
+            '# murlocs:annotation/v1 evidence "api.marker"\n',
+            "duplicated",
+        ),
+    ],
+)
+def test_annotation_revision_reports_removal_and_duplication(tmp_path, content, kind):
+    root = tmp_path / "repo"
+    build(root)
+    add_annotation(root)
+    subprocess.run(["git", "init"], cwd=root, check=True, capture_output=True)
+    commit_all(root, "annotation baseline")
+    (root / "src/api/app/service.py").write_text(content, encoding="utf-8")
+
+    report = structured(root, revision_range="HEAD")
+
+    assert kind in {item["kind"] for item in report["annotations"]["changes"]}
+    assert by_id(report, "api")["status"] == "required"
+
+
+def test_annotation_revision_reports_declaration_change_and_surface_parity(tmp_path):
+    root = tmp_path / "repo"
+    build(root)
+    add_annotation(root)
+    subprocess.run(["git", "init"], cwd=root, check=True, capture_output=True)
+    commit_all(root, "annotation baseline")
+    layer = root / ".murlocs/layers/api.toml"
+    layer.write_text(
+        layer.read_text(encoding="utf-8").replace("api.marker", "api.changed"),
+        encoding="utf-8",
+    )
+    source = root / "src/api/app/service.py"
+    source.write_text(
+        '# murlocs:annotation/v1 evidence "api.changed"\nVALUE = 1\n', encoding="utf-8"
+    )
+
+    terminal = invoke("impact", "--revision-range", "HEAD", "--repo", str(root), "--format", "json")
+    assert terminal.exit_code == 0
+    report = json.loads(terminal.output)
+    assert report == build_cli().call("impact", repo=str(root), revision_range="HEAD")
+    assert report == structured(root, revision_range="HEAD")
+    assert {item["kind"] for item in report["annotations"]["changes"]} == {
+        "added",
+        "removed",
+    }
+
+
+def test_annotation_unavailable_baseline_never_reports_declared_attachment_unaffected(tmp_path):
+    root = tmp_path / "repo"
+    build(root)
+    add_annotation(root)
+
+    report = build_impact_report(
+        load_manifest(root),
+        ("src/api/app/service.py",),
+        revision_range="not-a-revision",
+        revision_paths=("src/api/app/service.py",),
+    )
+
+    assert report["annotations"]["comparison"] == "uncertain"
+    assert report["annotations"]["uncertainty"]
+    assert by_id(report, "api")["status"] == "required"
+    assert any("not treated as unaffected" in item for item in by_id(report, "api")["reasons"])
+
+
+def test_annotation_explicit_path_reports_unavailable_declared_source_as_uncertain(tmp_path):
+    root = tmp_path / "repo"
+    build(root)
+    add_annotation(root)
+    source = root / "src/api/app/service.py"
+    outside = tmp_path / "outside.py"
+    outside.write_text('# murlocs:annotation/v1 evidence "api.marker"\n', encoding="utf-8")
+    source.unlink()
+    source.symlink_to(outside)
+
+    report = build_impact_report(
+        load_manifest(root),
+        ("src/api/app/service.py",),
+        revision_range=None,
+        explicit_paths=("src/api/app/service.py",),
+    )
+
+    assert report["annotations"]["comparison"] == "uncertain"
+    assert report["annotations"]["uncertainty"]
+    reasons = by_id(report, "api")["reasons"]
+    assert any("path-only evidence" in item for item in reasons)
+    assert any("not treated as unaffected" in item for item in reasons)
+
+
+def test_annotation_oversize_current_source_is_uncertain_not_removed(tmp_path):
+    root = tmp_path / "repo"
+    build(root)
+    add_annotation(root)
+    subprocess.run(["git", "init"], cwd=root, check=True, capture_output=True)
+    commit_all(root, "annotation baseline")
+    (root / "src/api/app/service.py").write_bytes(b"x" * (64 * 1024 + 1))
+
+    report = structured(root, revision_range="HEAD")
+
+    assert report["annotations"]["comparison"] == "uncertain"
+    assert report["annotations"]["changes"] == []
+    assert report["annotations"]["uncertainty"]
+
+
+def test_annotation_confirmed_source_deletion_is_a_removal_not_uncertainty(tmp_path):
+    root = tmp_path / "repo"
+    build(root)
+    add_annotation(root)
+    subprocess.run(["git", "init"], cwd=root, check=True, capture_output=True)
+    commit_all(root, "annotation baseline")
+    (root / "src/api/app/service.py").unlink()
+
+    report = structured(root, revision_range="HEAD")
+
+    assert report["annotations"]["comparison"] == "compared"
+    assert [item["kind"] for item in report["annotations"]["changes"]] == ["removed"]
+
+
+def test_annotation_rename_reports_declaration_change_and_attachment_move(tmp_path):
+    root = tmp_path / "repo"
+    build(root)
+    add_annotation(root)
+    subprocess.run(["git", "init"], cwd=root, check=True, capture_output=True)
+    commit_all(root, "annotation baseline")
+    layer = root / ".murlocs/layers/api.toml"
+    layer.write_text(
+        layer.read_text(encoding="utf-8").replace(
+            "src/api/app/service.py", "src/api/app/renamed.py"
+        ),
+        encoding="utf-8",
+    )
+    (root / "src/api/app/service.py").rename(root / "src/api/app/renamed.py")
+
+    report = structured(root, revision_range="HEAD")
+
+    assert [item["kind"] for item in report["annotations"]["changes"]] == [
+        "declaration-changed",
+        "moved",
+    ]
+
+
+def test_annotation_revision_git_reads_are_no_lazy_fetch_bounded_and_no_replace(
+    tmp_path, monkeypatch
+):
+    root = tmp_path / "repo"
+    build(root)
+    add_annotation(root)
+    subprocess.run(["git", "init"], cwd=root, check=True, capture_output=True)
+    commit_all(root, "annotation baseline")
+    source = root / "src/api/app/service.py"
+    source.write_text(
+        'VALUE = 1\n# murlocs:annotation/v1 evidence "api.marker"\n', encoding="utf-8"
+    )
+    calls: list[tuple[list[str], dict[str, object]]] = []
+    original = impact_module.subprocess.run
+
+    def observe(command, *args, **kwargs):
+        if command and command[0] == "git":
+            calls.append((command, kwargs))
+        return original(command, *args, **kwargs)
+
+    monkeypatch.setattr(impact_module.subprocess, "run", observe)
+    structured(root, revision_range="HEAD")
+    impact_module._revision_mentions_global_guidance(root, "HEAD", ".murlocs/layers/api.toml")
+
+    assert calls
+    for command, kwargs in calls:
+        assert "--no-lazy-fetch" in command
+        assert "--no-replace-objects" in command
+        assert kwargs["timeout"] == impact_module.GIT_READ_TIMEOUT_SECONDS
+        assert kwargs["env"]["GIT_NO_LAZY_FETCH"] == "1"
 
 
 def test_repeatable_normalizer_preserves_root_option_values_and_coalesces_selected_flags():

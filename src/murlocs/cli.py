@@ -10,6 +10,7 @@ from typing import Annotated, Any, Literal, NotRequired, TypedDict, cast
 from milo import CLI, Context, Option, Positional
 
 from murlocs import __version__
+from murlocs.acceptance import acceptance_anchor_findings
 from murlocs.adoption import adoption_status
 from murlocs.cli_result import CommandResult
 from murlocs.curation import (
@@ -409,6 +410,7 @@ class ImpactPayload(TypedDict):
     policy: ImpactPolicyPayload
     summary: ImpactSummaryPayload
     scopes: list[ImpactScopePayload]
+    annotations: ImpactAnnotationImpactPayload
     outcome: OutcomePayload
 
 
@@ -428,6 +430,27 @@ class ImpactSummaryPayload(TypedDict):
     required: int
     recommended: int
     unaffected: int
+
+
+class ImpactAnnotationLocationPayload(TypedDict):
+    file: str
+    line: int
+
+
+class ImpactAnnotationChangePayload(TypedDict):
+    id: str
+    kind: str
+    invariant: str
+    scope: str
+    owners: list[str]
+    before: list[ImpactAnnotationLocationPayload]
+    after: list[ImpactAnnotationLocationPayload]
+
+
+class ImpactAnnotationImpactPayload(TypedDict):
+    comparison: str
+    changes: list[ImpactAnnotationChangePayload]
+    uncertainty: list[str]
 
 
 class ImpactGuidancePayload(TypedDict):
@@ -1462,7 +1485,11 @@ def _render_add_scope(plan: ScopePlan, dry_run: bool) -> str:
 
 
 def _precompile_findings(manifest: Manifest) -> list[Finding]:
-    findings = [*validate(manifest), *annotation_findings(manifest)]
+    findings = [
+        *validate(manifest),
+        *annotation_findings(manifest),
+        *acceptance_anchor_findings(manifest),
+    ]
     return [item for item in findings if item.code not in {"drift", "lock"}]
 
 
@@ -1479,7 +1506,11 @@ def check_command(
     try:
         correlation_id = validate_correlation_id(correlation_id)
         manifest = load_manifest(_root(repo))
-        findings = [*validate(manifest), *annotation_findings(manifest)]
+        findings = [
+            *validate(manifest),
+            *annotation_findings(manifest),
+            *acceptance_anchor_findings(manifest),
+        ]
         if transaction_pending(manifest.root):
             findings.append(
                 Finding(
@@ -1824,6 +1855,22 @@ def impact_command(
                 lines.append(f"  - {reason}")
     else:
         lines.extend(["", "No declared guidance scope is affected."])
+    annotations = report["annotations"]
+    if annotations["comparison"] != "not-requested":
+        lines.extend(["", f"Annotation comparison: {annotations['comparison']}"])
+        for change in annotations["changes"]:
+            before = (
+                ", ".join(f"{item['file']}:{item['line']}" for item in change["before"]) or "none"
+            )
+            after = (
+                ", ".join(f"{item['file']}:{item['line']}" for item in change["after"]) or "none"
+            )
+            lines.append(
+                f"  {change['id']}: {change['kind']} ({before} → {after}); "
+                f"invariant={change['invariant']}"
+            )
+        for detail in annotations["uncertainty"]:
+            lines.append(f"  uncertainty: {detail}")
     compact = render_compact_outcome(outcome)
     lines.extend(
         [

@@ -71,6 +71,23 @@ class SourceAnnotation:
 
 
 @dataclass(frozen=True)
+class AcceptanceAnchor:
+    """Reference from a work item to an executable acceptance test."""
+
+    adapter: str
+    reference: str
+
+
+@dataclass(frozen=True)
+class WorkItem:
+    """A backlog work item that may declare an offline acceptance anchor."""
+
+    id: str
+    acceptance: AcceptanceAnchor | None = None
+    issue: int | None = None
+
+
+@dataclass(frozen=True)
 class Check:
     name: str
     invoke: str
@@ -120,6 +137,7 @@ class Manifest:
     require_scope_invariants: bool
     scopes: tuple[Scope, ...]
     invariants: tuple[Invariant, ...]
+    work_items: tuple[WorkItem, ...] = ()
     checks: dict[str, Check] = field(default_factory=dict)
     require_layer_owners: bool = False
     validate_codeowners: bool = False
@@ -156,6 +174,7 @@ class Manifest:
                 self.require_scope_invariants,
                 self.scopes,
                 self.invariants,
+                self.work_items,
                 tuple(sorted(self.checks.items())),
                 self.require_layer_owners,
                 self.validate_codeowners,
