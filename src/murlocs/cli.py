@@ -410,6 +410,7 @@ class ImpactPayload(TypedDict):
     policy: ImpactPolicyPayload
     summary: ImpactSummaryPayload
     scopes: list[ImpactScopePayload]
+    annotations: ImpactAnnotationImpactPayload
     outcome: OutcomePayload
 
 
@@ -429,6 +430,27 @@ class ImpactSummaryPayload(TypedDict):
     required: int
     recommended: int
     unaffected: int
+
+
+class ImpactAnnotationLocationPayload(TypedDict):
+    file: str
+    line: int
+
+
+class ImpactAnnotationChangePayload(TypedDict):
+    id: str
+    kind: str
+    invariant: str
+    scope: str
+    owners: list[str]
+    before: list[ImpactAnnotationLocationPayload]
+    after: list[ImpactAnnotationLocationPayload]
+
+
+class ImpactAnnotationImpactPayload(TypedDict):
+    comparison: str
+    changes: list[ImpactAnnotationChangePayload]
+    uncertainty: list[str]
 
 
 class ImpactGuidancePayload(TypedDict):
@@ -1833,6 +1855,22 @@ def impact_command(
                 lines.append(f"  - {reason}")
     else:
         lines.extend(["", "No declared guidance scope is affected."])
+    annotations = report["annotations"]
+    if annotations["comparison"] != "not-requested":
+        lines.extend(["", f"Annotation comparison: {annotations['comparison']}"])
+        for change in annotations["changes"]:
+            before = ", ".join(
+                f"{item['file']}:{item['line']}" for item in change["before"]
+            ) or "none"
+            after = ", ".join(
+                f"{item['file']}:{item['line']}" for item in change["after"]
+            ) or "none"
+            lines.append(
+                f"  {change['id']}: {change['kind']} ({before} → {after}); "
+                f"invariant={change['invariant']}"
+            )
+        for detail in annotations["uncertainty"]:
+            lines.append(f"  uncertainty: {detail}")
     compact = render_compact_outcome(outcome)
     lines.extend(
         [

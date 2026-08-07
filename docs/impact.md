@@ -24,7 +24,7 @@ turn impact analysis into command execution. When explicit and Git-derived paths
 Murlocs reports their union while retaining each path's provenance; an explicit synchronized source
 does not lose its current semantic routing merely because another path also came from Git.
 
-## Review policy v2
+## Review policy v3
 
 Every declared scope has exactly one status:
 
@@ -51,6 +51,34 @@ declared ownership and the other explicit relationships above.
 An affected status means “review this guidance in light of the change,” not “this guidance is
 stale” or “this invariant is false.” Semantic truth remains a human or agent judgment backed by
 the evidence and checks named in the report.
+
+### Source annotation attachments
+
+Declared source annotations add a deliberately narrow routing signal. An explicit `--path` to a
+declared annotation-bearing source is **path-only** evidence: impact routes the declared invariant
+and its source owners, but does not guess whether the marker was added, removed, or moved. This is
+the mode used by the exact staged view in a hook.
+
+With `--revision-range`, impact reads only the old manifest, its declared layers, and the finite
+set of declared annotation source blobs. It uses `git cat-file` with `--no-lazy-fetch`, bounded
+per-blob and aggregate byte budgets, a 10-second timeout, no replacement objects, and no Git diff,
+text conversion, filters, hooks, or repository commands. The report can then describe these
+attachment events with before/after file and line locations:
+
+- `added`, `removed`, `moved`, or `duplicated` markers; and
+- `declaration-changed` when a reviewed annotation declaration changes its invariant, scope,
+  file, kind, version, or declaring owners.
+
+These events are attachment changes only. They never assert that the invariant is stale, false, or
+proven by a source comment. Renames are handled from the old and new path states, while deletion
+is an attachment removal. A revision and explicit-path union retains both path-only and revision
+evidence deterministically.
+
+If the old revision is unavailable (including shallow history), a baseline manifest or declared
+blob is missing or malformed, a path is unsafe, or an annotation source uses an unsupported form,
+impact records `comparison: "uncertain"` and routes conservatively instead of returning an
+annotation-bearing scope as unaffected. It does not scan repository history or undeclared source
+paths to recover from that uncertainty.
 
 The source file's layer kind or a curation record's `target_scope` is not semantic confinement.
 Root list subjects (`pillars`, `search_policy`, `operating_rules`, `stop_and_ask`, and
@@ -96,6 +124,18 @@ sorted, and changed-path input order does not affect the result. Every scope ent
 - focused registered-check metadata, without running its command;
 - incoming and outgoing declared edges; and
 - the repository review-protocol path.
+
+The additive `annotations` member makes the attachment evidence explicit:
+
+- `comparison` is `not-requested`, `path-only`, `compared`, `compared-no-attachment-change`, or
+  `uncertain`;
+- `changes` contains stable attachment identifiers, event kinds, invariant/scope/owner routing,
+  and before/after locations; and
+- `uncertainty` records bounded baseline limitations without copying source text.
+
+The terminal report renders the same comparison and events. Its outcome and hook/CI receipts keep
+the same affected scopes, maps, owners, reasons, and advisory next action; no integration gains
+authority to edit an annotation or decide semantic truth.
 
 The command exits nonzero only for invalid input or an unreadable manifest or Git range. Consumers
 choose whether `required` or `recommended` is informational or blocking; Murlocs does not silently

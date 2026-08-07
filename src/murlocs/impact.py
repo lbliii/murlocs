@@ -5,22 +5,39 @@ from __future__ import annotations
 import os
 import re
 import subprocess
+import time
 import tomllib
 from collections import Counter
 from collections.abc import Iterable
+from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any
 
 from murlocs.errors import MurlocsError
-from murlocs.layers import LIST_FIELDS, read_disk_sources
+from murlocs.layers import LIST_FIELDS, compose, read_disk_sources
 from murlocs.lockfile import read_lock, sha256_bytes
-from murlocs.model import Manifest, Scope
+from murlocs.manifest import parse_manifest_data
+from murlocs.model import LayerSource, Manifest, Scope
+from murlocs.source_annotations import (
+    _EXCLUDED_PARTS,
+    MAX_CANDIDATE_COMMENTS,
+    MAX_DECLARED_FILES,
+    MAX_FILE_BYTES,
+    MAX_PATH_COMPONENTS,
+    MAX_RESOLUTION_SECONDS,
+    MAX_TOTAL_BYTES,
+    _declared_file,
+    _is_ignored,
+    _read_declared_file,
+    _scan_comments,
+)
 
-POLICY_VERSION = 2
+POLICY_VERSION = 3
 GIT_SOURCE_HISTORY_LIMIT = 64
 GIT_SOURCE_BLOB_LIMIT = 1024 * 1024
 GIT_SOURCE_BATCH_LIMIT = 8 * 1024 * 1024
 GIT_READ_TIMEOUT_SECONDS = 10
+ANNOTATION_REVISION_SOURCE_LIMIT = 256
 REQUIRED_POLICY = (
     "A changed path is owned by a scope or names its generated map, guidance source, "
     "review protocol, manual evidence, or registered-check configuration; guidance-map "
@@ -36,6 +53,33 @@ UNAFFECTED_POLICY = (
 )
 
 
+@dataclass(frozen=True)
+class _AnnotationDeclaration:
+    identifier: str
+    invariant: str
+    scope: str
+    file: str
+    kind: str
+    version: str
+    owners: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class _AnnotationAttachment:
+    declaration: _AnnotationDeclaration
+    line: int
+
+
+@dataclass(frozen=True)
+class _AnnotationSnapshot:
+    declarations: dict[str, _AnnotationDeclaration]
+    locations: dict[str, tuple[_AnnotationAttachment, ...]]
+
+
+class _AnnotationSnapshotUnavailable(Exception):
+    """A bounded current-source read could not establish attachment state."""
+
+
 def changed_paths_from_revision(root: Path, revision_range: str) -> tuple[str, ...]:
     """Return repository-relative paths changed by a Git revision range."""
     if not revision_range.strip():
@@ -46,6 +90,9 @@ def changed_paths_from_revision(root: Path, revision_range: str) -> tuple[str, .
         completed = subprocess.run(
             [
                 "git",
+                "--no-lazy-fetch",
+                "--no-pager",
+                "--no-replace-objects",
                 "diff",
                 "--no-ext-diff",
                 "--no-textconv",
@@ -59,13 +106,16 @@ def changed_paths_from_revision(root: Path, revision_range: str) -> tuple[str, .
             cwd=root,
             check=False,
             capture_output=True,
+            env=_safe_git_env(),
+            timeout=GIT_READ_TIMEOUT_SECONDS,
         )
-    except OSError as exc:
+    except (OSError, subprocess.TimeoutExpired) as exc:
         raise MurlocsError(f"could not inspect Git revision range: {exc}") from exc
     if completed.returncode:
         message = completed.stderr.decode("utf-8", errors="replace").strip()
         raise MurlocsError(
-            f"could not inspect Git revision range {revision_range}: {message or 'git diff failed'}"
+            f"could not inspect Git revision range {revision_range}: "
+            f"{message or 'git diff failed'}"
         )
     return tuple(
         sorted(
@@ -106,6 +156,20 @@ def build_impact_report(
         explicit_set = set(explicit_paths or ())
         revision_set = set(revision_paths or ())
 
+    annotation_impact = _annotation_impact(
+        manifest,
+        revision_range=revision_range,
+        explicit_paths=explicit_set,
+        revision_paths=revision_set,
+    )
+    for route in annotation_impact["routes"]:
+        _require_annotation_scope(
+            manifest,
+            route["scope"],
+            required,
+            route["reason"],
+        )
+
     for changed in changed_paths:
         _classify_direct_path(
             manifest,
@@ -124,7 +188,9 @@ def build_impact_report(
         scope = scopes_by_id[scope_id]
         for edge in scope.edges:
             if edge.to not in directly_required:
-                recommended[edge.to].add(f"edge {scope.id} -[{edge.type}]-> {edge.to}: {edge.what}")
+                recommended[edge.to].add(
+                    f"edge {scope.id} -[{edge.type}]-> {edge.to}: {edge.what}"
+                )
         for candidate in manifest.scopes:
             for edge in candidate.edges:
                 if edge.to == scope_id and candidate.id not in directly_required:
@@ -164,7 +230,605 @@ def build_impact_report(
         },
         "summary": counts,
         "scopes": scope_payloads,
+        "annotations": {
+            "comparison": annotation_impact["comparison"],
+            "changes": annotation_impact["changes"],
+            "uncertainty": annotation_impact["uncertainty"],
+        },
     }
+
+
+def _require_annotation_scope(
+    manifest: Manifest,
+    scope_id: str | None,
+    required: dict[str, set[str]],
+    reason: str,
+) -> None:
+    """Route an attachment to its declared scope, or conservatively to all scopes."""
+    if scope_id in required:
+        assert scope_id is not None
+        required[scope_id].add(reason)
+        return
+    for scope in manifest.scopes:
+        required[scope.id].add(reason)
+
+
+def _annotation_impact(
+    manifest: Manifest,
+    *,
+    revision_range: str | None,
+    explicit_paths: set[str],
+    revision_paths: set[str],
+) -> dict[str, Any]:
+    """Classify finite declared attachments without inferring semantic truth.
+
+    Explicit paths deliberately remain path-only: a hook's staged view has no
+    portable historical baseline.  Revision comparison reads just the old
+    manifest, its declared layers, and declared annotation files through Git's
+    object database; it never asks Git to diff source text or run a driver.
+    """
+    declarations, declaration_error = _annotation_declarations(manifest)
+    current, current_error = _annotation_snapshot_from_disk(manifest)
+    declared_paths = {declaration.file for declaration in declarations.values()}
+    routes: list[dict[str, str | None]] = []
+    changes: list[dict[str, Any]] = []
+    uncertainty: list[str] = []
+
+    path_only = sorted(explicit_paths.intersection(declared_paths))
+    for path in path_only:
+        for declaration in sorted(
+            (
+                item
+                for item in declarations.values()
+                if item.file == path
+            ),
+            key=lambda item: (item.scope, item.invariant, item.identifier),
+        ):
+            routes.append(
+                {
+                    "scope": declaration.scope,
+                    "reason": (
+                        f"{path} has path-only evidence for source annotation "
+                        f"{declaration.identifier} attached to invariant "
+                        f"{declaration.invariant}; compare a safe revision to classify "
+                        "the attachment"
+                    ),
+                }
+            )
+
+    if revision_range is None:
+        if declaration_error is not None or current_error is not None:
+            detail = declaration_error or current_error
+            assert detail is not None
+            uncertainty.append(detail)
+            _route_annotation_uncertainty(manifest, declarations, routes, detail)
+            return {
+                "comparison": "uncertain",
+                "changes": changes,
+                "uncertainty": uncertainty,
+                "routes": routes,
+            }
+        return {
+            "comparison": "path-only" if path_only else "not-requested",
+            "changes": changes,
+            "uncertainty": uncertainty,
+            "routes": routes,
+        }
+
+    if declaration_error is not None or current_error is not None:
+        detail = declaration_error or current_error
+        assert detail is not None
+        uncertainty.append(detail)
+        _route_annotation_uncertainty(manifest, declarations, routes, detail)
+        return {
+            "comparison": "uncertain",
+            "changes": changes,
+            "uncertainty": uncertainty,
+            "routes": routes,
+        }
+    assert current is not None
+    baseline, baseline_error = _annotation_snapshot_from_revision(manifest.root, revision_range)
+    if baseline_error is not None:
+        uncertainty.append(baseline_error)
+        _route_annotation_uncertainty(manifest, declarations, routes, uncertainty[-1])
+        return {
+            "comparison": "uncertain",
+            "changes": changes,
+            "uncertainty": uncertainty,
+            "routes": routes,
+        }
+    assert baseline is not None
+    changes = _compare_annotation_snapshots(baseline, current)
+    for change in changes:
+        routes.append(
+            {
+                "scope": change["scope"],
+                "reason": (
+                    f"revision {revision_range} reports source annotation "
+                    f"{change['id']} attachment {change['kind']} for invariant "
+                    f"{change['invariant']}; attachment state changed, but this does "
+                    "not assert that the invariant is semantically false"
+                ),
+            }
+        )
+    # A revision that mentions an active declared source but yields no attachment
+    # delta still needs no special route: normal ownership and evidence rules
+    # remain authoritative.  Keep the provenance marker to make that distinction
+    # explicit to JSON consumers.
+    comparison = "compared" if changes else "compared-no-attachment-change"
+    if not changes and revision_paths.intersection(declared_paths):
+        comparison = "compared-no-attachment-change"
+    return {
+        "comparison": comparison,
+        "changes": changes,
+        "uncertainty": uncertainty,
+        "routes": routes,
+    }
+
+
+def _route_annotation_uncertainty(
+    manifest: Manifest,
+    declarations: dict[str, _AnnotationDeclaration],
+    routes: list[dict[str, str | None]],
+    detail: str,
+) -> None:
+    scoped = sorted({item.scope for item in declarations.values()})
+    if scoped:
+        routes.extend(
+            {
+                "scope": scope,
+                "reason": (
+                    "source annotation revision comparison is uncertain; "
+                    f"{detail}; attachment state is not treated as unaffected"
+                ),
+            }
+            for scope in scoped
+        )
+        return
+    routes.extend(
+        {
+            "scope": scope.id,
+            "reason": (
+                "source annotation revision comparison is uncertain; "
+                f"{detail}; attachment state is not treated as unaffected"
+            ),
+        }
+        for scope in manifest.scopes
+    )
+
+
+def _compare_annotation_snapshots(
+    before: _AnnotationSnapshot, after: _AnnotationSnapshot
+) -> list[dict[str, Any]]:
+    changes: list[dict[str, Any]] = []
+    for identifier in sorted(set(before.declarations) | set(after.declarations)):
+        old_declaration = before.declarations.get(identifier)
+        new_declaration = after.declarations.get(identifier)
+        old_locations = before.locations.get(identifier, ())
+        new_locations = after.locations.get(identifier, ())
+        chosen = new_declaration or old_declaration
+        assert chosen is not None
+        base = {
+            "id": identifier,
+            "invariant": chosen.invariant,
+            "scope": chosen.scope,
+            "owners": list(chosen.owners),
+            "before": _attachment_locations(old_locations),
+            "after": _attachment_locations(new_locations),
+        }
+        if old_declaration is None:
+            changes.append({**base, "kind": "added"})
+        elif new_declaration is None:
+            changes.append({**base, "kind": "removed"})
+        elif _declaration_key(old_declaration) != _declaration_key(new_declaration):
+            changes.append({**base, "kind": "declaration-changed"})
+        if len(new_locations) > 1 and len(new_locations) > len(old_locations):
+            changes.append({**base, "kind": "duplicated"})
+        if len(old_locations) == len(new_locations) == 1:
+            if _attachment_locations(old_locations) != _attachment_locations(new_locations):
+                changes.append({**base, "kind": "moved"})
+        elif old_locations and not new_locations and new_declaration is not None:
+            changes.append({**base, "kind": "removed"})
+        elif not old_locations and new_locations and old_declaration is not None:
+            changes.append({**base, "kind": "added"})
+    return changes
+
+
+def _attachment_locations(
+    attachments: tuple[_AnnotationAttachment, ...]
+) -> list[dict[str, int | str]]:
+    return [
+        {"file": item.declaration.file, "line": item.line}
+        for item in sorted(attachments, key=lambda item: (item.declaration.file, item.line))
+    ]
+
+
+def _declaration_key(item: _AnnotationDeclaration) -> tuple[str, str, str, str, str, str]:
+    return item.invariant, item.scope, item.file, item.kind, item.version, ",".join(item.owners)
+
+
+def _annotation_snapshot_from_disk(
+    manifest: Manifest,
+) -> tuple[_AnnotationSnapshot | None, str | None]:
+    started = time.monotonic()
+    total_bytes = 0
+
+    def read(path: str) -> bytes | None:
+        nonlocal total_bytes
+        if time.monotonic() - started > MAX_RESOLUTION_SECONDS:
+            raise _AnnotationSnapshotUnavailable(
+                "declared annotation source inspection exceeded its time budget"
+            )
+        candidate, boundary = _declared_file(manifest.root, path)
+        if boundary is not None:
+            if _confirmed_annotation_deletion(manifest.root, path):
+                return None
+            raise _AnnotationSnapshotUnavailable(
+                f"declared annotation source {path} is unavailable or excluded"
+            )
+        assert candidate is not None
+        raw, boundary = _read_declared_file(candidate)
+        if boundary is not None or raw is None:
+            raise _AnnotationSnapshotUnavailable(
+                f"declared annotation source {path} is unavailable or excluded"
+            )
+        if len(raw) > MAX_FILE_BYTES or total_bytes + len(raw) > MAX_TOTAL_BYTES:
+            raise _AnnotationSnapshotUnavailable(
+                "declared annotation source inspection exceeded its byte budget"
+            )
+        total_bytes += len(raw)
+        return raw
+
+    try:
+        return _annotation_snapshot(manifest, read, started=started)
+    except _AnnotationSnapshotUnavailable as exc:
+        return None, str(exc)
+
+
+def _annotation_snapshot_from_revision(
+    root: Path, revision_range: str
+) -> tuple[_AnnotationSnapshot | None, str | None]:
+    revision = _revision_baseline(root, revision_range)
+    if revision is None:
+        return None, "the requested Git baseline is unavailable or unsupported"
+    historical, error = _historical_manifest(root, revision)
+    if error is not None:
+        return None, error
+    assert historical is not None
+    paths = sorted(
+        {item.annotation.file for item in historical.invariants if item.annotation is not None}
+    )
+    blobs = _git_revision_blobs(root, revision, paths)
+    if blobs is None:
+        return None, "declared annotation source blobs are unavailable, malformed, or over budget"
+    return _annotation_snapshot(historical, lambda path: blobs.get(path))
+
+
+def _annotation_snapshot(
+    manifest: Manifest, read: Any, *, started: float | None = None
+) -> tuple[_AnnotationSnapshot | None, str | None]:
+    declarations, declaration_error = _annotation_declarations(manifest)
+    if declaration_error is not None:
+        return None, declaration_error
+    locations: dict[str, list[_AnnotationAttachment]] = {
+        identifier: [] for identifier in declarations
+    }
+    by_file: dict[str, list[_AnnotationDeclaration]] = {}
+    for declaration in declarations.values():
+        by_file.setdefault(declaration.file, []).append(declaration)
+    candidates = 0
+    for path, expected in sorted(by_file.items()):
+        if started is not None and time.monotonic() - started > MAX_RESOLUTION_SECONDS:
+            return None, "declared annotation source inspection exceeded its time budget"
+        raw = read(path)
+        if raw is None:
+            # A positively established current deletion is an attachment removal.
+            continue
+        try:
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            return None, f"declared annotation source {path} is not decodable"
+        if text.startswith("\ufeff"):
+            return None, f"declared annotation source {path} is not decodable"
+        parsed, findings, count = _scan_comments(path, text)
+        candidates += count
+        if candidates > MAX_CANDIDATE_COMMENTS:
+            return None, "declared annotation source inspection exceeded its marker budget"
+        if findings:
+            return None, f"declared annotation source {path} has unsupported or malformed forms"
+        expected_ids = {item.identifier for item in expected}
+        for annotation, location in parsed:
+            if annotation.identifier not in expected_ids:
+                return None, f"declared annotation source {path} contains an undeclared marker"
+            declaration = declarations[annotation.identifier]
+            locations[annotation.identifier].append(
+                _AnnotationAttachment(declaration, location.line)
+            )
+    return (
+        _AnnotationSnapshot(
+            declarations=declarations,
+            locations={
+                identifier: tuple(sorted(items, key=lambda item: item.line))
+                for identifier, items in locations.items()
+            },
+        ),
+        None,
+    )
+
+
+def _annotation_declarations(
+    manifest: Manifest,
+) -> tuple[dict[str, _AnnotationDeclaration], str | None]:
+    declarations: dict[str, _AnnotationDeclaration] = {}
+    for invariant in manifest.invariants:
+        annotation = invariant.annotation
+        if annotation is None:
+            continue
+        source = manifest.source_for_invariant(invariant.id)
+        declaration = _AnnotationDeclaration(
+            identifier=annotation.identifier,
+            invariant=invariant.id,
+            scope=invariant.scope,
+            file=annotation.file,
+            kind=annotation.kind,
+            version=annotation.version,
+            owners=() if source is None else source.owners,
+        )
+        if declaration.identifier in declarations or not _safe_annotation_path(declaration.file):
+            return {}, "annotation declarations are malformed or have an unsafe source path"
+        declarations[declaration.identifier] = declaration
+    if len({item.file for item in declarations.values()}) > MAX_DECLARED_FILES:
+        return {}, "annotation declarations exceed the declared-file budget"
+    return declarations, None
+
+
+def _confirmed_annotation_deletion(root: Path, path: str) -> bool:
+    """Return true only when a confined path is provably absent, never excluded."""
+    parts = PurePosixPath(path).parts
+    if (
+        not parts
+        or len(parts) > MAX_PATH_COMPONENTS
+        or any(part.casefold() in _EXCLUDED_PARTS for part in parts)
+        or _is_ignored(root, Path(path))
+    ):
+        return False
+    current = root
+    for index, part in enumerate(parts):
+        current /= part
+        try:
+            current.stat(follow_symlinks=False)
+        except FileNotFoundError:
+            return True
+        except OSError:
+            return False
+        if current.is_symlink() or not current.is_relative_to(root):
+            return False
+        if index < len(parts) - 1 and (current / ".git").exists():
+            return False
+        if index < len(parts) - 1 and not current.is_dir():
+            return False
+    return False
+
+
+def _safe_annotation_path(path: str) -> bool:
+    candidate = PurePosixPath(path)
+    return (
+        bool(path)
+        and "\\" not in path
+        and ":" not in path
+        and "\0" not in path
+        and "\n" not in path
+        and "\r" not in path
+        and not candidate.is_absolute()
+        and ".." not in candidate.parts
+    )
+
+
+def _revision_baseline(root: Path, revision_range: str) -> str | None:
+    """Resolve only the old side of an explicitly supplied Git comparison."""
+    if not revision_range.strip() or revision_range.lstrip().startswith("-"):
+        return None
+    if "..." in revision_range:
+        left, separator, right = revision_range.partition("...")
+        if not separator or not left or not right or ".." in right:
+            return None
+        command = [
+            "git",
+            "--no-lazy-fetch",
+            "--no-pager",
+            "--no-replace-objects",
+            "merge-base",
+            "--",
+            left,
+            right,
+        ]
+    elif ".." in revision_range:
+        left, separator, right = revision_range.partition("..")
+        if not separator or not left or not right or ".." in right:
+            return None
+        command = [
+            "git",
+            "--no-lazy-fetch",
+            "--no-pager",
+            "--no-replace-objects",
+            "rev-parse",
+            "--verify",
+            "--end-of-options",
+            f"{left}^{{commit}}",
+        ]
+    else:
+        command = [
+            "git",
+            "--no-lazy-fetch",
+            "--no-pager",
+            "--no-replace-objects",
+            "rev-parse",
+            "--verify",
+            "--end-of-options",
+            f"{revision_range}^{{commit}}",
+        ]
+    try:
+        completed = subprocess.run(
+            command,
+            cwd=root,
+            check=False,
+            capture_output=True,
+            timeout=GIT_READ_TIMEOUT_SECONDS,
+            env=_safe_git_env(),
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    value = completed.stdout.strip()
+    if completed.returncode or re.fullmatch(rb"[0-9a-f]{40}|[0-9a-f]{64}", value) is None:
+        return None
+    return value.decode("ascii")
+
+
+def _historical_manifest(root: Path, revision: str) -> tuple[Manifest | None, str | None]:
+    root_blob = _git_revision_blobs(root, revision, [".murlocs/manifest.toml"])
+    raw_root = None if root_blob is None else root_blob.get(".murlocs/manifest.toml")
+    if raw_root is None:
+        return None, "the baseline manifest is unavailable"
+    try:
+        root_data = tomllib.loads(raw_root.decode("utf-8"))
+    except (UnicodeDecodeError, tomllib.TOMLDecodeError):
+        return None, "the baseline manifest is malformed"
+    declarations = root_data.get("layers", [])
+    if not isinstance(declarations, list) or len(declarations) > ANNOTATION_REVISION_SOURCE_LIMIT:
+        return None, "the baseline layer declaration set is unsupported or over budget"
+    paths: list[str] = []
+    source_specs: list[tuple[str, str, str, tuple[str, ...]]] = []
+    for item in declarations:
+        if not isinstance(item, dict):
+            return None, "the baseline layer declaration is malformed"
+        source_id = item.get("id")
+        kind = item.get("kind")
+        path = item.get("path")
+        owners = item.get("owners", [])
+        if (
+            not isinstance(source_id, str)
+            or not isinstance(kind, str)
+            or not isinstance(path, str)
+            or not isinstance(owners, list)
+            or not all(isinstance(owner, str) for owner in owners)
+            or not _safe_annotation_path(path)
+        ):
+            return None, "the baseline layer declaration is malformed or unsafe"
+        paths.append(path)
+        source_specs.append((source_id, kind, path, tuple(owners)))
+    blobs = _git_revision_blobs(root, revision, paths)
+    if blobs is None or any(path not in blobs for path in paths):
+        return None, "a baseline layer blob is unavailable, malformed, or over budget"
+    try:
+        sources = [
+            LayerSource(
+                id="manifest",
+                kind="base",
+                path=".murlocs/manifest.toml",
+                sha256=sha256_bytes(raw_root),
+                owners=tuple(str(item) for item in root_data.get("owners", [])),
+            )
+        ]
+        fragments = [root_data]
+        for source_id, kind, path, owners in source_specs:
+            raw = blobs[path]
+            fragments.append(tomllib.loads(raw.decode("utf-8")))
+            sources.append(
+                LayerSource(
+                    id=source_id,
+                    kind=kind,
+                    path=path,
+                    sha256=sha256_bytes(raw),
+                    owners=owners,
+                )
+            )
+        resolved = compose(root_data, sources, fragments)
+        return (
+            parse_manifest_data(
+                root,
+                resolved.data,
+                layered=resolved.layered,
+                sources=resolved.sources,
+                scope_layers=resolved.scope_layers,
+                invariant_layers=resolved.invariant_layers,
+                overrides=resolved.overrides,
+            ),
+            None,
+        )
+    except (MurlocsError, UnicodeDecodeError, tomllib.TOMLDecodeError, TypeError, ValueError):
+        return None, "the baseline manifest composition is malformed"
+
+
+def _safe_git_env() -> dict[str, str]:
+    git_env = os.environ.copy()
+    git_env.update({"GIT_NO_LAZY_FETCH": "1", "GIT_OPTIONAL_LOCKS": "0"})
+    return git_env
+
+
+def _git_revision_blobs(
+    root: Path, revision: str, paths: list[str]
+) -> dict[str, bytes] | None:
+    """Read finite Git blobs exactly, without diff, filters, drivers, or hooks."""
+    if len(paths) > ANNOTATION_REVISION_SOURCE_LIMIT or any(
+        not _safe_annotation_path(path) for path in paths
+    ):
+        return None
+    if not paths:
+        return {}
+    object_names = tuple(f"{revision}:{path}" for path in paths)
+    batch_input = ("\n".join(object_names) + "\n").encode("utf-8")
+    try:
+        checked = subprocess.run(
+            [
+                "git",
+                "--no-lazy-fetch",
+                "--no-pager",
+                "--no-replace-objects",
+                "cat-file",
+                "--batch-check",
+            ],
+            cwd=root,
+            check=False,
+            capture_output=True,
+            input=batch_input,
+            env=_safe_git_env(),
+            timeout=GIT_READ_TIMEOUT_SECONDS,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    metadata = _parse_git_batch_sizes(checked.stdout, object_names)
+    sizes = tuple(item[1] for item in metadata or () if item is not None)
+    if (
+        checked.returncode
+        or metadata is None
+        or any(item is None for item in metadata)
+        or any(size > GIT_SOURCE_BLOB_LIMIT for size in sizes)
+        or sum(sizes) > GIT_SOURCE_BATCH_LIMIT
+    ):
+        return None
+    try:
+        completed = subprocess.run(
+            [
+                "git",
+                "--no-lazy-fetch",
+                "--no-pager",
+                "--no-replace-objects",
+                "cat-file",
+                "--batch",
+            ],
+            cwd=root,
+            check=False,
+            capture_output=True,
+            input=batch_input,
+            env=_safe_git_env(),
+            timeout=GIT_READ_TIMEOUT_SECONDS,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    contents = _parse_git_batch_blobs(completed.stdout, object_names, metadata)
+    if completed.returncode or contents is None or any(item is None for item in contents):
+        return None
+    return {path: blob for path, blob in zip(paths, contents, strict=True) if blob is not None}
 
 
 def _classify_direct_path(
@@ -222,7 +886,10 @@ def _classify_direct_path(
             or (
                 explicit
                 and (
-                    (explicit_global and (not affected_maps or source_stale is False))
+                    (
+                        explicit_global
+                        and (not affected_maps or source_stale is False)
+                    )
                     or (
                         root_map in drifted_maps
                         and source_stale is not False
@@ -248,7 +915,9 @@ def _classify_direct_path(
                 )
         else:
             for scope in contributing or list(manifest.scopes):
-                required[scope.id].add(f"{changed} changes contributing guidance layer {source.id}")
+                required[scope.id].add(
+                    f"{changed} changes contributing guidance layer {source.id}"
+                )
 
     for scope in manifest.scopes:
         if changed == _clean(scope.map):
@@ -264,7 +933,9 @@ def _classify_direct_path(
 
     for invariant in manifest.invariants:
         if invariant.evidence_file and changed == _clean(invariant.evidence_file):
-            required[invariant.scope].add(f"{changed} is evidence for invariant {invariant.id}")
+            required[invariant.scope].add(
+                f"{changed} is evidence for invariant {invariant.id}"
+            )
         if invariant.enforced_by:
             check = manifest.checks.get(invariant.enforced_by)
             if check is not None and changed == _clean(check.location):
@@ -329,7 +1000,7 @@ def _source_has_global_guidance(manifest: Manifest, source_path: str) -> bool:
     """Identify active source content that contributes to root guidance collections."""
     try:
         disk = read_disk_sources(manifest.root)
-    except MurlocsError, OSError:
+    except (MurlocsError, OSError):
         return False
     for source, fragment in zip(disk.sources, disk.fragments, strict=True):
         if source.path != source_path:
@@ -344,7 +1015,7 @@ def _stale_source_paths_against_lock(manifest: Manifest) -> tuple[str, ...] | No
     """Return sources changed since compilation, or None without complete evidence."""
     try:
         lock = read_lock(manifest.root)
-    except MurlocsError, OSError:
+    except (MurlocsError, OSError):
         return None
     if lock is None:
         return None
@@ -355,11 +1026,13 @@ def _stale_source_paths_against_lock(manifest: Manifest) -> tuple[str, ...] | No
     return tuple(sorted(path for path, digest in current.items() if locked[path] != digest))
 
 
-def _workspace_source_changes_root_render(manifest: Manifest, source_path: str) -> bool | None:
+def _workspace_source_changes_root_render(
+    manifest: Manifest, source_path: str
+) -> bool | None:
     """Compare source semantics with a bounded, batched locked Git baseline."""
     try:
         lock = read_lock(manifest.root)
-    except MurlocsError, OSError:
+    except (MurlocsError, OSError):
         return None
     if lock is None:
         return None
@@ -393,7 +1066,7 @@ def _workspace_source_changes_root_render(manifest: Manifest, source_path: str) 
             timeout=GIT_READ_TIMEOUT_SECONDS,
         )
         current_bytes = (manifest.root / source_path).read_bytes()
-    except OSError, subprocess.TimeoutExpired:
+    except (OSError, subprocess.TimeoutExpired):
         return None
     if history.returncode or sha256_bytes(current_bytes) != loaded.sha256:
         return None
@@ -419,10 +1092,12 @@ def _workspace_source_changes_root_render(manifest: Manifest, source_path: str) 
             env=git_env,
             timeout=GIT_READ_TIMEOUT_SECONDS,
         )
-    except OSError, subprocess.TimeoutExpired:
+    except (OSError, subprocess.TimeoutExpired):
         return None
     metadata = _parse_git_batch_sizes(checked.stdout, object_names)
-    present_sizes = tuple(entry[1] for entry in metadata or () if entry is not None)
+    present_sizes = tuple(
+        entry[1] for entry in metadata or () if entry is not None
+    )
     if (
         checked.returncode
         or metadata is None
@@ -448,7 +1123,7 @@ def _workspace_source_changes_root_render(manifest: Manifest, source_path: str) 
             env=git_env,
             timeout=GIT_READ_TIMEOUT_SECONDS,
         )
-    except OSError, subprocess.TimeoutExpired:
+    except (OSError, subprocess.TimeoutExpired):
         return None
     blobs = _parse_git_batch_blobs(completed.stdout, object_names, metadata)
     if completed.returncode or blobs is None:
@@ -462,7 +1137,7 @@ def _workspace_source_changes_root_render(manifest: Manifest, source_path: str) 
     try:
         before = tomllib.loads(baseline_bytes.decode("utf-8"))
         after = tomllib.loads(current_bytes.decode("utf-8"))
-    except UnicodeDecodeError, tomllib.TOMLDecodeError:
+    except (UnicodeDecodeError, tomllib.TOMLDecodeError):
         return None
     return _fragment_changes_root_render(before, after)
 
@@ -555,7 +1230,9 @@ def _parse_git_batch_blobs(
     return tuple(blobs)
 
 
-def _revision_mentions_global_guidance(root: Path, revision_range: str, source_path: str) -> bool:
+def _revision_mentions_global_guidance(
+    root: Path, revision_range: str, source_path: str
+) -> bool:
     """Catch removal of the last global field by inspecting the already-authorized Git diff."""
     if not revision_range.strip() or revision_range.lstrip().startswith("-"):
         return False
@@ -563,6 +1240,9 @@ def _revision_mentions_global_guidance(root: Path, revision_range: str, source_p
         completed = subprocess.run(
             [
                 "git",
+                "--no-lazy-fetch",
+                "--no-pager",
+                "--no-replace-objects",
                 "diff",
                 "--no-ext-diff",
                 "--no-textconv",
@@ -576,11 +1256,13 @@ def _revision_mentions_global_guidance(root: Path, revision_range: str, source_p
             check=False,
             capture_output=True,
             text=True,
+            env=_safe_git_env(),
+            timeout=GIT_READ_TIMEOUT_SECONDS,
         )
-    except OSError:
-        return False
+    except (OSError, subprocess.TimeoutExpired):
+        return True
     if completed.returncode:
-        return False
+        return True
     before_lines: list[str] = []
     after_lines: list[str] = []
     in_hunk = False
@@ -637,7 +1319,9 @@ def _fragment_changes_root_render(before: dict[str, Any], after: dict[str, Any])
             if isinstance(item, dict)
         )
 
-    return scopes(before) != scopes(after) or invariant_summary(before) != invariant_summary(after)
+    return scopes(before) != scopes(after) or invariant_summary(before) != invariant_summary(
+        after
+    )
 
 
 def _scope_payload(
@@ -717,7 +1401,9 @@ def _scope_payload(
         "map": scope.map,
         "status": status,
         "reasons": reasons,
-        "guidance_chain": [{"id": candidate.id, "map": candidate.map} for candidate in chain],
+        "guidance_chain": [
+            {"id": candidate.id, "map": candidate.map} for candidate in chain
+        ],
         "layers": layers,
         "owners": owners,
         "invariants": invariants,
