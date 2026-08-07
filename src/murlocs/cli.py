@@ -83,7 +83,12 @@ from murlocs.task_commands import (
     build_review_changes,
     render_task_lines,
 )
-from murlocs.verify import Finding, annotation_findings, validate
+from murlocs.verify import (
+    Finding,
+    annotation_findings,
+    proof_anchor_advisories,
+    validate,
+)
 
 
 def _normalize_repeatable_options(
@@ -337,6 +342,7 @@ class SummaryPayload(TypedDict):
 class CheckPayload(TypedDict):
     ok: bool
     findings: list[FindingPayload]
+    advisories: list[FindingPayload]
     summary: SummaryPayload
     coverage: CoveragePayload
     annotations: list[AnnotationProvenancePayload]
@@ -1500,6 +1506,9 @@ def check_command(
         [item for item in findings if item.code == "coverage"],
     )
     annotations = _annotation_payloads(manifest)
+    advisories = proof_anchor_advisories(manifest)
+    advisory_payloads = [_finding_payload(item) for item in advisories]
+    advisory_lines = [f"advisory: {item}" for item in advisories]
     outcome = build_check_outcome(manifest, findings, correlation_id=correlation_id)
     if findings:
         terminal = "\n".join(
@@ -1508,12 +1517,14 @@ def check_command(
                 render_compact_outcome(outcome),
                 _coverage_terminal(coverage),
                 *_annotation_terminal_lines(annotations),
+                *advisory_lines,
             ]
         )
         return CommandResult(
             {
                 "ok": False,
                 "findings": [_finding_payload(item) for item in findings],
+                "advisories": advisory_payloads,
                 "summary": summary,
                 "coverage": coverage,
                 "annotations": annotations,
@@ -1526,10 +1537,12 @@ def check_command(
 
     terminal_lines = [outcome["summary"], _coverage_terminal(coverage)]
     terminal_lines.extend(_annotation_terminal_lines(annotations))
+    terminal_lines.extend(advisory_lines)
     return CommandResult(
         {
             "ok": True,
             "findings": [],
+            "advisories": advisory_payloads,
             "summary": summary,
             "coverage": coverage,
             "annotations": annotations,

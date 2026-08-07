@@ -1,16 +1,20 @@
 from __future__ import annotations
 
+import json
 import tomllib
 from copy import deepcopy
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 from murlocs.manifest import parse_manifest_data
+from murlocs.model import Check
 from murlocs.render import render_outputs
 from murlocs.serialization import render_manifest_data
 from murlocs.stewards import translate_stewards_manifest
-from murlocs.verify import normalize_severity, validate
+from murlocs.verify import normalize_severity, proof_anchor_advisories, validate
+from tests.support import initialize_repo, invoke
 
 FIXTURES = Path(__file__).parent / "fixtures" / "stewards"
 
@@ -238,3 +242,110 @@ def test_invariant_proof_contains_is_supported_and_round_trips(tmp_path):
         "arch-boundaries": "ArchBoundaryError",
         "contract-enforced": "assert_contract",
     }
+
+
+def _manifest_with_checks(tmp_path, checks):
+    translated = translate_stewards_manifest(load_fixture("chirp"))
+    manifest = parse_manifest_data(tmp_path, translated.manifest)
+    return replace(manifest, checks=checks, source_suffixes=(".py",))
+
+
+def test_breadth_advisory_flags_anchors_that_cover_a_minority_of_the_suite(tmp_path):
+    checks = {
+        "theme-suite": Check(
+            name="theme-suite",
+            invoke=(
+                "uv run pytest tests/test_builtin_layouts.py "
+                "tests/test_chirp_docs_theming.py tests/test_theme_lint.py -q"
+            ),
+            location="tests/test_chirp_docs_theming.py",
+            proof_contains="test_home_uses_home_view",
+        ),
+        "sources-suite": Check(
+            name="sources-suite",
+            invoke=(
+                "uv run pytest tests/test_chirp_docs_sources.py "
+                "tests/test_chirp_docs_ast_roundtrip.py -q"
+            ),
+            location="tests/test_chirp_docs_sources.py",
+            proof_contains="test_registered_formats",
+        ),
+    }
+
+    advisories = proof_anchor_advisories(_manifest_with_checks(tmp_path, checks))
+
+    assert {finding.code for finding in advisories} == {"proof-anchor-breadth"}
+    # Deterministic ordering by check name.
+    assert [finding.message.split()[1] for finding in advisories] == [
+        "sources-suite",
+        "theme-suite",
+    ]
+    messages = {finding.message for finding in advisories}
+    assert any("theme-suite" in message and "1 of 3" in message for message in messages)
+    assert any("sources-suite" in message and "1 of 2" in message for message in messages)
+    assert all("repoint proof_contains" in message for message in messages)
+
+
+def test_breadth_advisory_leaves_strong_and_single_file_anchors_alone(tmp_path):
+    checks = {
+        # A single-file suite: the anchor already covers the whole invoked set.
+        "references-suite": Check(
+            name="references-suite",
+            invoke="uv run pytest tests/test_chirp_docs_reference_resolution.py -q",
+            location="tests/test_chirp_docs_reference_resolution.py",
+            proof_contains="test_longest_prefix_match",
+        ),
+        # A command that names no source-file set at all.
+        "changelog-draft": Check(
+            name="changelog-draft",
+            invoke="make changelog-draft",
+            location="Makefile",
+            proof_contains="changelog-draft:",
+        ),
+    }
+
+    advisories = proof_anchor_advisories(_manifest_with_checks(tmp_path, checks))
+
+    assert advisories == []
+
+
+def test_check_surfaces_breadth_advisory_without_changing_exit_code(tmp_path):
+    root = tmp_path / "repo"
+    (root / "src").mkdir(parents=True)
+    (root / "src" / "app.py").write_text("VALUE = 1\n", encoding="utf-8")
+    initialize_repo(root, "--name", "Anchor Breadth")
+
+    baseline = invoke("check", "--repo", str(root), "--format", "json")
+    assert baseline.exit_code == 0, baseline.stderr
+
+    tests_dir = root / "tests"
+    tests_dir.mkdir()
+    (tests_dir / "test_alpha.py").write_text(
+        "def test_headline_contract(): pass\n", encoding="utf-8"
+    )
+    (tests_dir / "test_beta.py").write_text(
+        "def test_secondary(): pass\n", encoding="utf-8"
+    )
+    manifest_path = root / ".murlocs" / "manifest.toml"
+    manifest_path.write_text(
+        manifest_path.read_text(encoding="utf-8")
+        + (
+            "\n[checks.suite]\n"
+            'invoke = "pytest tests/test_alpha.py tests/test_beta.py"\n'
+            'location = "tests/test_alpha.py"\n'
+            'proof_contains = "def test_headline_contract"\n'
+        ),
+        encoding="utf-8",
+    )
+    assert invoke("compile", "--repo", str(root)).exit_code == 0
+
+    result = invoke("check", "--repo", str(root), "--format", "json")
+
+    assert result.exit_code == 0, result.stderr
+    payload = json.loads(result.output)
+    assert payload["ok"] is True
+    assert payload["findings"] == []
+    advisories = payload["advisories"]
+    assert [item["code"] for item in advisories] == ["proof-anchor-breadth"]
+    assert "check suite anchors proof in 1 of 2" in advisories[0]["message"]
+    assert "repoint proof_contains" in advisories[0]["message"]
