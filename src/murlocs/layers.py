@@ -38,7 +38,14 @@ LIST_FIELDS = (
 )
 # Fields a layer fragment may contribute. Global scalars and the layer list itself
 # stay on the root control plane so output paths and identity remain immutable.
-FRAGMENT_FIELDS = set(LIST_FIELDS) | {"coverage", "checks", "scopes", "invariants", "judgments"}
+FRAGMENT_FIELDS = set(LIST_FIELDS) | {
+    "coverage",
+    "checks",
+    "scopes",
+    "invariants",
+    "judgments",
+    "work_items",
+}
 CONTROL_FIELDS = {
     "schema_version",
     "network",
@@ -236,6 +243,8 @@ class _MergeState:
         self.scope_layers: dict[str, list[str]] = {}
         self.invariants: dict[str, tuple[str, dict[str, Any]]] = {}
         self.invariant_order: list[str] = []
+        self.work_items: dict[str, tuple[str, dict[str, Any]]] = {}
+        self.work_item_order: list[str] = []
         self.judgments: dict[str, dict[str, list[str]]] = {}
         self.judgment_order: list[str] = []
         self.overrides: list[Override] = []
@@ -263,6 +272,7 @@ class _MergeState:
         self._absorb_checks(source, data.get("checks", {}))
         self._absorb_scopes(source, data.get("scopes", []))
         self._absorb_invariants(source, data.get("invariants", []))
+        self._absorb_work_items(source, data.get("work_items", []))
         self._absorb_judgments(source, data.get("judgment", data.get("judgments", {})))
 
     def _absorb_checks(self, source: LayerSource, raw: Any) -> None:
@@ -386,6 +396,37 @@ class _MergeState:
                 self.invariant_order.append(invariant_id)
             self.invariants[invariant_id] = (source.id, clean)
 
+    def _absorb_work_items(self, source: LayerSource, raw: Any) -> None:
+        if not isinstance(raw, list):
+            raise MurlocsError("work_items must be an array of tables")
+        for item in raw:
+            if not isinstance(item, dict):
+                raise MurlocsError("work item entries must be tables")
+            work_item_id = str(item.get("id") or "")
+            if not work_item_id:
+                raise MurlocsError("work item entries require an id")
+            override = bool(item.get("override", False))
+            clean = {key: value for key, value in item.items() if key != "override"}
+            if work_item_id in self.work_items:
+                if not override:
+                    raise MurlocsError(
+                        f"duplicate work item {work_item_id}; set override = true to replace it"
+                    )
+                prior_layer = self.work_items[work_item_id][0]
+                self.overrides.append(
+                    Override(
+                        subject=f"work_item:{work_item_id}",
+                        field="definition",
+                        winner_layer=source.id,
+                        shadowed_layer=prior_layer,
+                        winner_value=str(clean.get("acceptance", "")),
+                        shadowed_value=str(self.work_items[work_item_id][1].get("acceptance", "")),
+                    )
+                )
+            else:
+                self.work_item_order.append(work_item_id)
+            self.work_items[work_item_id] = (source.id, clean)
+
     def _absorb_judgments(self, source: LayerSource, raw: Any) -> None:
         if not isinstance(raw, dict):
             raise MurlocsError("judgments must be a table")
@@ -420,6 +461,9 @@ class _MergeState:
         merged["scopes"] = [self.scopes[scope_id] for scope_id in self.scope_order]
         merged["invariants"] = [
             self.invariants[invariant_id][1] for invariant_id in self.invariant_order
+        ]
+        merged["work_items"] = [
+            self.work_items[work_item_id][1] for work_item_id in self.work_item_order
         ]
         merged["judgments"] = {
             scope_id: self.judgments[scope_id] for scope_id in self.judgment_order

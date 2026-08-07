@@ -4,9 +4,11 @@ import json
 from pathlib import Path
 from typing import Any
 
+from murlocs.acceptance import parse_acceptance_anchor
 from murlocs.errors import MurlocsError
 from murlocs.layers import resolve_manifest
 from murlocs.model import (
+    AcceptanceAnchor,
     Check,
     Edge,
     Invariant,
@@ -18,6 +20,7 @@ from murlocs.model import (
     OwnershipGroup,
     Scope,
     SourceAnnotation,
+    WorkItem,
 )
 
 DEFAULT_SOURCE_SUFFIXES = (".py", ".ts", ".tsx", ".js", ".jsx", ".rs", ".go", ".java")
@@ -213,6 +216,7 @@ def parse_manifest_data(
             )
             for name, item in data.get("checks", {}).items()
         }
+        work_items = tuple(_parse_work_item(item) for item in data.get("work_items", []))
         return Manifest(
             root=root.resolve(),
             schema_version=int(_required(data, "schema_version", "manifest")),
@@ -241,6 +245,7 @@ def parse_manifest_data(
             ),
             scopes=scopes,
             invariants=invariants,
+            work_items=work_items,
             checks=checks,
             layered=layered,
             sources=sources,
@@ -254,6 +259,28 @@ def parse_manifest_data(
 
 def _optional_string(value: Any) -> str | None:
     return None if value is None else str(value)
+
+
+def _parse_work_item(raw: Any) -> WorkItem:
+    if not isinstance(raw, dict):
+        raise TypeError("work_items[] entries must be tables")
+    work_item_id = str(_required(raw, "id", "work_items[]"))
+    acceptance_raw = raw.get("acceptance")
+    acceptance: AcceptanceAnchor | None
+    if acceptance_raw is None:
+        acceptance = None
+    else:
+        parsed = parse_acceptance_anchor(str(acceptance_raw))
+        acceptance = AcceptanceAnchor(adapter=parsed.adapter, reference=parsed.reference)
+    issue_raw = raw.get("issue")
+    issue: int | None
+    if issue_raw is None:
+        issue = None
+    elif isinstance(issue_raw, int):
+        issue = issue_raw
+    else:
+        raise TypeError("work_items[].issue must be an integer when present")
+    return WorkItem(id=work_item_id, acceptance=acceptance, issue=issue)
 
 
 def _parse_annotation(value: Any) -> SourceAnnotation | None:

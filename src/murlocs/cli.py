@@ -83,6 +83,7 @@ from murlocs.task_commands import (
     build_review_changes,
     render_task_lines,
 )
+from murlocs.acceptance import acceptance_anchor_findings
 from murlocs.verify import (
     Finding,
     annotation_findings,
@@ -1462,7 +1463,11 @@ def _render_add_scope(plan: ScopePlan, dry_run: bool) -> str:
 
 
 def _precompile_findings(manifest: Manifest) -> list[Finding]:
-    findings = [*validate(manifest), *annotation_findings(manifest)]
+    findings = [
+        *validate(manifest),
+        *annotation_findings(manifest),
+        *acceptance_anchor_findings(manifest),
+    ]
     return [item for item in findings if item.code not in {"drift", "lock"}]
 
 
@@ -1479,7 +1484,11 @@ def check_command(
     try:
         correlation_id = validate_correlation_id(correlation_id)
         manifest = load_manifest(_root(repo))
-        findings = [*validate(manifest), *annotation_findings(manifest)]
+        findings = [
+            *validate(manifest),
+            *annotation_findings(manifest),
+            *acceptance_anchor_findings(manifest),
+        ]
         if transaction_pending(manifest.root):
             findings.append(
                 Finding(
