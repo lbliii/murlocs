@@ -39,6 +39,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). While the
 - The `Documentation` project URL now points at the published Pages site,
   `https://lbliii.github.io/murlocs/`, instead of a Markdown blob on GitHub.
 
+### Fixed
+
+- The Claude Code `pre-completion` Stop hook no longer blocks completion on a
+  clean working tree. A turn that changed no files reported
+  `MURLOCS_ACTIVATION_UNAVAILABLE` and was treated as a blocking gate, so the
+  Stop hook re-fired every turn until the host's eight-block runaway guard
+  tripped. It now stops cleanly when nothing changed, and a genuine blocking
+  impact outcome gates at most once: when Claude Code is already replaying a
+  Stop-hook continuation the gate downgrades to advisory context so it can
+  never loop the agent (`src/murlocs/claude_adapter.py`).
+
 ## [0.1.0] - 2026-08-05
 
 First published release.
