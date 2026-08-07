@@ -198,6 +198,7 @@ def parse_manifest_data(
                 enforced_by=_optional_string(item.get("enforced_by")),
                 evidence_file=_optional_string(item.get("evidence_file")),
                 anchor=_optional_string(item.get("anchor")),
+                proof_contains=_optional_string(item.get("proof_contains")),
                 annotation=_parse_annotation(item.get("annotation")),
             )
             for item in data.get("invariants", [])

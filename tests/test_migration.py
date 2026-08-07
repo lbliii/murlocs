@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import tomllib
 from pathlib import Path
 
@@ -345,3 +346,84 @@ def test_double_rollback_is_refused(tmp_path):
 
     with pytest.raises(MurlocsError, match="expected"):
         rollback_migration(root)
+
+
+EXOTIC_FIXTURE = Path(__file__).parent / "fixtures" / "stewards" / "legacy_exotic"
+
+
+def make_exotic_repo(tmp_path: Path) -> Path:
+    root = tmp_path / "exotic"
+    shutil.copytree(EXOTIC_FIXTURE, root / ".stewards")
+    (root / "CLAUDE.md").write_text("# User-owned guide\n", encoding="utf-8")
+    return root
+
+
+def test_inventory_surveys_exotic_manifest_without_crashing(tmp_path):
+    root = make_exotic_repo(tmp_path)
+
+    inventory = inventory_repository(root)
+
+    # The read-only survey still lists what it can: counts, not nothing.
+    assert inventory["legacy_stewards"]["network"] == "Legacynet"
+    assert inventory["legacy_stewards"]["scopes"] == 2
+    assert inventory["legacy_stewards"]["checks"] == 2
+    assert inventory["legacy_stewards"]["invariants"] == 2
+
+    # It names every untranslatable field in one pass, not just the first.
+    assert {item["code"] for item in inventory["untranslatable"]} == {"unsupported-field"}
+    assert inventory["untranslatable"][0]["subjects"] == [
+        "legacy check arch-isolation: kind",
+        "legacy check arch-isolation: proves",
+        "legacy check contract-suite: kind",
+        "legacy check contract-suite: proves",
+    ]
+
+    # And it surfaces the out-of-scope sidecar constructs rather than ignoring them.
+    assert {(item["path"], item["construct"]) for item in inventory["sidecars"]} == {
+        (".stewards/archetypes/gpu-ml-pipeline.toml", "archetype"),
+        (".stewards/archetypes/python-infra.toml", "archetype"),
+        (".stewards/kit.toml", "portability-kit"),
+        (".stewards/refs.py", "ref-resolver"),
+    }
+
+
+def test_inventory_command_reserves_zero_exit_for_a_clean_survey(tmp_path):
+    root = make_exotic_repo(tmp_path)
+
+    exotic = invoke("inventory", "--repo", str(root))
+    assert exotic.exit_code == 1
+    assert "untranslatable: unsupported-field (4)" in exotic.output
+    assert "out-of-scope sidecar: .stewards/refs.py (ref-resolver)" in exotic.output
+
+    bare = tmp_path / "bare"
+    bare.mkdir()
+    (bare / "AGENTS.md").write_text("# user-owned\n", encoding="utf-8")
+    clean = invoke("inventory", "--repo", str(bare))
+    assert clean.exit_code == 0
+
+
+def test_import_reports_exotic_loss_and_names_sidecars(tmp_path):
+    root = make_exotic_repo(tmp_path)
+
+    result = invoke("import", "--repo", str(root), "--from", "stewards", "--format", "json")
+
+    # Read-only stdout import surfaces the whole loss surface and exits non-zero.
+    assert result.exit_code == 1
+    payload = json.loads(result.output)
+    assert payload["ok"] is False
+    blocking = [f for f in payload["findings"] if f["level"] == "blocking"]
+    assert [f["code"] for f in blocking] == ["unsupported-field"]
+    assert len(blocking[0]["subjects"]) == 4
+    # Sidecar constructs are named as explicit out-of-scope entries, never omitted.
+    sidecar = [f for f in payload["findings"] if f["code"] == "out-of-scope-sidecar"]
+    assert sidecar and any("refs.py (ref-resolver)" in s for s in sidecar[0]["subjects"])
+
+
+def test_exotic_candidate_is_never_written_lossily(tmp_path):
+    root = make_exotic_repo(tmp_path)
+    candidate = candidate_from_stewards(root)
+
+    # The anti-silent-drop guarantee holds: a candidate carrying blocking loss is refused.
+    with pytest.raises(MurlocsError, match="blocking loss"):
+        write_candidate(root, candidate, ".murlocs/manifest.toml")
+    assert not (root / ".murlocs").exists()

@@ -34,6 +34,7 @@ LEGACY_INVARIANT_FIELDS = {
     "enforced_by",
     "evidence_file",
     "anchor",
+    "proof_contains",
 }
 LEGACY_JUDGMENT_FIELDS = {"advocate", "do_not", "serves"}
 VERIFICATION_MAPPING = {"machine": "command", "manual": "manual", "none": "unknown"}
@@ -61,11 +62,12 @@ def translate_stewards_manifest(
     require_scope_invariants: bool = False,
 ) -> StewardTranslation:
     """Translate the known Chirp/Kida steward dialect without reading or writing a repository."""
-    _reject_unknown("legacy manifest", data, LEGACY_TOP_LEVEL)
-    checks = _translate_checks(_table(data, "check"))
-    scopes = _translate_scopes(_array(data, "steward"))
-    invariants = _translate_invariants(_array(data, "invariant"))
-    judgments = _translate_judgments(data.get("judgment", {}))
+    losses: list[str] = []
+    _collect_unknown(losses, "legacy manifest", data, LEGACY_TOP_LEVEL)
+    checks = _translate_checks(_table(data, "check"), losses)
+    scopes = _translate_scopes(_array(data, "steward"), losses)
+    invariants = _translate_invariants(_array(data, "invariant"), losses)
+    judgments = _translate_judgments(data.get("judgment", {}), losses)
 
     missing_anchors = tuple(
         name for name, check in checks.items() if not check.get("proof_contains")
@@ -74,6 +76,8 @@ def translate_stewards_manifest(
         item["id"] for item in invariants if item["severity"] in {"P0", "P1", "P2", "P3"}
     )
     findings: list[TranslationFinding] = []
+    if losses:
+        findings.append(_loss_finding(losses))
     if missing_anchors:
         findings.append(
             TranslationFinding(
@@ -281,12 +285,12 @@ def _render_legacy_root(
     return "\n".join(output).rstrip() + "\n"
 
 
-def _translate_checks(raw: dict[str, Any]) -> dict[str, dict[str, Any]]:
+def _translate_checks(raw: dict[str, Any], losses: list[str]) -> dict[str, dict[str, Any]]:
     checks: dict[str, dict[str, Any]] = {}
     for name, value in raw.items():
         if not isinstance(value, dict):
             raise MurlocsError(f"legacy check {name} must be a table")
-        _reject_unknown(f"legacy check {name}", value, LEGACY_CHECK_FIELDS)
+        _collect_unknown(losses, f"legacy check {name}", value, LEGACY_CHECK_FIELDS)
         check = {
             "invoke": _string(value, "invoke", context=f"legacy check {name}"),
             "location": _string(value, "location", context=f"legacy check {name}"),
@@ -297,13 +301,13 @@ def _translate_checks(raw: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return checks
 
 
-def _translate_scopes(raw: list[Any]) -> list[dict[str, Any]]:
+def _translate_scopes(raw: list[Any], losses: list[str]) -> list[dict[str, Any]]:
     scopes: list[dict[str, Any]] = []
     for index, value in enumerate(raw):
         if not isinstance(value, dict):
             raise MurlocsError(f"legacy steward[{index}] must be a table")
         context = f"legacy steward[{index}]"
-        _reject_unknown(context, value, LEGACY_STEWARD_FIELDS)
+        _collect_unknown(losses, context, value, LEGACY_STEWARD_FIELDS)
         scope_id = _string(value, "id", context=context)
         map_path = _string(value, "path", context=context)
         parent = PurePosixPath(map_path).parent.as_posix()
@@ -314,7 +318,8 @@ def _translate_scopes(raw: list[Any]) -> list[dict[str, Any]]:
         for edge_index, edge in enumerate(edges):
             if not isinstance(edge, dict):
                 raise MurlocsError(f"{context}.edges[{edge_index}] must be a table")
-            _reject_unknown(
+            _collect_unknown(
+                losses,
                 f"{context}.edges[{edge_index}]",
                 edge,
                 LEGACY_EDGE_FIELDS,
@@ -339,13 +344,13 @@ def _translate_scopes(raw: list[Any]) -> list[dict[str, Any]]:
     return scopes
 
 
-def _translate_invariants(raw: list[Any]) -> list[dict[str, Any]]:
+def _translate_invariants(raw: list[Any], losses: list[str]) -> list[dict[str, Any]]:
     invariants: list[dict[str, Any]] = []
     for index, value in enumerate(raw):
         if not isinstance(value, dict):
             raise MurlocsError(f"legacy invariant[{index}] must be a table")
         context = f"legacy invariant[{index}]"
-        _reject_unknown(context, value, LEGACY_INVARIANT_FIELDS)
+        _collect_unknown(losses, context, value, LEGACY_INVARIANT_FIELDS)
         verification = _string(value, "verification", context=context)
         try:
             canonical_verification = VERIFICATION_MAPPING[verification]
@@ -360,21 +365,21 @@ def _translate_invariants(raw: list[Any]) -> list[dict[str, Any]]:
             "severity": _string(value, "severity", context=context),
             "verification": canonical_verification,
         }
-        for optional in ("enforced_by", "evidence_file", "anchor"):
+        for optional in ("enforced_by", "evidence_file", "anchor", "proof_contains"):
             if value.get(optional) is not None:
                 translated[optional] = str(value[optional])
         invariants.append(translated)
     return invariants
 
 
-def _translate_judgments(raw: Any) -> dict[str, dict[str, list[str]]]:
+def _translate_judgments(raw: Any, losses: list[str]) -> dict[str, dict[str, list[str]]]:
     if not isinstance(raw, dict):
         raise MurlocsError("legacy judgment must be a table")
     judgments: dict[str, dict[str, list[str]]] = {}
     for scope_id, value in raw.items():
         if not isinstance(value, dict):
             raise MurlocsError(f"legacy judgment {scope_id} must be a table")
-        _reject_unknown(f"legacy judgment {scope_id}", value, LEGACY_JUDGMENT_FIELDS)
+        _collect_unknown(losses, f"legacy judgment {scope_id}", value, LEGACY_JUDGMENT_FIELDS)
         judgments[str(scope_id)] = {
             key: _strings(value.get(key, []), f"legacy judgment {scope_id}.{key}")
             for key in ("advocate", "do_not", "serves")
@@ -387,6 +392,33 @@ def _reject_unknown(context: str, value: dict[str, Any], allowed: set[str]) -> N
     unknown = sorted(set(value) - allowed)
     if unknown:
         raise MurlocsError(f"{context} contains unsupported fields: {', '.join(unknown)}")
+
+
+def _collect_unknown(
+    losses: list[str], context: str, value: dict[str, Any], allowed: set[str]
+) -> None:
+    """Accumulate unsupported fields for a cumulative loss report instead of raising.
+
+    A legacy manifest can differ from the supported dialect in many places at once.
+    Recording every unsupported ``context`` field lets a single pass characterize the
+    whole remediation surface; the caller folds the accumulated set into one blocking
+    loss finding rather than aborting on the first mismatch.
+    """
+    for field_name in sorted(set(value) - allowed):
+        losses.append(f"{context}: {field_name}")
+
+
+def _loss_finding(losses: list[str]) -> TranslationFinding:
+    """Fold every accumulated unsupported field into one deterministic blocking loss."""
+    return TranslationFinding(
+        level="blocking",
+        code="unsupported-field",
+        message=(
+            "legacy constructs carry fields Murlocs cannot represent; the candidate "
+            "omits them and must not be adopted until each is resolved"
+        ),
+        subjects=tuple(sorted(losses)),
+    )
 
 
 def _table(data: dict[str, Any], key: str) -> dict[str, Any]:
@@ -493,7 +525,8 @@ def translate_layered_stewards(
     or unsupported merge behavior are refused (or reported as blocking loss) instead of being
     silently dropped.
     """
-    _reject_unknown("layered steward manifest", data, LEGACY_LAYERED_TOP_LEVEL)
+    losses: list[str] = []
+    _collect_unknown(losses, "layered steward manifest", data, LEGACY_LAYERED_TOP_LEVEL)
     decls = data["layer"]
     if len(layer_datas) != len(decls):
         raise MurlocsError("layered steward manifest layer count does not match loaded files")
@@ -509,7 +542,7 @@ def translate_layered_stewards(
     for index, (decl, layer_data) in enumerate(zip(decls, layer_datas, strict=True)):
         if not isinstance(decl, dict):
             raise MurlocsError(f"layered steward layer[{index}] must be a table")
-        _reject_unknown(f"layered steward layer[{index}]", decl, LEGACY_LAYER_DECL_FIELDS)
+        _collect_unknown(losses, f"layered steward layer[{index}]", decl, LEGACY_LAYER_DECL_FIELDS)
         layer_id = _string(decl, "id", context=f"layer[{index}]")
         if layer_id in seen_ids:
             raise MurlocsError(f"duplicate layered steward layer id: {layer_id}")
@@ -519,11 +552,13 @@ def translate_layered_stewards(
             raise MurlocsError(f"layer {layer_id} has unsupported kind: {kind}")
         owners = tuple(_strings(decl.get("owners", []), f"layer {layer_id}.owners"))
 
-        _reject_unknown(f"layer {layer_id}", layer_data, LEGACY_LAYER_FRAGMENT_FIELDS)
-        checks = _translate_checks(_table(layer_data, "check"))
-        scopes = _translate_layer_scopes(_array(layer_data, "steward"), layer_id, kind, unsupported)
-        invariants = _translate_layer_invariants(_array(layer_data, "invariant"), layer_id)
-        judgments = _translate_judgments(layer_data.get("judgment", {}))
+        _collect_unknown(losses, f"layer {layer_id}", layer_data, LEGACY_LAYER_FRAGMENT_FIELDS)
+        checks = _translate_checks(_table(layer_data, "check"), losses)
+        scopes = _translate_layer_scopes(
+            _array(layer_data, "steward"), layer_id, kind, unsupported, losses
+        )
+        invariants = _translate_layer_invariants(_array(layer_data, "invariant"), layer_id, losses)
+        judgments = _translate_judgments(layer_data.get("judgment", {}), losses)
 
         missing_anchors.extend(
             name for name, check in checks.items() if not check.get("proof_contains")
@@ -598,6 +633,8 @@ def translate_layered_stewards(
                 subjects=tuple(unsupported),
             )
         )
+    if losses:
+        findings.append(_loss_finding(losses))
 
     manifest: dict[str, Any] = {
         "schema_version": 1,
@@ -624,14 +661,14 @@ def translate_layered_stewards(
 
 
 def _translate_layer_scopes(
-    raw: list[Any], layer_id: str, kind: str, unsupported: list[str]
+    raw: list[Any], layer_id: str, kind: str, unsupported: list[str], losses: list[str]
 ) -> list[dict[str, Any]]:
     scopes: list[dict[str, Any]] = []
     for index, value in enumerate(raw):
         if not isinstance(value, dict):
             raise MurlocsError(f"layer {layer_id} steward[{index}] must be a table")
         context = f"layer {layer_id} steward[{index}]"
-        _reject_unknown(context, value, LEGACY_LAYER_STEWARD_FIELDS)
+        _collect_unknown(losses, context, value, LEGACY_LAYER_STEWARD_FIELDS)
         override = bool(value.get("override", False))
         clean = {k: v for k, v in value.items() if k != "override"}
         if override and kind != "overlay":
@@ -643,43 +680,45 @@ def _translate_layer_scopes(
             if "guardrails" in clean:
                 scope["guardrails"] = _strings(clean["guardrails"], f"{context}.guardrails")
             if "edges" in clean:
-                scope["edges"] = _translated_edges(clean["edges"], context)
+                scope["edges"] = _translated_edges(clean["edges"], context, losses)
             if "owns" in clean:
                 scope["owns"] = _translated_owns(clean["owns"], context)
             scopes.append(scope)
             continue
-        [translated] = _translate_scopes([clean])
+        [translated] = _translate_scopes([clean], losses)
         if override:
             translated["override"] = True
         scopes.append(translated)
     return scopes
 
 
-def _translate_layer_invariants(raw: list[Any], layer_id: str) -> list[dict[str, Any]]:
+def _translate_layer_invariants(
+    raw: list[Any], layer_id: str, losses: list[str]
+) -> list[dict[str, Any]]:
     prepared: list[Any] = []
     overrides: list[bool] = []
     for index, value in enumerate(raw):
         if not isinstance(value, dict):
             raise MurlocsError(f"layer {layer_id} invariant[{index}] must be a table")
-        _reject_unknown(
-            f"layer {layer_id} invariant[{index}]", value, LEGACY_LAYER_INVARIANT_FIELDS
+        _collect_unknown(
+            losses, f"layer {layer_id} invariant[{index}]", value, LEGACY_LAYER_INVARIANT_FIELDS
         )
         overrides.append(bool(value.get("override", False)))
         prepared.append({k: v for k, v in value.items() if k != "override"})
-    invariants = _translate_invariants(prepared)
+    invariants = _translate_invariants(prepared, losses)
     for invariant, override in zip(invariants, overrides, strict=True):
         if override:
             invariant["override"] = True
     return invariants
 
 
-def _translated_edges(edges: Any, context: str) -> list[dict[str, Any]]:
+def _translated_edges(edges: Any, context: str, losses: list[str]) -> list[dict[str, Any]]:
     if not isinstance(edges, list):
         raise MurlocsError(f"{context}.edges must be an array")
     for edge_index, edge in enumerate(edges):
         if not isinstance(edge, dict):
             raise MurlocsError(f"{context}.edges[{edge_index}] must be a table")
-        _reject_unknown(f"{context}.edges[{edge_index}]", edge, LEGACY_EDGE_FIELDS)
+        _collect_unknown(losses, f"{context}.edges[{edge_index}]", edge, LEGACY_EDGE_FIELDS)
     return deepcopy(edges)
 
 

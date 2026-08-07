@@ -1,0 +1,4 @@
+# Reusable scope template - an out-of-scope sidecar construct.
+[archetype]
+id = "python-infra"
+owns = { code = ["src/"], tests = ["tests/"] }

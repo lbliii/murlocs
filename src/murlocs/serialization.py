@@ -111,7 +111,7 @@ def render_manifest_data(data: dict[str, Any]) -> str:
                 f"verification = {_quote(invariant['verification'])}",
             ]
         )
-        for optional in ("enforced_by", "evidence_file", "anchor"):
+        for optional in ("enforced_by", "evidence_file", "anchor", "proof_contains"):
             if invariant.get(optional) is not None:
                 lines.append(f"{optional} = {_quote(invariant[optional])}")
         _append_annotation(lines, invariant.get("annotation"))
@@ -191,7 +191,7 @@ def render_fragment_data(fragment: dict[str, Any]) -> str:
             lines.append("override = true")
         for key in ("scope", "statement", "severity", "verification"):
             lines.append(f"{key} = {_quote(invariant[key])}")
-        for optional in ("enforced_by", "evidence_file", "anchor"):
+        for optional in ("enforced_by", "evidence_file", "anchor", "proof_contains"):
             if invariant.get(optional) is not None:
                 lines.append(f"{optional} = {_quote(invariant[optional])}")
         _append_annotation(lines, invariant.get("annotation"))

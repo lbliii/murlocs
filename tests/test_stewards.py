@@ -8,10 +8,10 @@ from pathlib import Path
 
 import pytest
 
-from murlocs.errors import MurlocsError
 from murlocs.manifest import parse_manifest_data
 from murlocs.model import Check
 from murlocs.render import render_outputs
+from murlocs.serialization import render_manifest_data
 from murlocs.stewards import translate_stewards_manifest
 from murlocs.verify import normalize_severity, proof_anchor_advisories, validate
 from tests.support import initialize_repo, invoke
@@ -89,12 +89,21 @@ def test_translated_maps_expose_context_network_commands_and_judgment(tmp_path):
     assert "## Serves" in compiler
 
 
-def test_translation_rejects_unknown_legacy_fields():
+def test_translation_reports_unknown_fields_as_cumulative_blocking_loss():
     source = load_fixture("chirp")
     source["silent_loss"] = True
+    source["also_unknown"] = 1
 
-    with pytest.raises(MurlocsError, match="unsupported fields: silent_loss"):
-        translate_stewards_manifest(source)
+    result = translate_stewards_manifest(source)
+
+    # The translator no longer fail-fasts on the first unknown key; it accumulates
+    # every unsupported field into one deterministic blocking loss finding.
+    blocking = [f for f in result.findings if f.level == "blocking"]
+    assert [f.code for f in blocking] == ["unsupported-field"]
+    assert blocking[0].subjects == (
+        "legacy manifest: also_unknown",
+        "legacy manifest: silent_loss",
+    )
 
 
 def test_missing_check_anchor_is_explicit_proof_debt(tmp_path):
@@ -193,6 +202,46 @@ def test_scope_invariant_requirement_is_configurable(tmp_path):
     )
 
 
+def load_exotic() -> dict:
+    return tomllib.loads((FIXTURES / "legacy_exotic" / "manifest.toml").read_text(encoding="utf-8"))
+
+
+def test_exotic_manifest_names_every_unsupported_field_in_one_pass():
+    result = translate_stewards_manifest(load_exotic())
+
+    blocking = [f for f in result.findings if f.level == "blocking"]
+    assert [f.code for f in blocking] == ["unsupported-field"]
+    # Every offending (construct, field) pair is named, not just the first check the
+    # translator happens to reach. The report is deterministic (sorted).
+    assert blocking[0].subjects == (
+        "legacy check arch-isolation: kind",
+        "legacy check arch-isolation: proves",
+        "legacy check contract-suite: kind",
+        "legacy check contract-suite: proves",
+    )
+
+
+def test_invariant_proof_contains_is_supported_and_round_trips(tmp_path):
+    result = translate_stewards_manifest(load_exotic())
+
+    # proof_contains on invariants is preserved (the allowlist is reconciled with
+    # checks), rather than dropped silently or reported as loss.
+    anchors = {inv["id"]: inv.get("proof_contains") for inv in result.manifest["invariants"]}
+    assert anchors == {
+        "arch-boundaries": "ArchBoundaryError",
+        "contract-enforced": "assert_contract",
+    }
+    # It survives serialization and parses back onto the typed model.
+    toml = render_manifest_data(result.manifest)
+    assert 'proof_contains = "ArchBoundaryError"' in toml
+    manifest = parse_manifest_data(tmp_path, tomllib.loads(toml))
+    parsed = {inv.id: inv.proof_contains for inv in manifest.invariants}
+    assert parsed == {
+        "arch-boundaries": "ArchBoundaryError",
+        "contract-enforced": "assert_contract",
+    }
+
+
 def _manifest_with_checks(tmp_path, checks):
     translated = translate_stewards_manifest(load_fixture("chirp"))
     manifest = parse_manifest_data(tmp_path, translated.manifest)
@@ -272,9 +321,7 @@ def test_check_surfaces_breadth_advisory_without_changing_exit_code(tmp_path):
     (tests_dir / "test_alpha.py").write_text(
         "def test_headline_contract(): pass\n", encoding="utf-8"
     )
-    (tests_dir / "test_beta.py").write_text(
-        "def test_secondary(): pass\n", encoding="utf-8"
-    )
+    (tests_dir / "test_beta.py").write_text("def test_secondary(): pass\n", encoding="utf-8")
     manifest_path = root / ".murlocs" / "manifest.toml"
     manifest_path.write_text(
         manifest_path.read_text(encoding="utf-8")

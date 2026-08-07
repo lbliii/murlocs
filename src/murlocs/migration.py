@@ -93,55 +93,44 @@ def inventory_repository(root: Path) -> dict[str, Any]:
 
     legacy = root / ".stewards" / "manifest.toml"
     summary: dict[str, Any] | None = None
-    if legacy.is_file():
-        data = tomllib.loads(legacy.read_text(encoding="utf-8"))
-        if is_layered_steward(data):
-            translated = translate_layered_stewards(data, _read_steward_layers(root, data))
-            resolved = translated.manifest
-            scopes = sum(
-                1
-                for layer in translated.layers
-                for scope in layer.fragment.get("scopes", [])
-                if not scope.get("override")
-            )
-            invariants = sum(
-                1
-                for layer in translated.layers
-                for invariant in layer.fragment.get("invariants", [])
-                if not invariant.get("override")
-            )
-            checks = sum(len(layer.fragment.get("checks", {})) for layer in translated.layers)
-            summary = {
-                "network": resolved["network"],
-                "scopes": scopes,
-                "invariants": invariants,
-                "checks": checks,
-                "layered": True,
-                "layers": [
-                    {"id": layer.id, "kind": layer.kind, "owners": list(layer.owners)}
-                    for layer in translated.layers
-                ],
-                "proof_debt": sum(
-                    len(finding.subjects)
-                    for finding in translated.findings
-                    if finding.level == "debt"
-                ),
-            }
-        else:
-            translated = translate_stewards_manifest(data)
-            summary = {
-                "network": translated.manifest["network"],
-                "scopes": len(translated.manifest["scopes"]),
-                "invariants": len(translated.manifest["invariants"]),
-                "checks": len(translated.manifest["checks"]),
-                "layered": False,
-                "layers": [],
-                "proof_debt": sum(
-                    len(finding.subjects)
-                    for finding in translated.findings
-                    if finding.level == "debt"
-                ),
-            }
+    untranslatable: list[dict[str, Any]] = []
+    sidecars: list[dict[str, str]] = []
+    if (root / ".stewards").is_dir():
+        declared: set[str] = set()
+        if legacy.is_file():
+            try:
+                data = tomllib.loads(legacy.read_text(encoding="utf-8"))
+            except (tomllib.TOMLDecodeError, OSError, ValueError) as exc:
+                untranslatable.append(
+                    {
+                        "level": "blocking",
+                        "code": "unreadable-manifest",
+                        "message": f"legacy manifest could not be parsed: {exc}",
+                        "subjects": [],
+                    }
+                )
+            else:
+                if isinstance(data.get("layer"), list):
+                    declared = {
+                        str(decl.get("path", ""))
+                        for decl in data["layer"]
+                        if isinstance(decl, dict)
+                    }
+                try:
+                    summary, blocking = _legacy_summary(root, data)
+                    untranslatable.extend(blocking)
+                except (MurlocsError, OSError, ValueError, KeyError, TypeError) as exc:
+                    # A read-only survey degrades gracefully: it lists what it can and
+                    # names what it cannot, but never aborts with nothing.
+                    untranslatable.append(
+                        {
+                            "level": "blocking",
+                            "code": "MURLOCS_INVENTORY",
+                            "message": str(exc),
+                            "subjects": [],
+                        }
+                    )
+        sidecars = _steward_sidecars(root, declared)
     annotations: list[dict[str, object]] = []
     if (root / ".murlocs" / "manifest.toml").is_file():
         try:
@@ -154,6 +143,8 @@ def inventory_repository(root: Path) -> dict[str, Any]:
         "root": str(root),
         "instructions": instructions,
         "legacy_stewards": summary,
+        "sidecars": sidecars,
+        "untranslatable": untranslatable,
         "murlocs": {
             "manifest": (root / ".murlocs" / "manifest.toml").is_file(),
             "lock": (root / LOCK_PATH).is_file(),
@@ -166,6 +157,110 @@ def inventory_repository(root: Path) -> dict[str, Any]:
         ],
         "annotations": annotations,
     }
+
+
+def _legacy_summary(
+    root: Path, data: dict[str, Any]
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Summarize a legacy manifest, counting what translates and naming what is lost."""
+    if is_layered_steward(data):
+        translated = translate_layered_stewards(data, _read_steward_layers(root, data))
+        scopes = sum(
+            1
+            for layer in translated.layers
+            for scope in layer.fragment.get("scopes", [])
+            if not scope.get("override")
+        )
+        invariants = sum(
+            1
+            for layer in translated.layers
+            for invariant in layer.fragment.get("invariants", [])
+            if not invariant.get("override")
+        )
+        checks = sum(len(layer.fragment.get("checks", {})) for layer in translated.layers)
+        summary = {
+            "network": translated.manifest["network"],
+            "scopes": scopes,
+            "invariants": invariants,
+            "checks": checks,
+            "layered": True,
+            "layers": [
+                {"id": layer.id, "kind": layer.kind, "owners": list(layer.owners)}
+                for layer in translated.layers
+            ],
+            "proof_debt": sum(
+                len(finding.subjects) for finding in translated.findings if finding.level == "debt"
+            ),
+        }
+    else:
+        translated = translate_stewards_manifest(data)
+        summary = {
+            "network": translated.manifest["network"],
+            "scopes": len(translated.manifest["scopes"]),
+            "invariants": len(translated.manifest["invariants"]),
+            "checks": len(translated.manifest["checks"]),
+            "layered": False,
+            "layers": [],
+            "proof_debt": sum(
+                len(finding.subjects) for finding in translated.findings if finding.level == "debt"
+            ),
+        }
+    blocking = [_finding_dict(item) for item in translated.findings if item.level == "blocking"]
+    return summary, blocking
+
+
+def _steward_sidecars(root: Path, declared: set[str]) -> list[dict[str, str]]:
+    """List legacy constructs beside manifest.toml that Murlocs does not model.
+
+    Archetype templates, portability kits, and back-reference resolvers are out of
+    scope for translation. Surfacing them keeps the exotic subsystems from being
+    silently invisible to an operator surveying a repository.
+    """
+    stewards_dir = root / ".stewards"
+    if not stewards_dir.is_dir():
+        return []
+    modeled = {".stewards/manifest.toml", ".stewards/PROTOCOL.md"} | declared
+    sidecars: list[dict[str, str]] = []
+    for path in sorted(stewards_dir.rglob("*")):
+        if not path.is_file():
+            continue
+        relative = relative_posix(root, path)
+        if relative in modeled:
+            continue
+        sidecars.append({"path": relative, "construct": _classify_sidecar(relative)})
+    return sidecars
+
+
+def _classify_sidecar(relative: str) -> str:
+    name = relative.rsplit("/", 1)[-1]
+    if "/archetypes/" in relative:
+        return "archetype"
+    if name == "kit.toml":
+        return "portability-kit"
+    if name == "refs.py":
+        return "ref-resolver"
+    if name.endswith(".py"):
+        return "script"
+    if name.endswith(".toml"):
+        return "toml"
+    if name.endswith(".md"):
+        return "guidance-doc"
+    return "other"
+
+
+def _sidecar_finding(sidecars: list[dict[str, str]]) -> TranslationFinding | None:
+    """Name every out-of-scope sidecar so the loss report never omits one silently."""
+    if not sidecars:
+        return None
+    return TranslationFinding(
+        level="info",
+        code="out-of-scope-sidecar",
+        message=(
+            "legacy sidecar constructs are not modeled by Murlocs; they are reported "
+            "as out of scope and left untranslated rather than silently ignored"
+        ),
+        subjects=tuple(f"{item['path']} ({item['construct']})" for item in sidecars),
+    )
 
 
 def _read_steward_manifest(root: Path) -> tuple[dict[str, Any], str]:
@@ -197,11 +292,12 @@ def candidate_from_stewards(root: Path) -> MigrationCandidate:
         return _layered_candidate(root, data, protocol_text)
     translated = translate_stewards_manifest(data)
     translated.manifest["protocol"] = ".murlocs/PROTOCOL.md"
+    findings = _with_sidecars(translated.findings, _steward_sidecars(root, set()))
     return MigrationCandidate(
         manifest=translated.manifest,
         manifest_toml=render_manifest_data(translated.manifest),
         protocol_text=protocol_text,
-        findings=translated.findings,
+        findings=findings,
     )
 
 
@@ -235,6 +331,13 @@ def _layered_candidate(root: Path, data: dict[str, Any], protocol_text: str) -> 
         fragments.append(layer.fragment)
         layer_files.append((layer.murlocs_path, render_fragment_data(layer.fragment)))
 
+    declared = {
+        str(decl["path"])
+        for decl in data.get("layer", [])
+        if isinstance(decl, dict) and "path" in decl
+    }
+    findings = _with_sidecars(translated.findings, _steward_sidecars(root, declared))
+
     # Unsupported composition is reported as blocking loss; do not resolve it into a model.
     blocking = any(finding.level == "blocking" for finding in translated.findings)
     if blocking:
@@ -242,7 +345,7 @@ def _layered_candidate(root: Path, data: dict[str, Any], protocol_text: str) -> 
             manifest=root_manifest,
             manifest_toml=render_manifest_data(root_manifest),
             protocol_text=protocol_text,
-            findings=translated.findings,
+            findings=findings,
             layered=True,
             layer_files=tuple(layer_files),
         )
@@ -251,7 +354,7 @@ def _layered_candidate(root: Path, data: dict[str, Any], protocol_text: str) -> 
         manifest=root_manifest,
         manifest_toml=render_manifest_data(root_manifest),
         protocol_text=protocol_text,
-        findings=translated.findings,
+        findings=findings,
         layered=True,
         layer_files=tuple(layer_files),
         resolved_data=resolved.data,
@@ -553,6 +656,16 @@ def _read_state(path: Path) -> dict[str, Any]:
     if not isinstance(data, dict):
         raise MurlocsError(f"migration state is not a JSON object: {path.name}")
     return data
+
+
+def _with_sidecars(
+    findings: tuple[TranslationFinding, ...], sidecars: list[dict[str, str]]
+) -> tuple[TranslationFinding, ...]:
+    """Append the out-of-scope sidecar finding so import never omits one silently."""
+    sidecar = _sidecar_finding(sidecars)
+    if sidecar is None:
+        return findings
+    return (*findings, sidecar)
 
 
 def _finding_dict(finding: TranslationFinding) -> dict[str, Any]:

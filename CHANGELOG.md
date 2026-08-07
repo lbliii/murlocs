@@ -30,6 +30,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). While the
 
 ### Changed
 
+- Legacy `.stewards` import now accumulates a complete loss report for every
+  unsupported field in one pass instead of fail-fasting on the first, and
+  `inventory`/`import` name sidecar constructs (extra `.toml` files,
+  `archetypes/`, `refs.py`) as explicit out-of-scope entries rather than
+  omitting them silently. Invariant `proof_contains` is now translated alongside
+  the other proof wiring fields.
 - The `Documentation` project URL now points at the published Pages site,
   `https://lbliii.github.io/murlocs/`, instead of a Markdown blob on GitHub.
 
