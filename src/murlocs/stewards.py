@@ -542,9 +542,7 @@ def translate_layered_stewards(
     for index, (decl, layer_data) in enumerate(zip(decls, layer_datas, strict=True)):
         if not isinstance(decl, dict):
             raise MurlocsError(f"layered steward layer[{index}] must be a table")
-        _collect_unknown(
-            losses, f"layered steward layer[{index}]", decl, LEGACY_LAYER_DECL_FIELDS
-        )
+        _collect_unknown(losses, f"layered steward layer[{index}]", decl, LEGACY_LAYER_DECL_FIELDS)
         layer_id = _string(decl, "id", context=f"layer[{index}]")
         if layer_id in seen_ids:
             raise MurlocsError(f"duplicate layered steward layer id: {layer_id}")

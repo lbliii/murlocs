@@ -1978,9 +1978,7 @@ def inventory_command(
         f"untranslatable: {item['code']} ({len(item['subjects'])}) — {item['message']}"
         for item in untranslatable
     )
-    lines.extend(
-        f"out-of-scope sidecar: {item['path']} ({item['construct']})" for item in sidecars
-    )
+    lines.extend(f"out-of-scope sidecar: {item['path']} ({item['construct']})" for item in sidecars)
     annotations = cast(list[AnnotationProvenancePayload], inventory["annotations"])
     lines.extend(_annotation_terminal_lines(annotations))
     # A zero exit is reserved for a fully clean survey: no untranslatable constructs

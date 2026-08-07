@@ -189,9 +189,7 @@ def _legacy_summary(
                 for layer in translated.layers
             ],
             "proof_debt": sum(
-                len(finding.subjects)
-                for finding in translated.findings
-                if finding.level == "debt"
+                len(finding.subjects) for finding in translated.findings if finding.level == "debt"
             ),
         }
     else:
@@ -204,9 +202,7 @@ def _legacy_summary(
             "layered": False,
             "layers": [],
             "proof_debt": sum(
-                len(finding.subjects)
-                for finding in translated.findings
-                if finding.level == "debt"
+                len(finding.subjects) for finding in translated.findings if finding.level == "debt"
             ),
         }
     blocking = [_finding_dict(item) for item in translated.findings if item.level == "blocking"]

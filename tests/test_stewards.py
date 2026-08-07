@@ -203,9 +203,7 @@ def test_scope_invariant_requirement_is_configurable(tmp_path):
 
 
 def load_exotic() -> dict:
-    return tomllib.loads(
-        (FIXTURES / "legacy_exotic" / "manifest.toml").read_text(encoding="utf-8")
-    )
+    return tomllib.loads((FIXTURES / "legacy_exotic" / "manifest.toml").read_text(encoding="utf-8"))
 
 
 def test_exotic_manifest_names_every_unsupported_field_in_one_pass():
@@ -323,9 +321,7 @@ def test_check_surfaces_breadth_advisory_without_changing_exit_code(tmp_path):
     (tests_dir / "test_alpha.py").write_text(
         "def test_headline_contract(): pass\n", encoding="utf-8"
     )
-    (tests_dir / "test_beta.py").write_text(
-        "def test_secondary(): pass\n", encoding="utf-8"
-    )
+    (tests_dir / "test_beta.py").write_text("def test_secondary(): pass\n", encoding="utf-8")
     manifest_path = root / ".murlocs" / "manifest.toml"
     manifest_path.write_text(
         manifest_path.read_text(encoding="utf-8")
