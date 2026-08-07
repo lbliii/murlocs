@@ -538,8 +538,7 @@ class LifecycleAdapterDriver:
             fallback=[],
             next_actions=[],
             blocking=(
-                resolution == "deterministic_repair"
-                and request["event"] not in CONTINUOUS_SURFACES
+                resolution == "deterministic_repair" and request["event"] not in CONTINUOUS_SURFACES
             ),
         )
         return {"trusted_context": trusted, "response": response}

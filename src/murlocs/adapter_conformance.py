@@ -31,9 +31,7 @@ EVENTS = (
     "pre-commit",
     "pre-completion",
 )
-CONTINUOUS_SURFACES = frozenset(
-    {"task-start", "prospective-impact", "post-edit", "pre-completion"}
-)
+CONTINUOUS_SURFACES = frozenset({"task-start", "prospective-impact", "post-edit", "pre-completion"})
 DISCRETE_BOUNDARIES = frozenset({"pre-commit"})
 EMPTY_CHANGE_SET = "empty"
 EVENT_MODES = {"host-enforced", "prompt-mediated", "unavailable"}

@@ -54,9 +54,7 @@ def parse_acceptance_anchor(value: str) -> ParsedAcceptanceAnchor:
     """Parse ``adapter:reference`` such as ``pytest:issue(206)``."""
     match = _ANCHOR.match(value.strip())
     if match is None:
-        raise ValueError(
-            "acceptance must be adapter:reference, for example pytest:issue(206)"
-        )
+        raise ValueError("acceptance must be adapter:reference, for example pytest:issue(206)")
     adapter, reference = match.groups()
     if not reference:
         raise ValueError("acceptance reference must not be empty")
@@ -88,7 +86,9 @@ def _module_level_issue_markers(tree: ast.Module) -> list[int]:
             targets = [node.target]
         else:
             continue
-        if not any(isinstance(target, ast.Name) and target.id == "pytestmark" for target in targets):
+        if not any(
+            isinstance(target, ast.Name) and target.id == "pytestmark" for target in targets
+        ):
             continue
         value = node.value
         marks: Iterable[ast.expr]
@@ -116,7 +116,9 @@ def _collect_from_body(
 ) -> None:
     for node in body:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            own = {number for dec in node.decorator_list for number in _issue_args_from_decorator(dec)}
+            own = {
+                number for dec in node.decorator_list for number in _issue_args_from_decorator(dec)
+            }
             for issue in own | inherited:
                 record(issue, f"{rel}::{_qualname(stack, node.name)}")
         elif isinstance(node, ast.ClassDef):

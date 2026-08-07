@@ -107,9 +107,17 @@ def test_collect_pytest_issue_tests_discovers_function_class_and_module_markers(
     assert "issue(10)" in discovered
     assert "issue(11)" in discovered
     assert "issue(12)" in discovered
-    assert any("test_module_marker.py::test_module_level" in item.location for item in discovered["issue(10)"])
-    assert any("test_class_marker.py::TestIssue::test_in_class" in item.location for item in discovered["issue(11)"])
-    assert any("test_issue_12.py::test_proves_issue" in item.location for item in discovered["issue(12)"])
+    assert any(
+        "test_module_marker.py::test_module_level" in item.location
+        for item in discovered["issue(10)"]
+    )
+    assert any(
+        "test_class_marker.py::TestIssue::test_in_class" in item.location
+        for item in discovered["issue(11)"]
+    )
+    assert any(
+        "test_issue_12.py::test_proves_issue" in item.location for item in discovered["issue(12)"]
+    )
 
 
 def test_acceptance_anchor_findings_reports_missing_executable_test(tmp_path: Path):
@@ -196,7 +204,7 @@ def test_check_command_surfaces_missing_acceptance_anchor(tmp_path: Path):
     (root / ".murlocs" / "manifest.toml").write_text(
         "\n".join(
             [
-                'schema_version = 1',
+                "schema_version = 1",
                 'network = "Fixture"',
                 'protocol = ".murlocs/PROTOCOL.md"',
                 "",

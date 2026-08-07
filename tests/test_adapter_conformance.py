@@ -91,7 +91,9 @@ class FixtureAdapter(AdapterDriver):
         if control.get("change_set") == EMPTY_CHANGE_SET:
             return {
                 "trusted_context": trusted,
-                "response": self._empty_change_set_response(request, trusted, cache=control["cache"]),
+                "response": self._empty_change_set_response(
+                    request, trusted, cache=control["cache"]
+                ),
             }
         if "impact" in calls:
             trusted["impact_dependency_id"] = dependency_before

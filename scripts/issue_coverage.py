@@ -70,10 +70,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.issue is not None:
         locations = coverage.get(args.issue, [])
         if not locations:
-            print(
-                f"#{args.issue}: no acceptance test "
-                f"(@pytest.mark.issue({args.issue})) found."
-            )
+            print(f"#{args.issue}: no acceptance test (@pytest.mark.issue({args.issue})) found.")
             return 0
         print(f"#{args.issue}: {len(locations)} acceptance test(s)")
         for location in locations:

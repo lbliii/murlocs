@@ -10,6 +10,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). While the
 
 ### Added
 
+- Adapter conformance invariant so continuous lifecycle surfaces never block or
+  gate on empty change sets; Claude and Copilot adapters updated accordingly
+  (#203).
+- Deterministic generator and checked-in fixture for every agent-facing
+  discovery surface (CLI, MCP, llms.txt, skills, generated guidance, docs) with
+  drift tests (#120).
+- Offline acceptance anchors for work items: `work_items` in manifest layers,
+  pytest `@pytest.mark.issue(N)` discovery, and `issue_coverage.py` check
+  integration (#206).
+- Source annotation impact routing (policy v3) for attachment changes across
+  paths and revisions, with CLI rendering and fixtures (#88).
 - Intent-shaped read-only task commands `orient`, `review-changes`, and `finish`
   over the existing primitives, on the CLI, MCP, and discovery surfaces. They
   share one versioned `io.murlocs.task` composition envelope

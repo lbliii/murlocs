@@ -1352,9 +1352,10 @@ def test_annotation_explicit_path_is_conservative_path_only_routing(tmp_path):
     }
     assert by_id(report, "api")["status"] == "required"
     assert any("path-only evidence" in item for item in by_id(report, "api")["reasons"])
-    assert "does not claim that guidance is false" in invoke(
-        "impact", "--path", "src/api/app/service.py", "--repo", str(root)
-    ).output
+    assert (
+        "does not claim that guidance is false"
+        in invoke("impact", "--path", "src/api/app/service.py", "--repo", str(root)).output
+    )
 
 
 def test_annotation_revision_reports_move_without_claiming_semantic_staleness(tmp_path):
@@ -1382,13 +1383,9 @@ def test_annotation_revision_reports_move_without_claiming_semantic_staleness(tm
             "after": [{"file": "src/api/app/service.py", "line": 2}],
         }
     ]
-    reason = next(
-        item for item in by_id(report, "api")["reasons"] if "attachment moved" in item
-    )
+    reason = next(item for item in by_id(report, "api")["reasons"] if "attachment moved" in item)
     assert "does not assert that the invariant is semantically false" in reason
-    terminal = invoke(
-        "impact", "--revision-range", "HEAD", "--repo", str(root)
-    ).output
+    terminal = invoke("impact", "--revision-range", "HEAD", "--repo", str(root)).output
     assert "Annotation comparison: compared" in terminal
     assert "api.marker: moved" in terminal
 
@@ -1434,9 +1431,7 @@ def test_annotation_revision_reports_declaration_change_and_surface_parity(tmp_p
         '# murlocs:annotation/v1 evidence "api.changed"\nVALUE = 1\n', encoding="utf-8"
     )
 
-    terminal = invoke(
-        "impact", "--revision-range", "HEAD", "--repo", str(root), "--format", "json"
-    )
+    terminal = invoke("impact", "--revision-range", "HEAD", "--repo", str(root), "--format", "json")
     assert terminal.exit_code == 0
     report = json.loads(terminal.output)
     assert report == build_cli().call("impact", repo=str(root), revision_range="HEAD")
@@ -1563,9 +1558,7 @@ def test_annotation_revision_git_reads_are_no_lazy_fetch_bounded_and_no_replace(
 
     monkeypatch.setattr(impact_module.subprocess, "run", observe)
     structured(root, revision_range="HEAD")
-    impact_module._revision_mentions_global_guidance(
-        root, "HEAD", ".murlocs/layers/api.toml"
-    )
+    impact_module._revision_mentions_global_guidance(root, "HEAD", ".murlocs/layers/api.toml")
 
     assert calls
     for command, kwargs in calls:

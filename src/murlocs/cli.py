@@ -10,6 +10,7 @@ from typing import Annotated, Any, Literal, NotRequired, TypedDict, cast
 from milo import CLI, Context, Option, Positional
 
 from murlocs import __version__
+from murlocs.acceptance import acceptance_anchor_findings
 from murlocs.adoption import adoption_status
 from murlocs.cli_result import CommandResult
 from murlocs.curation import (
@@ -83,7 +84,6 @@ from murlocs.task_commands import (
     build_review_changes,
     render_task_lines,
 )
-from murlocs.acceptance import acceptance_anchor_findings
 from murlocs.verify import (
     Finding,
     annotation_findings,
@@ -1859,12 +1859,12 @@ def impact_command(
     if annotations["comparison"] != "not-requested":
         lines.extend(["", f"Annotation comparison: {annotations['comparison']}"])
         for change in annotations["changes"]:
-            before = ", ".join(
-                f"{item['file']}:{item['line']}" for item in change["before"]
-            ) or "none"
-            after = ", ".join(
-                f"{item['file']}:{item['line']}" for item in change["after"]
-            ) or "none"
+            before = (
+                ", ".join(f"{item['file']}:{item['line']}" for item in change["before"]) or "none"
+            )
+            after = (
+                ", ".join(f"{item['file']}:{item['line']}" for item in change["after"]) or "none"
+            )
             lines.append(
                 f"  {change['id']}: {change['kind']} ({before} → {after}); "
                 f"invariant={change['invariant']}"

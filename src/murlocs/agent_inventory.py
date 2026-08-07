@@ -277,7 +277,7 @@ def _build_analysis(
         description = entry["volatile"]["description"]
         by_description.setdefault(description, []).append(entry["name"])
 
-    duplicates = [
+    duplicates: list[dict[str, Any]] = [
         {
             "kind": "shared_description",
             "description": description,
