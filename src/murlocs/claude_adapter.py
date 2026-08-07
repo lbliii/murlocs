@@ -304,22 +304,25 @@ def handle(event: str, payload: Mapping[str, Any]) -> dict[str, Any]:
         return {}
     if event == "pre-completion":
         paths = _changed_paths(root)
+        if not paths:
+            # Clean tree at completion: nothing changed this turn, so there is
+            # nothing to gate.  Stop cleanly rather than blocking the agent and
+            # re-firing every turn until the host's runaway guard trips.
+            return {}
+        outcomes = _run(root, event, paths, correlation)
+        packet = _packet(outcomes)
+        blocking = any(item.get("blocking") is True for item in outcomes)
+        # Block at most once.  When Claude Code is already replaying a Stop-hook
+        # continuation, downgrade to advisory so a persistent gate cannot loop
+        # the agent into the eight-block runaway guard.
+        if blocking and not payload.get("stop_hook_active"):
+            return {
+                "decision": "block",
+                "reason": packet or "Murlocs completion evidence is unavailable.",
+            }
+        return {"systemMessage": packet} if packet else {}
     outcomes = _run(root, event, paths, correlation)
     packet = _packet(outcomes)
-    if event == "pre-completion":
-        blocking = any(item.get("blocking") is True for item in outcomes)
-        unavailable = not outcomes or any(
-            item.get("code") == "MURLOCS_ACTIVATION_UNAVAILABLE" for item in outcomes
-        )
-        if blocking or unavailable:
-            reason = packet or "Murlocs completion evidence is unavailable."
-            if payload.get("stop_hook_active") is True:
-                reason += (
-                    " Claude Code reports an active Stop-hook continuation; its eight-block "
-                    "runaway guard may ultimately override this gate."
-                )
-            return {"decision": "block", "reason": reason}
-        return {"systemMessage": packet} if packet else {}
     return _context("SessionStart" if event == "task-start" else "PostToolUse", packet)
 
 

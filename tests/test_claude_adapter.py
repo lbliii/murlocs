@@ -185,7 +185,7 @@ def test_changed_paths_include_staged_unstaged_deleted_and_untracked_nul_names(t
     assert adapter._changed_paths(root) == ["deleted.py", "modified.py", staged, untracked]
 
 
-def test_pre_completion_routes_newline_path_and_reports_active_stop_guard(
+def test_pre_completion_blocks_once_then_downgrades_under_active_stop_guard(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
     root = _repo(tmp_path)
@@ -210,13 +210,30 @@ def test_pre_completion_routes_newline_path_and_reports_active_stop_guard(
         ]
 
     monkeypatch.setattr(adapter, "_run", run)
-    response = adapter.handle(
+
+    # A fresh Stop with a blocking outcome routes the newline path and gates once.
+    first = adapter.handle("pre-completion", {"cwd": str(root), "session_id": "one"})
+    assert observed == [untracked]
+    assert first["decision"] == "block"
+    assert "MURLOCS_OUTCOME_DETERMINISTIC_REPAIR" in first["reason"]
+
+    # Once Claude Code is replaying the Stop-hook continuation, the same gate
+    # downgrades to advisory so it can never loop into the runaway guard.
+    replay = adapter.handle(
         "pre-completion",
         {"cwd": str(root), "session_id": "one", "stop_hook_active": True},
     )
-    assert observed == [untracked]
-    assert response["decision"] == "block"
-    assert "eight-block" in response["reason"]
+    assert "decision" not in replay
+    assert "MURLOCS_OUTCOME_DETERMINISTIC_REPAIR" in replay["systemMessage"]
+
+
+def test_pre_completion_on_clean_tree_stops_without_blocking(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    root = _repo(tmp_path)
+    monkeypatch.setattr(adapter, "_changed_paths", lambda _root: [])
+    monkeypatch.setattr(adapter, "_run", lambda *_args: pytest.fail("gate ran on clean tree"))
+    assert adapter.handle("pre-completion", {"cwd": str(root), "session_id": "one"}) == {}
 
 
 def test_pre_completion_preserves_advisory_context_without_blocking(
