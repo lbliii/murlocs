@@ -65,8 +65,11 @@ repository bytes. The installed suite covers:
 - absent Murlocs with Windows drive and UNC transport vectors;
 - post-edit state races and impact-dependency races;
 - unavailable, malformed-output, and deadline-timeout failures;
-- pre-completion rejection of agent-supplied state evidence; and
-- generated-guidance, Git-hook, and CI fallback delivery.
+- pre-completion rejection of agent-supplied state evidence;
+- generated-guidance, Git-hook, and CI fallback delivery; and
+- a class-level invariant that continuous surfaces (`task-start`,
+  `prospective-impact`, `post-edit`, `pre-completion`) never emit
+  `repository.blocking: true` and treat an empty change set as a silent no-op.
 
 The operation trace is separate from retained receipts. A timed-out, malformed, or stale operation
 may have run, but it cannot leave a fresh receipt. Scenario-controlled mutations are the only

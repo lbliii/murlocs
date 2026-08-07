@@ -201,7 +201,7 @@ def test_changed_paths_include_staged_unstaged_deleted_and_untracked_nul_names(t
     assert adapter._changed_paths(root) == ["deleted.py", "modified.py", staged, untracked]
 
 
-def test_pre_completion_routes_untracked_paths_and_reports_active_stop_guard(
+def test_pre_completion_surfaces_blocking_findings_without_gating(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
     root = _repo(tmp_path)
@@ -231,8 +231,8 @@ def test_pre_completion_routes_untracked_paths_and_reports_active_stop_guard(
         {"cwd": str(root), "sessionId": "one", "stop_hook_active": True},
     )
     assert observed == [untracked]
-    assert response["decision"] == "block"
-    assert "eight-block" in response["reason"]
+    assert response["decision"] == "allow"
+    assert "MURLOCS_IMPACT_REVIEW_REQUIRED" in response["reason"]
 
 
 def test_pretool_path_escape_fails_closed_with_no_operation(
@@ -263,9 +263,6 @@ def test_entrypoint_exits_nonzero_for_host_owned_failure_policy(
     assert "Murlocs adapter unavailable: boom" in capsys.readouterr().err
 
 
-def test_missing_edit_path_becomes_a_structured_remediation_packet(tmp_path: Path):
+def test_missing_edit_path_is_a_silent_no_op_on_continuous_surfaces(tmp_path: Path):
     root = _repo(tmp_path)
-    response = adapter.handle("post-edit", {"cwd": str(root), "sessionId": "one", "toolArgs": {}})
-    packet = json.loads(response["additionalContext"])
-    assert packet["outcomes"][0]["code"] == "MURLOCS_ACTIVATION_UNAVAILABLE"
-    assert packet["outcomes"][0]["next_actions"][0]["authority"] == "integration"
+    assert adapter.handle("post-edit", {"cwd": str(root), "sessionId": "one", "toolArgs": {}}) == {}

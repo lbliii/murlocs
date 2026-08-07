@@ -11,6 +11,8 @@ import pytest
 
 from murlocs.adapter_conformance import (
     ADAPTER_CONTRACT,
+    CONTINUOUS_SURFACES,
+    EMPTY_CHANGE_SET,
     REQUIRED_CAPABILITIES,
     AdapterConformanceError,
     AdapterDriver,
@@ -86,6 +88,11 @@ class FixtureAdapter(AdapterDriver):
             "token_scope": scope,
             "state_id": state_before,
         }
+        if control.get("change_set") == EMPTY_CHANGE_SET:
+            return {
+                "trusted_context": trusted,
+                "response": self._empty_change_set_response(request, trusted, cache=control["cache"]),
+            }
         if "impact" in calls:
             trusted["impact_dependency_id"] = dependency_before
         if control["cache"] in {"hit", "rejected"}:
@@ -202,7 +209,9 @@ class FixtureAdapter(AdapterDriver):
             tuple(item["operation"] for item in receipts),
         )
         resolution = None if outcome is None else outcome["resolution_class"]
-        blocking = resolution == "deterministic_repair"
+        blocking = (
+            resolution == "deterministic_repair" and request["event"] not in CONTINUOUS_SURFACES
+        )
         response = self._base_response(
             request,
             trusted,
@@ -216,6 +225,26 @@ class FixtureAdapter(AdapterDriver):
             blocking=blocking,
         )
         return {"trusted_context": trusted, "response": response}
+
+    @staticmethod
+    def _empty_change_set_response(
+        request: Mapping[str, Any],
+        trusted: Mapping[str, Any],
+        *,
+        cache: str,
+    ) -> dict[str, Any]:
+        return FixtureAdapter._base_response(
+            request,
+            trusted,
+            execution={"status": "no_changed_paths", "code": "MURLOCS_NO_CHANGED_PATHS"},
+            operations=[],
+            cache=cache,
+            outcome=None,
+            silent=True,
+            fallback=[],
+            next_actions=[],
+            blocking=False,
+        )
 
     @staticmethod
     def _cache_proof(request: Mapping[str, Any], trusted: Mapping[str, Any]) -> dict[str, Any]:
@@ -521,6 +550,14 @@ class CrashingAdapter(FixtureAdapter):
         raise RuntimeError("injected adapter crash")
 
 
+class BlockingContinuousAdapter(FixtureAdapter):
+    def invoke(self, request: Mapping[str, Any], context: ConformanceContext) -> Mapping[str, Any]:
+        observation = copy.deepcopy(super().invoke(request, context))
+        if request["event"] in CONTINUOUS_SURFACES:
+            observation["response"]["repository"]["blocking"] = True
+        return observation
+
+
 @pytest.mark.parametrize(
     ("adapter", "message"),
     [
@@ -530,6 +567,7 @@ class CrashingAdapter(FixtureAdapter):
         (ModeWritingAdapter(), "changed repository state"),
         (StaleReceiptAdapter(), "not fresh"),
         (CrashingAdapter(), "RuntimeError"),
+        (BlockingContinuousAdapter(), "blocking repository decision"),
     ],
 )
 def test_harness_detects_prompt_write_and_freshness_failures(
@@ -570,7 +608,7 @@ def test_typed_outcomes_remain_read_only_and_bound_to_receipts(tmp_path: Path):
     by_id = {item["id"]: item for item in report["scenarios"]}
     for scenario in (
         "task-start-deterministic-repair",
-        "pre-completion-deterministic-repair-blocks",
+        "pre-completion-deterministic-repair-advisory",
         "prospective-impact-agent-action",
         "prospective-impact-authority-required",
     ):

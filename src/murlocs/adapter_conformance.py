@@ -31,6 +31,11 @@ EVENTS = (
     "pre-commit",
     "pre-completion",
 )
+CONTINUOUS_SURFACES = frozenset(
+    {"task-start", "prospective-impact", "post-edit", "pre-completion"}
+)
+DISCRETE_BOUNDARIES = frozenset({"pre-commit"})
+EMPTY_CHANGE_SET = "empty"
 EVENT_MODES = {"host-enforced", "prompt-mediated", "unavailable"}
 ROOT_FORMATS = {"posix", "windows-drive", "windows-unc"}
 FALLBACKS = {"generated-guidance", "git-hook", "ci"}
@@ -54,6 +59,7 @@ OPTIONAL_CAPABILITIES = {
 EXECUTION_CODES = {
     "completed": "MURLOCS_ACTIVATION_OK",
     "not_applicable": "MURLOCS_ACTIVATION_ABSENT",
+    "no_changed_paths": "MURLOCS_NO_CHANGED_PATHS",
     "unavailable": "MURLOCS_ACTIVATION_UNAVAILABLE",
     "timeout": "MURLOCS_ACTIVATION_TIMEOUT",
     "invalid": "MURLOCS_ACTIVATION_INVALID",
@@ -387,8 +393,11 @@ def _validate_suite(value: Mapping[str, Any]) -> None:
             "cache",
             "root_format",
             "mutations",
+            "change_set",
         }:
             raise AdapterConformanceError("adapter scenario control must be an object")
+        if control.get("change_set") not in {EMPTY_CHANGE_SET, "nonempty"}:
+            raise AdapterConformanceError("adapter scenario change_set control is invalid")
         if control.get("outcome") not in {
             None,
             "pass",
@@ -533,6 +542,7 @@ def _validate_observation(
         raise AdapterConformanceError("adapter event mode does not match scenario")
     _validate_trusted_context(descriptor, trusted, request, expected)
     _validate_lifecycle_response(request, trusted, response, expected)
+    _validate_continuous_surface_gating(request, response, scenario)
     if context.operations != expected["operation_calls"]:
         raise AdapterConformanceError("adapter operation trace does not match expectation")
     if context.agent_prompted != expected["agent_prompted"]:
@@ -679,8 +689,15 @@ def _validate_lifecycle_response(
         parsed = parse_outcome(outcome)
         if parsed["resolution_class"] != expected_resolution:
             raise AdapterConformanceError("adapter outcome resolution does not match scenario")
-        if parsed["blocking"] != repository["blocking"]:
-            raise AdapterConformanceError("adapter outcome overrides lifecycle blocking")
+        lifecycle_blocking = repository["blocking"]
+        if parsed["blocking"] != lifecycle_blocking:
+            if request["event"] in CONTINUOUS_SURFACES:
+                if lifecycle_blocking is not False:
+                    raise AdapterConformanceError(
+                        "continuous surface must defer blocking to a discrete boundary"
+                    )
+            else:
+                raise AdapterConformanceError("adapter outcome overrides lifecycle blocking")
         correlation = parsed["correlation"]
         if (
             correlation["correlation_id"] != request["correlation_id"]
@@ -695,6 +712,42 @@ def _validate_lifecycle_response(
         )
         if correlation["dependency_id"] != expected_dependency:
             raise AdapterConformanceError("adapter outcome dependency token does not match receipt")
+
+
+def _validate_continuous_surface_gating(
+    request: Mapping[str, Any],
+    response: Mapping[str, Any],
+    scenario: Mapping[str, Any],
+) -> None:
+    """Continuous surfaces must never gate; empty change sets must stay silent."""
+    event = request["event"]
+    if event not in CONTINUOUS_SURFACES:
+        return
+    repository = response.get("repository")
+    if not isinstance(repository, dict):
+        return
+    blocking = repository.get("blocking")
+    if blocking is True:
+        raise AdapterConformanceError(
+            f"continuous surface {event!r} emitted a blocking repository decision"
+        )
+    if scenario["control"].get("change_set") != EMPTY_CHANGE_SET:
+        return
+    if response.get("silent") is not True:
+        raise AdapterConformanceError(
+            f"continuous surface {event!r} must be silent on an empty change set"
+        )
+    execution = response.get("execution")
+    if not isinstance(execution, dict):
+        raise AdapterConformanceError("adapter response execution is missing")
+    if execution.get("status") not in {"completed", "not_applicable", "no_changed_paths"}:
+        raise AdapterConformanceError(
+            f"continuous surface {event!r} must not fail on an empty change set"
+        )
+    if response.get("operations"):
+        raise AdapterConformanceError(
+            f"continuous surface {event!r} must not retain receipts on an empty change set"
+        )
 
 
 def _validate_fresh_receipts(
