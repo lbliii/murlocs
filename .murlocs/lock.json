@@ -39,7 +39,7 @@
       "id": "tests",
       "kind": "domain",
       "path": ".murlocs/layers/tests.toml",
-      "sha256": "591f7ee9c681ae99e7c2a4e1ce985bb93bbdcd2b4cb385dd70315db539bc7315"
+      "sha256": "2bac0829ab8cd31fdf4f925b198789dccd4fb61989ea1283500b61d9b1a811b7"
     },
     {
       "id": "bootstrap-skill",
