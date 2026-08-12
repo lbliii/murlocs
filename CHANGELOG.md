@@ -9,6 +9,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). While the
 ## [Unreleased]
 
 ### Fixed
+- Restore annotation-impact Git fallback helpers in `impact.py` after a merge conflict resolution dropped them.
 - Hotfix corrupted `tests.toml` work items, restore closure + strength APIs in `acceptance.py`, and repair `impact.py` mangled by conflict resolution during sequential PR merges.
 
 ### Added
