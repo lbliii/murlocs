@@ -109,7 +109,7 @@ def _confined_path(root: Path, raw: str) -> str | None:
         resolved_root = root.resolve(strict=True)
         resolved = target.resolve(strict=False)
         relative = resolved.relative_to(resolved_root)
-    except (OSError, ValueError):
+    except OSError, ValueError:
         return None
     return None if relative == Path() else relative.as_posix()
 

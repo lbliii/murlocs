@@ -228,18 +228,14 @@ def parse_observation_data(
         else ()
     )
     if len(guidance_refs) > MAX_GUIDANCE_REFS:
-        raise MurlocsError(
-            f"{filename}.guidance_refs exceeds limit of {MAX_GUIDANCE_REFS} entries"
-        )
+        raise MurlocsError(f"{filename}.guidance_refs exceeds limit of {MAX_GUIDANCE_REFS} entries")
     summary = _bounded_summary(data, "summary", filename)
 
     evidence_raw = _array(data, "evidence", filename)
     if not evidence_raw:
         raise MurlocsError(f"{filename}.evidence must contain at least one item")
     if len(evidence_raw) > MAX_EVIDENCE_ITEMS:
-        raise MurlocsError(
-            f"{filename}.evidence exceeds limit of {MAX_EVIDENCE_ITEMS} items"
-        )
+        raise MurlocsError(f"{filename}.evidence exceeds limit of {MAX_EVIDENCE_ITEMS} items")
     evidence: list[FrictionEvidence] = []
     for index, raw_item in enumerate(evidence_raw):
         context = f"{filename}.evidence[{index}]"
@@ -263,9 +259,7 @@ def parse_observation_data(
     metric = _choice(cost_table, "metric", COST_METRICS, f"{filename}.observed_cost")
     value = _integer(cost_table, "value", f"{filename}.observed_cost")
     if value < 0 or value > MAX_COST_VALUE:
-        raise MurlocsError(
-            f"{filename}.observed_cost.value must be between 0 and {MAX_COST_VALUE}"
-        )
+        raise MurlocsError(f"{filename}.observed_cost.value must be between 0 and {MAX_COST_VALUE}")
     bound: int | None = None
     if "bound" in cost_table:
         bound = _integer(cost_table, "bound", f"{filename}.observed_cost")
@@ -274,9 +268,7 @@ def parse_observation_data(
                 f"{filename}.observed_cost.bound must be between 0 and {MAX_COST_VALUE}"
             )
         if value > bound:
-            raise MurlocsError(
-                f"{filename}.observed_cost.value {value} exceeds bound {bound}"
-            )
+            raise MurlocsError(f"{filename}.observed_cost.value {value} exceeds bound {bound}")
 
     provenance_table = _table(data.get("provenance"), f"{filename}.provenance")
     _reject_forbidden_content(provenance_table, f"{filename}.provenance")
@@ -289,9 +281,7 @@ def parse_observation_data(
 
     proposed: ProposedResolution | None = None
     if "proposed_resolution" in data and data["proposed_resolution"] is not None:
-        resolution_table = _table(
-            data["proposed_resolution"], f"{filename}.proposed_resolution"
-        )
+        resolution_table = _table(data["proposed_resolution"], f"{filename}.proposed_resolution")
         _reject_forbidden_content(resolution_table, f"{filename}.proposed_resolution")
         _strict_fields(resolution_table, RESOLUTION_FIELDS, f"{filename}.proposed_resolution")
         intent_hint = None
@@ -340,9 +330,7 @@ def validate_observation_paths(root: Path, record: FrictionObservation) -> None:
         if item.kind != "file_anchor":
             continue
         file_part = item.reference.split("#", 1)[0]
-        _reject_path_symlinks(
-            root_resolved, file_part, label=f"evidence[{index}].reference"
-        )
+        _reject_path_symlinks(root_resolved, file_part, label=f"evidence[{index}].reference")
 
 
 def observation_payload(record: FrictionObservation) -> dict[str, Any]:
@@ -431,13 +419,10 @@ def render_observation_toml(record: FrictionObservation) -> str:
         lines.append("[proposed_resolution]")
         lines.append(f"summary = {_toml_string(record.proposed_resolution.summary)}")
         if record.proposed_resolution.intent_hint is not None:
-            lines.append(
-                f"intent_hint = {_toml_string(record.proposed_resolution.intent_hint)}"
-            )
+            lines.append(f"intent_hint = {_toml_string(record.proposed_resolution.intent_hint)}")
         if record.proposed_resolution.subject_kind_hint is not None:
             lines.append(
-                "subject_kind_hint = "
-                f"{_toml_string(record.proposed_resolution.subject_kind_hint)}"
+                f"subject_kind_hint = {_toml_string(record.proposed_resolution.subject_kind_hint)}"
             )
         lines.append("")
     return "\n".join(lines).rstrip() + "\n"
@@ -462,9 +447,7 @@ def analyze_observations(
     evidence_gap = _evidence_gap_findings(items)
     projected_pairs = [_projected_context_cost(item) for item in items]
     projected = [report for report, _findings in projected_pairs]
-    projected_findings = [
-        finding for _report, findings in projected_pairs for finding in findings
-    ]
+    projected_findings = [finding for _report, findings in projected_pairs for finding in findings]
     findings = [
         *duplication,
         *scope_findings,
@@ -512,9 +495,7 @@ def _duplication_findings(
         findings.append(
             FrictionFinding(
                 "duplicate_observation",
-                "observations "
-                + ", ".join(sorted(ids))
-                + " share signal/path/scope/summary",
+                "observations " + ", ".join(sorted(ids)) + " share signal/path/scope/summary",
             )
         )
     return findings
@@ -748,9 +729,7 @@ def _optional_scope(data: dict[str, Any], filename: str) -> str | None:
         return None
     value = _string(data, "scope", filename)
     if not SCOPE_PATTERN.fullmatch(value):
-        raise MurlocsError(
-            f"{filename}.scope must be a path-safe lowercase id; got {value!r}"
-        )
+        raise MurlocsError(f"{filename}.scope must be a path-safe lowercase id; got {value!r}")
     return value
 
 
@@ -760,9 +739,7 @@ def _safe_relative_string(data: dict[str, Any], key: str, context: str) -> str:
     return value
 
 
-def _safe_relative_string_array(
-    data: dict[str, Any], key: str, context: str
-) -> tuple[str, ...]:
+def _safe_relative_string_array(data: dict[str, Any], key: str, context: str) -> tuple[str, ...]:
     values = _string_array(data, key, context)
     for index, value in enumerate(values):
         _assert_safe_relative(value, f"{context}.{key}[{index}]")
@@ -771,12 +748,7 @@ def _safe_relative_string_array(
 
 def _assert_safe_relative(raw: str, field: str) -> None:
     candidate = Path(raw)
-    if (
-        candidate.is_absolute()
-        or ".." in candidate.parts
-        or raw.startswith("\\")
-        or "\\" in raw
-    ):
+    if candidate.is_absolute() or ".." in candidate.parts or raw.startswith("\\") or "\\" in raw:
         raise MurlocsError(f"{field} must be a safe repository-relative path: {raw}")
     if not candidate.parts or any(part in {"", ".", ".."} for part in candidate.parts):
         raise MurlocsError(f"{field} must be a safe repository-relative path: {raw}")
@@ -822,9 +794,7 @@ def _integer(data: dict[str, Any], key: str, context: str) -> int:
     return value
 
 
-def _choice(
-    data: dict[str, Any], key: str, choices: tuple[str, ...], context: str
-) -> str:
+def _choice(data: dict[str, Any], key: str, choices: tuple[str, ...], context: str) -> str:
     value = _string(data, key, context)
     if value not in choices:
         raise MurlocsError(f"{context}.{key} must be one of {', '.join(choices)}")
