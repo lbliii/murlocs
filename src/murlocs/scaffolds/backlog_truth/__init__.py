@@ -16,10 +16,10 @@ from murlocs.scaffolds.backlog_truth.kit import (
 )
 
 __all__ = [
+    "KIT_FILES",
     "KIT_ID",
     "KIT_VERSION",
     "PIECES",
-    "KIT_FILES",
     "KitFile",
     "KitPiece",
     "KitStatus",

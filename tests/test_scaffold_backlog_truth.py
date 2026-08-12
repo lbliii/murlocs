@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -21,7 +22,7 @@ def test_scaffold_dry_run_writes_nothing(tmp_path: Path):
     root = _empty_repo(tmp_path)
 
     result = invoke(
-        "--dry-run",
+        "-n",
         "scaffold",
         "backlog-truth",
         "--repo",
@@ -31,7 +32,7 @@ def test_scaffold_dry_run_writes_nothing(tmp_path: Path):
     )
 
     assert result.exit_code == 0
-    payload = result.data
+    payload = json.loads(result.output)
     assert payload["ok"] is True
     assert payload["dry_run"] is True
     assert payload["written"]
@@ -45,7 +46,7 @@ def test_scaffold_apply_on_empty_repo_stamps_kit_and_reports_current(tmp_path: P
 
     applied = invoke("scaffold", "backlog-truth", "--repo", str(root), "--format", "json")
     assert applied.exit_code == 0, applied.stderr
-    payload = applied.data
+    payload = json.loads(applied.output)
     assert payload["ok"] is True
     assert payload["kit"] == "backlog_truth"
     assert set(payload["pieces"]) == {
@@ -71,9 +72,9 @@ def test_scaffold_apply_on_empty_repo_stamps_kit_and_reports_current(tmp_path: P
 
     status = invoke("scaffold", "status", "--repo", str(root), "--format", "json")
     assert status.exit_code == 0
-    assert status.data["present"] is True
-    assert status.data["current"] is True
-    assert status.data["state"] == "current"
+    assert json.loads(status.output)["present"] is True
+    assert json.loads(status.output)["current"] is True
+    assert json.loads(status.output)["state"] == "current"
 
 
 @pytest.mark.issue(210)
@@ -91,7 +92,7 @@ def test_scaffold_pieces_are_individually_adoptable(tmp_path: Path):
         "json",
     )
     assert result.exit_code == 0
-    assert result.data["pieces"] == ["templates"]
+    assert json.loads(result.output)["pieces"] == ["templates"]
     assert (root / ".github" / "ISSUE_TEMPLATE" / "saga.yml").is_file()
     assert not (root / ".github" / "labels.yml").exists()
     assert not (root / ".github" / "workflows").exists()
@@ -136,21 +137,23 @@ def test_scaffold_records_manifest_section_and_check_reports_kit(tmp_path: Path)
     initialize_repo(root, "--name", "Kit Repo", "--coverage-root", "src")
 
     assert invoke("scaffold", "backlog-truth", "--repo", str(root)).exit_code == 0
+    # Scaffold updates the manifest; recompile so lock/generated maps stay coherent.
+    assert invoke("compile", "--repo", str(root)).exit_code == 0, "compile after scaffold"
     manifest = (root / ".murlocs" / "manifest.toml").read_text(encoding="utf-8")
     assert "[kits.backlog_truth]" in manifest
     assert "process_docs" in manifest
     assert "docs/plan/issue-lifecycle.md" in manifest
 
     check = invoke("check", "--repo", str(root), "--format", "json")
-    assert check.exit_code == 0
-    messages = [item["message"] for item in check.data["findings"]]
-    assert not any("kit" in item["code"] for item in check.data["findings"]), messages
+    assert check.exit_code == 0, check.output + check.stderr
+    messages = [item["message"] for item in json.loads(check.output)["findings"]]
+    assert not any("kit" in item["code"] for item in json.loads(check.output)["findings"]), messages
 
     # Drift a stamped file and ensure check surfaces kit-drift.
     (root / "docs" / "backlog-automation.md").write_text("changed\n", encoding="utf-8")
     drifted = invoke("check", "--repo", str(root), "--format", "json")
     assert drifted.exit_code == 1
-    codes = {item["code"] for item in drifted.data["findings"]}
+    codes = {item["code"] for item in json.loads(drifted.output)["findings"]}
     assert "kit-drift" in codes
 
 
