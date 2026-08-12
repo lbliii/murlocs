@@ -163,7 +163,7 @@ def collect_pytest_issue_tests(
         for path in sorted(test_root.rglob("test_*.py")):
             try:
                 tree = ast.parse(path.read_text(encoding="utf-8"))
-            except (OSError, SyntaxError):
+            except OSError, SyntaxError:
                 continue
             try:
                 rel = path.relative_to(root).as_posix()
@@ -373,13 +373,11 @@ def format_closure_report(verdict: ClosureVerdict) -> str:
         lines.append("Anchored: " + ", ".join(f"#{n}" for n in sorted(verdict.anchored)))
     if verdict.exempted:
         lines.append(
-            "Exempted (Acceptance #N: n/a): "
-            + ", ".join(f"#{n}" for n in sorted(verdict.exempted))
+            "Exempted (Acceptance #N: n/a): " + ", ".join(f"#{n}" for n in sorted(verdict.exempted))
         )
     if verdict.missing:
         lines.append(
-            "Missing acceptance anchors: "
-            + ", ".join(f"#{n}" for n in sorted(verdict.missing))
+            "Missing acceptance anchors: " + ", ".join(f"#{n}" for n in sorted(verdict.missing))
         )
         lines.append(
             "Add @pytest.mark.issue(N) (or a work-item acceptance anchor that "

@@ -127,19 +127,3 @@ binding:
 Until step 3, the job still runs and reports failures on the PR Checks tab, but
 merge is not blocked. Keep the workflow required once the dogfood PR for #207
 has proven the fail/pass paths above.
-
-## Closure gate
-
-Pull requests that claim `Closes` / `Fixes` / `Resolves #N` must either:
-
-1. have a discoverable acceptance anchor for `#N` (see above), or
-2. declare an explicit exemption line: `Acceptance #N: n/a (reason)`.
-
-Run offline:
-
-```bash
-python scripts/check_closure_acceptance.py --body-file pr-body.md
-```
-
-Wire as a pull_request workflow (`.github/workflows/closure-acceptance.yml`). Make the check a required status check when the repository is ready to bind merge on derived work-truth; until then it is advisory.
-
