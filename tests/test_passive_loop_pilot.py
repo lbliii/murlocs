@@ -144,5 +144,7 @@ def test_baselines_metrics_rollback_and_recommendation_buckets_are_required():
 
     sheet = example_sheet()
     del sheet["recommendations"]["remove"]
-    with pytest.raises(PassiveLoopPilotError, match="recommendations has unknown or missing fields"):
+    with pytest.raises(
+        PassiveLoopPilotError, match="recommendations has unknown or missing fields"
+    ):
         validate_pilot_sheet(sheet)
