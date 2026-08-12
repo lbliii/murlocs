@@ -239,7 +239,7 @@ def build_check_outcome(
     if repairable:
         try:
             prepare_manifest(manifest)
-        except (MurlocsError, OSError):
+        except MurlocsError, OSError:
             repairable = False
 
     source_paths = sorted(source.path for source in manifest.sources)

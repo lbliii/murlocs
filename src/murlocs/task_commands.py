@@ -471,7 +471,7 @@ def _working_tree_state_id(root: Path, changed: tuple[str, ...]) -> str:
         digest.update(encoded)
         try:
             content = (root / path).read_bytes()
-        except (OSError, ValueError):
+        except OSError, ValueError:
             digest.update(b"\0absent\0")
         else:
             digest.update(b"\0blob\0")
