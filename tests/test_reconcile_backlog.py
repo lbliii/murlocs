@@ -263,9 +263,7 @@ def test_dogfood_reconcile_for_issue_208():
 
     discovered = collect_pytest_issue_tests(_REPO_ROOT, ("tests",))
     assert "issue(208)" in discovered
-    assert any(
-        "test_reconcile_backlog.py" in item.location for item in discovered["issue(208)"]
-    )
+    assert any("test_reconcile_backlog.py" in item.location for item in discovered["issue(208)"])
 
     # Manifest work item (when present) must resolve offline.
     manifest = load_manifest(_REPO_ROOT)

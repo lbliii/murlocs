@@ -278,9 +278,7 @@ def derive_reconciliation_findings(
                 desired.add("merged-pending-close")
                 kind = "merged-pending-close"
                 if status == "fail":
-                    reasons.append(
-                        f"merged PR(s) {joined} close this but acceptance anchor failed"
-                    )
+                    reasons.append(f"merged PR(s) {joined} close this but acceptance anchor failed")
                 elif has_tests:
                     reasons.append(
                         f"merged PR(s) {joined} close this; acceptance test exists but is not "
@@ -361,9 +359,7 @@ def derive_workability_findings(open_issues: Sequence[Mapping[str, Any]]) -> lis
                 codes.append("parent-no-children")
                 reasons.append("unblocked parent has no native sub-issues")
             elif children and not open_children:
-                state_reasons = {
-                    str(child.get("stateReason") or "").upper() for child in children
-                }
+                state_reasons = {str(child.get("stateReason") or "").upper() for child in children}
                 if state_reasons <= {"COMPLETED", ""}:
                     codes.append("closure-candidate")
                     reasons.append("all native child issues are closed as completed")
@@ -482,9 +478,7 @@ def derive_decided_but_unbuilt(
     seen: set[int] = set()
     for siblings in groups.values():
         decisions = [
-            sibling
-            for sibling in siblings
-            if not _is_open(sibling) and _is_decision_issue(sibling)
+            sibling for sibling in siblings if not _is_open(sibling) and _is_decision_issue(sibling)
         ]
         implementations = [
             sibling
@@ -596,9 +590,7 @@ def render_report(report: ReconcileReport) -> str:
     section("Mentioned by merged PRs (weak)", weak)
     lines.append(f"## Acceptance-tracked issues ({len(tracked)})")
     if tracked:
-        lines.extend(
-            f"- #{item.number} ({item.anchor_status or 'tracked'})" for item in tracked
-        )
+        lines.extend(f"- #{item.number} ({item.anchor_status or 'tracked'})" for item in tracked)
     else:
         lines.append(
             "_No open issue yet carries a discoverable acceptance anchor. "
@@ -606,9 +598,7 @@ def render_report(report: ReconcileReport) -> str:
         )
     lines.append("")
 
-    workability_rows = [
-        item for item in report.workability if item.kind != "closure-candidate"
-    ]
+    workability_rows = [item for item in report.workability if item.kind != "closure-candidate"]
     if workability_rows:
         lines.append("# Backlog workability")
         lines.append("")

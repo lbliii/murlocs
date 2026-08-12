@@ -32,6 +32,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). While the
   anchor exists or the body declares `Acceptance #N: n/a (reason)`. Documented
   as advisory until required in branch protection (#207).
 - Add acceptance-anchor strength checking so tautological `issue(N)` tests are rejected (#209).
+- Backlog drift reconciliation: offline `murlocs.reconcile` +
+  `scripts/reconcile_backlog.py`, post-merge/schedule workflow in report mode,
+  and fixture proofs for closeable + decided-but-unbuilt (#208).
 - Adapter conformance invariant so continuous lifecycle surfaces never block or
   gate on empty change sets; Claude and Copilot adapters updated accordingly
   (#203).
