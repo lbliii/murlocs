@@ -44,5 +44,7 @@ then checks what applies and what a change may affect.
 - [Synthetic 91-map scale pilot](pilots/scale-network.md) — measured scale and governance limits.
 - [No-prompt passive-agent acceptance harness](passive-agent-acceptance.md) — acceptance protocol and evidence boundary.
 - [Fresh-session passive-agent acceptance pilot](pilots/passive-agent-acceptance-2026-08-03.md) — recorded pilot results.
+- [Multi-repository passive-loop pilot protocol](passive-loop-pilot.md) — longitudinal baselines, metrics, rollback, and sheet contract.
+- [Multi-repository passive-loop pilot report](pilots/passive-loop-multi-repo.md) — harness/protocol status vs planned live execution.
 - [Textual evidence-marker dogfood experiment](pilots/textual-evidence-markers.md) — findings and recommendation.
 - [Compact outcome blind/reveal](pilots/compact-outcome-blind-reveal.md) — test of outcome rendering.

@@ -1,0 +1,138 @@
+{
+  "contract": "io.murlocs.passive-loop-pilot",
+  "schema_version": 1,
+  "pilot": {
+    "id": "passive-loop-harness-rehearsal",
+    "status": "harness-only",
+    "protocol_version": 1,
+    "started_on": null,
+    "ended_on": null,
+    "review_cadence": "weekly",
+    "data_handling": "repository-governed",
+    "telemetry_required": false,
+    "rollback_conditions": [
+      "hot-path-latency-budget-breach",
+      "false-positive-routing-above-threshold",
+      "operator-requests-disable",
+      "no-prompt-acceptance-journeys-regress"
+    ]
+  },
+  "repositories": [
+    {
+      "id": "fixture-compact-mature",
+      "label": "compact-mature-cli-hooks",
+      "profile": {
+        "size_class": "small",
+        "scope_topology": "layered",
+        "guidance_maturity": "mature",
+        "primary_agent_workflow": "cli-hooks"
+      },
+      "baseline": {
+        "guidance_drift_findings": 0,
+        "instruction_bytes": 12000,
+        "agent_remediation_events": 1,
+        "routing_accuracy": 1.0,
+        "human_interventions": 0
+      },
+      "metrics": {
+        "hot_path_latency_ms": {
+          "median": 40,
+          "p95": 90,
+          "basis": "simulated"
+        },
+        "false_positive_routing": 0.0,
+        "missed_findings": 0.0,
+        "deterministic_repair_rate": 1.0,
+        "agent_resolution_rate": 1.0,
+        "authority_escalation_rate": 0.0,
+        "retained_integration": true,
+        "operator_feedback": {
+          "responses": 0,
+          "summary_codes": ["harness-only-no-operator-panel"]
+        }
+      },
+      "findings": [
+        {
+          "kind": "useful-silence",
+          "example_id": "ordinary-code-silent-pass",
+          "note": "Healthy-code-only-path-stays-silent"
+        },
+        {
+          "kind": "useful-intervention",
+          "example_id": "generated-drift-repair",
+          "note": "Deterministic-repair-clears-drift"
+        }
+      ],
+      "rollback": {
+        "exercised": true,
+        "safe": true,
+        "method": "hooks-uninstall"
+      },
+      "observation_status": "simulated"
+    },
+    {
+      "id": "fixture-broad-bootstrap",
+      "label": "broad-bootstrap-generated-guidance",
+      "profile": {
+        "size_class": "large",
+        "scope_topology": "multi-domain",
+        "guidance_maturity": "bootstrap",
+        "primary_agent_workflow": "generated-guidance"
+      },
+      "baseline": {
+        "guidance_drift_findings": 2,
+        "instruction_bytes": 78000,
+        "agent_remediation_events": 3,
+        "routing_accuracy": 0.75,
+        "human_interventions": 1
+      },
+      "metrics": {
+        "hot_path_latency_ms": {
+          "median": null,
+          "p95": null,
+          "basis": "unavailable"
+        },
+        "false_positive_routing": 0.2,
+        "missed_findings": 0.1,
+        "deterministic_repair_rate": 0.5,
+        "agent_resolution_rate": 0.6,
+        "authority_escalation_rate": 0.25,
+        "retained_integration": false,
+        "operator_feedback": {
+          "responses": 0,
+          "summary_codes": ["harness-only-no-operator-panel"]
+        }
+      },
+      "findings": [
+        {
+          "kind": "noise",
+          "example_id": "over-broad-impact-routing",
+          "note": "Ambiguous-path-set-over-routes-owners"
+        },
+        {
+          "kind": "missed-opportunity",
+          "example_id": "host-timing-unavailable",
+          "note": "Fallback-host-lacks-native-latency-samples"
+        }
+      ],
+      "rollback": {
+        "exercised": true,
+        "safe": true,
+        "method": "manifest-absent"
+      },
+      "observation_status": "simulated"
+    }
+  ],
+  "recommendations": {
+    "graduate": ["no-prompt-acceptance-harness"],
+    "change": ["false-positive-routing-thresholds"],
+    "remain_experimental": ["longitudinal-operator-feedback"],
+    "remove": []
+  },
+  "acceptance": {
+    "journeys_still_pass": null,
+    "integration_retained": null,
+    "live_execution_complete": false,
+    "execution_notes": "Offline-harness-rehearsal-only-not-a-live-multi-repo-pilot"
+  }
+}

@@ -58,7 +58,8 @@ agent maps, and shows what applies to a path and what a change can affect.
 - The project records pilot and evaluation evidence instead of making
   unmeasured adoption claims. See the
   [Chirp and Kida paired-pilot audit](pilots/chirp-kida.md),
-  [Synthetic 91-map scale pilot](pilots/scale-network.md), and
+  [Synthetic 91-map scale pilot](pilots/scale-network.md),
+  [Multi-repository passive-loop pilot report](pilots/passive-loop-multi-repo.md), and
   [Guidance efficiency evaluation](evaluation.md).
 
 ## Boundaries and nonclaims
