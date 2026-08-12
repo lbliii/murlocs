@@ -37,7 +37,7 @@ def _process_state(pid: int) -> str:
         try:
             # The comm field may contain spaces or parentheses; state follows it.
             return stat.read_text().rpartition(")")[2].split()[0]
-        except OSError, IndexError:
+        except (OSError, IndexError):
             return "?"
     result = subprocess.run(
         ["ps", "-o", "state=", "-p", str(pid)], capture_output=True, text=True, check=False
