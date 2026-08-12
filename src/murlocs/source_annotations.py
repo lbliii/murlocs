@@ -470,7 +470,7 @@ def _is_ignored(root: Path, path: Path) -> bool:
             if len(raw) > MAX_FILE_BYTES:
                 return True
             lines = raw.decode("utf-8").splitlines()
-        except OSError, UnicodeDecodeError:
+        except (OSError, UnicodeDecodeError):
             return True
         relative = "/".join(parts[depth:])
         for line in lines:
@@ -591,7 +591,7 @@ def _python_comment_bodies(text: str) -> list[tuple[int, str]]:
             for token in tokens
             if token.type == tokenize.COMMENT
         ]
-    except tokenize.TokenError, IndentationError:
+    except (tokenize.TokenError, IndentationError):
         # An incomplete source file cannot safely establish a comment boundary.
         return []
 

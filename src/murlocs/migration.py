@@ -135,7 +135,7 @@ def inventory_repository(root: Path) -> dict[str, Any]:
     if (root / ".murlocs" / "manifest.toml").is_file():
         try:
             annotations = annotation_provenance_payload(load_manifest(root))
-        except MurlocsError, OSError, ValueError, TypeError, KeyError:
+        except (MurlocsError, OSError, ValueError, TypeError, KeyError):
             # Inventory remains an orientation command when a candidate is invalid.
             # The check surface owns deterministic annotation diagnostics.
             annotations = []
