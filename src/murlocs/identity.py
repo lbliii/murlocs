@@ -117,7 +117,7 @@ def runtime_identity(
 def _distribution_or_none(provider: DistributionProvider) -> Distribution | None:
     try:
         return provider(PROJECT_NAME)
-    except PackageNotFoundError, ImportError, OSError, ValueError:
+    except (PackageNotFoundError, ImportError, OSError, ValueError):
         return None
 
 
@@ -126,7 +126,7 @@ def _distribution_version(dist: Distribution | None) -> str | None:
         return None
     try:
         value = dist.version
-    except OSError, ValueError:
+    except (OSError, ValueError):
         return None
     if not isinstance(value, str) or not value or len(value) > MAX_PROVENANCE_VALUE:
         return None
@@ -159,7 +159,7 @@ def _installation_identity(dist: Distribution | None) -> InstallationIdentity:
         return unknown
     try:
         value = json.loads(raw, object_pairs_hook=_reject_duplicate_object)
-    except TypeError, ValueError, json.JSONDecodeError:
+    except (TypeError, ValueError, json.JSONDecodeError):
         return unknown
     if not isinstance(value, dict) or not _bounded_provenance_value(value.get("url")):
         return unknown
@@ -273,7 +273,7 @@ def _reject_duplicate_object(pairs: list[tuple[object, object]]) -> dict[object,
 def _direct_url_path(dist: Distribution) -> tuple[bool, Path | None]:
     try:
         files = dist.files
-    except OSError, ValueError:
+    except (OSError, ValueError):
         return False, None
     if files is None:
         return False, None
@@ -289,7 +289,7 @@ def _direct_url_path(dist: Distribution) -> tuple[bool, Path | None]:
         return True, None
     try:
         path = Path(dist.locate_file(matches[0]))
-    except OSError, TypeError, ValueError:
+    except (OSError, TypeError, ValueError):
         return False, None
     return True, path
 
