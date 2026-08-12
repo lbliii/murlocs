@@ -1,0 +1,19 @@
+# Illustrative only — structural conflict: duplicate id without override.
+
+[[intent]]
+id = "core-domain"
+scope = "core"
+outcome = "Keep the CLI thin."
+contribution = "Specializes root toward CLI UX."
+success = ["Agents finish ordinary tasks with fewer prompts."]
+priorities = ["Omit rarely used flags from default help."]
+non_goals = ["Exposing every internal diagnostic by default."]
+
+[[intent]]
+id = "core-domain"
+scope = "core"
+outcome = "Keep the CLI exhaustive."
+contribution = "Specializes root toward complete surfacing."
+success = ["Every internal diagnostic has a flag."]
+priorities = ["Expose every diagnostic in default help."]
+non_goals = ["Omitting flags for compactness."]

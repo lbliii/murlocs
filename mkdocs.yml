@@ -68,6 +68,7 @@ nav:
       - Source annotation resolver: source-annotation-resolver.md
       - Source annotation provenance: source-annotation-provenance.md
   - Research and evidence:
+      - Layered repository intent (design RFC): layered-intent.md
       - Guidance efficiency evaluation: evaluation.md
       - Passive-agent acceptance harness: passive-agent-acceptance.md
       - Pilots:

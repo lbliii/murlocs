@@ -33,6 +33,7 @@ then checks what applies and what a change may affect.
 
 ## Research and evidence
 
+- [Layered repository intent (design RFC)](layered-intent.md) — outcome-oriented intent chains and task-frame semantics.
 - [Guidance efficiency evaluation](evaluation.md) — compare and score recorded runs.
 - [Chirp and Kida paired-pilot audit](pilots/chirp-kida.md) — a migration audit of two personal projects.
 - [Furatena migration pilot](pilots/furatena.md) — first fully executed migration, with verified rollback.
