@@ -24,3 +24,6 @@ acceptance = "pytest:issue(206)"
 id = "88"
 issue = 88
 acceptance = "pytest:issue(88)"
+id = "207"
+issue = 207
+acceptance = "pytest:issue(207)"

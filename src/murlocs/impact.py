@@ -688,6 +688,15 @@ def _revision_baseline(root: Path, revision_range: str) -> str | None:
     try:
         completed = _run_git(root, args, fallback_without_no_lazy=True)
     except OSError, subprocess.TimeoutExpired:
+        completed = subprocess.run(
+            command,
+            cwd=root,
+            check=False,
+            capture_output=True,
+            timeout=GIT_READ_TIMEOUT_SECONDS,
+            env=_safe_git_env(),
+        )
+    except OSError, subprocess.TimeoutExpired:
         return None
     value = completed.stdout.strip()
     if completed.returncode or re.fullmatch(rb"[0-9a-f]{40}|[0-9a-f]{64}", value) is None:

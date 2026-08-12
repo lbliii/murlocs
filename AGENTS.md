@@ -54,6 +54,7 @@ Do not open `.murlocs/PROTOCOL.md` or `.murlocs/manifest.toml` unless the task i
 
 ## Registered checks
 
+- `closure-acceptance`: `python scripts/check_closure_acceptance.py` — Fail when a PR Closes/Fixes/Resolves an issue without an acceptance anchor or n/a exemption.
 - `milo-verify`: `milo verify src/murlocs/cli.py` — Verify typed CLI, schema, discovery, and MCP transport surfaces.
 - `pytest`: `pytest` — Run behavior and safety tests.
 - `ruff`: `ruff check .` — Run static lint checks.
