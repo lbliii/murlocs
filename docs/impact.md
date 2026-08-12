@@ -99,7 +99,7 @@ complete candidate set. The three Git reads each have a 10-second timeout, disab
 fetching through both `--no-lazy-fetch` and `GIT_NO_LAZY_FETCH`, disable optional locks, ignore
 replacement objects, and do not invoke diff/textconv drivers, clean/smudge filters, or hooks. A Git
 version that does not support the global no-lazy-fetch option exits before history or object access;
-Murlocs does not retry without the option and instead uses conservative routing.
+Murlocs retries once without the global option for ordinary revision path listing and annotation blob reads while keeping `GIT_NO_LAZY_FETCH=1`. Locked baseline history lookups still fail closed into conservative routing without retry.
 Each candidate is one complete object expression per line. Murlocs relies on Git's documented
 ordered batch responses and requires the content response to repeat the exact ordered blob-OID and
 size sequence from the metadata response. This preserves spaces, colons, glob characters, and

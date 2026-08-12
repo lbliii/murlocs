@@ -1567,8 +1567,8 @@ def test_annotation_revision_git_reads_are_no_lazy_fetch_bounded_and_no_replace(
     impact_module._revision_mentions_global_guidance(root, "HEAD", ".murlocs/layers/api.toml")
 
     assert calls
+    assert any("--no-lazy-fetch" in command for command, _ in calls)
     for command, kwargs in calls:
-        assert "--no-lazy-fetch" in command
         assert "--no-replace-objects" in command
         assert kwargs["timeout"] == impact_module.GIT_READ_TIMEOUT_SECONDS
         assert kwargs["env"]["GIT_NO_LAZY_FETCH"] == "1"

@@ -376,11 +376,12 @@ def run_git(
             "LC_ALL": "C",
         }
     )
-    try:
-        completed = subprocess.run(
+    def _command(*, no_lazy_fetch: bool) -> list[str]:
+        command = ["git"]
+        if no_lazy_fetch:
+            command.append("--no-lazy-fetch")
+        command.extend(
             [
-                "git",
-                "--no-lazy-fetch",
                 "--no-pager",
                 "--no-replace-objects",
                 "-c",
@@ -390,7 +391,13 @@ def run_git(
                 "-c",
                 "core.preloadIndex=false",
                 *args,
-            ],
+            ]
+        )
+        return command
+
+    try:
+        completed = subprocess.run(
+            _command(no_lazy_fetch=True),
             cwd=root,
             check=False,
             capture_output=True,
@@ -398,6 +405,16 @@ def run_git(
             env=env,
             timeout=deadline.remaining_seconds(),
         )
+        if completed.returncode and b"unknown option: --no-lazy-fetch" in completed.stderr:
+            completed = subprocess.run(
+                _command(no_lazy_fetch=False),
+                cwd=root,
+                check=False,
+                capture_output=True,
+                input=input_bytes,
+                env=env,
+                timeout=deadline.remaining_seconds(),
+            )
     except subprocess.TimeoutExpired as exc:
         raise HookTimeout("Murlocs hook Git operation timed out") from exc
     except OSError as exc:
