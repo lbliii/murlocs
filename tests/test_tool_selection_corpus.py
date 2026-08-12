@@ -164,9 +164,7 @@ def test_expected_tools_are_drawn_from_agent_inventory():
         (REPO_ROOT / "tests/fixtures/agent-inventory/v1/inventory.json").read_text(encoding="utf-8")
     )
     allowed = {
-        entry["name"]
-        for entry in inventory["registry"]["commands"]
-        if entry["audience"] == "agent"
+        entry["name"] for entry in inventory["registry"]["commands"] if entry["audience"] == "agent"
     } | {NONE_TOOL}
     corpus = _corpus()
     for item in corpus["prompts"]:

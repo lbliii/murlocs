@@ -11,7 +11,7 @@ import json
 import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 CONTRACT = "io.murlocs.tool-selection-corpus"
 SCHEMA_VERSION = 1
@@ -320,7 +320,7 @@ def _validate_prompt(
 def _mapping(value: object, label: str) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ToolSelectionCorpusError(f"{label} must be an object")
-    return value
+    return cast(dict[str, Any], value)
 
 
 def _list(value: object, label: str) -> list[Any]:
@@ -346,7 +346,7 @@ def _string_list(value: object, label: str) -> list[str]:
         raise ToolSelectionCorpusError(f"{label} must be a list of nonempty strings")
     if len(set(value)) != len(value):
         raise ToolSelectionCorpusError(f"{label} must not contain duplicates")
-    return list(value)
+    return cast(list[str], list(value))
 
 
 def main(argv: list[str] | None = None) -> int:
