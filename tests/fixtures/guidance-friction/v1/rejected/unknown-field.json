@@ -1,0 +1,25 @@
+{
+  "friction_schema_version": 1,
+  "record_kind": "observation",
+  "id": "unknown-field",
+  "signal": "missing",
+  "path": "src/murlocs/paths.py",
+  "summary": "Unknown fields must fail visibly.",
+  "extra_field": "not-allowed",
+  "evidence": [
+    {
+      "kind": "note",
+      "reference": "fixture",
+      "summary": "Unknown field fixture."
+    }
+  ],
+  "observed_cost": {
+    "metric": "tool_calls",
+    "value": 1
+  },
+  "provenance": {
+    "observer": "@fixture",
+    "origin": "fixture",
+    "observed_at": "2026-08-12T00:00:00Z"
+  }
+}

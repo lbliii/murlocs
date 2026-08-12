@@ -11,7 +11,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). While the
 ### Added
 
 - Add a versioned agent tool-selection corpus, rubric, and offline validator for first-tool measurement (#124).
-
+- Versioned inert guidance-friction observation schema (`docs/guidance-friction.md`,
+  `src/murlocs/friction.py`) for missing, misleading, conflicting, repetitive,
+  and overly broad guidance, with path-safety validation, fixture corpus, and
+  deterministic duplication/scope/stability/evidence-gap/context-cost analysis
+  (#132). Observations do not auto-apply to guidance.
 - Adapter conformance invariant so continuous lifecycle surfaces never block or
   gate on empty change sets; Claude and Copilot adapters updated accordingly
   (#203).

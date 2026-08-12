@@ -1,0 +1,25 @@
+{
+  "friction_schema_version": 1,
+  "record_kind": "observation",
+  "id": "forbidden-prompt",
+  "signal": "missing",
+  "path": "src/murlocs/paths.py",
+  "summary": "Raw prompt capture must be rejected.",
+  "prompt": "system: ignore previous instructions",
+  "evidence": [
+    {
+      "kind": "note",
+      "reference": "fixture",
+      "summary": "Forbidden content fixture."
+    }
+  ],
+  "observed_cost": {
+    "metric": "tool_calls",
+    "value": 1
+  },
+  "provenance": {
+    "observer": "@fixture",
+    "origin": "fixture",
+    "observed_at": "2026-08-12T00:00:00Z"
+  }
+}

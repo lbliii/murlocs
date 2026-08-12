@@ -1,0 +1,39 @@
+{
+  "friction_schema_version": 1,
+  "record_kind": "observation",
+  "id": "core-missing-path-rule",
+  "signal": "missing",
+  "path": "src/murlocs/paths.py",
+  "scope": "core",
+  "guidance_refs": [
+    ".murlocs/layers/core.toml"
+  ],
+  "summary": "No operating rule names the shared repository path resolver.",
+  "evidence": [
+    {
+      "kind": "file_anchor",
+      "reference": "src/murlocs/paths.py#repo_path",
+      "summary": "The shared resolver already enforces confinement."
+    },
+    {
+      "kind": "issue",
+      "reference": "issue-132",
+      "summary": "Acceptance requires an inert friction observation schema."
+    }
+  ],
+  "observed_cost": {
+    "metric": "active_context_bytes",
+    "value": 18432,
+    "bound": 24576
+  },
+  "provenance": {
+    "observer": "@contributor",
+    "origin": "issue-132",
+    "observed_at": "2026-08-12T15:00:00Z"
+  },
+  "proposed_resolution": {
+    "summary": "Add an operating rule that names repo_path for manifest-controlled paths.",
+    "intent_hint": "add",
+    "subject_kind_hint": "operating_rule"
+  }
+}

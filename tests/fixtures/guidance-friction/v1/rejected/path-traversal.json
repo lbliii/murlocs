@@ -1,0 +1,24 @@
+{
+  "friction_schema_version": 1,
+  "record_kind": "observation",
+  "id": "path-traversal",
+  "signal": "missing",
+  "path": "../secrets/token",
+  "summary": "Path traversal must be rejected.",
+  "evidence": [
+    {
+      "kind": "note",
+      "reference": "fixture",
+      "summary": "Traversal fixture."
+    }
+  ],
+  "observed_cost": {
+    "metric": "tool_calls",
+    "value": 1
+  },
+  "provenance": {
+    "observer": "@fixture",
+    "origin": "fixture",
+    "observed_at": "2026-08-12T00:00:00Z"
+  }
+}
