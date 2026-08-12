@@ -43,8 +43,7 @@ def _parse_baseline_pair(value: str) -> tuple[str, Path]:
     """Parse ``repo/rel/path:filesystem/baseline`` into a snapshot pair."""
     if ":" not in value:
         raise argparse.ArgumentTypeError(
-            "baseline must be repo-relative:baseline-file, for example "
-            "src/pkg.py:/tmp/pkg.py.base"
+            "baseline must be repo-relative:baseline-file, for example src/pkg.py:/tmp/pkg.py.base"
         )
     relative, baseline = value.split(":", 1)
     relative = relative.strip()

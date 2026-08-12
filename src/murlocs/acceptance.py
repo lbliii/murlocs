@@ -284,9 +284,7 @@ class AcceptanceStrengthResult:
 
 def runnable_acceptance_node_ids(locations: Sequence[AcceptanceTestLocation]) -> tuple[str, ...]:
     """Return pytest node ids suitable for execution (skip module-only markers)."""
-    return tuple(
-        item.location for item in locations if not item.location.endswith("::<module>")
-    )
+    return tuple(item.location for item in locations if not item.location.endswith("::<module>"))
 
 
 def run_pytest_acceptance(root: Path, node_ids: Sequence[str]) -> int:

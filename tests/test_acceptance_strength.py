@@ -101,10 +101,7 @@ def test_faithful_acceptance_test_is_accepted(tmp_path: Path):
         root,
         issue=issue,
         impl='VALUE = "implemented"\n',
-        test_body=(
-            "from pkg.feature import VALUE\n"
-            'assert VALUE == "implemented"'
-        ),
+        test_body=('from pkg.feature import VALUE\nassert VALUE == "implemented"'),
     )
     baseline = {"pkg/feature.py": 'VALUE = "reverted"\n'}
 
@@ -218,10 +215,7 @@ def test_dogfood_acceptance_strength_for_issue_209(tmp_path: Path):
         faithful,
         issue=209,
         impl='VALUE = "implemented"\n',
-        test_body=(
-            "from pkg.feature import VALUE\n"
-            'assert VALUE == "implemented"'
-        ),
+        test_body=('from pkg.feature import VALUE\nassert VALUE == "implemented"'),
     )
     strong = verify_acceptance_strength(
         faithful,
