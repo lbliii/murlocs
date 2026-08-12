@@ -994,6 +994,12 @@ def _normalize_coverage_roots(root: Path, entries: list[str]) -> list[str]:
     return normalized
 
 
+class ScaffoldStatusSummary(TypedDict):
+    present: bool
+    current: bool
+    state: str
+
+
 class ScaffoldPayload(TypedDict):
     ok: bool
     kit: str
@@ -1004,7 +1010,7 @@ class ScaffoldPayload(TypedDict):
     skipped: list[str]
     receipt: str
     process_docs: list[str]
-    status: NotRequired[dict[str, object] | None]
+    status: NotRequired[ScaffoldStatusSummary | None]
 
 
 class ScaffoldStatusPayload(TypedDict):

@@ -558,6 +558,7 @@ def test_milo_agent_surface_is_read_only_by_default():
         "inventory",
         "orient",
         "review-changes",
+        "scaffold.status",
         "status",
         "version",
     }
@@ -571,6 +572,8 @@ def test_milo_agent_surface_is_read_only_by_default():
     assert "**review-changes**" in discovery
     assert "**finish**" in discovery
     assert "**version**" in discovery
+    assert "## Stamp opt-in repository kits (templates, workflows, docs)" in discovery
+    assert "- **status**: Report whether a stamped kit is present and current" in discovery
     assert "## Create and inspect inert guidance curation proposals" in discovery
     assert "- **check**: Validate inert curation records" in discovery
     assert "- **review**: Review a proposal" in discovery

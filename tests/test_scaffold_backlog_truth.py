@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -22,7 +23,7 @@ def test_scaffold_dry_run_writes_nothing(tmp_path: Path):
     root = _empty_repo(tmp_path)
 
     result = invoke(
-        "-n",
+        "--dry-run",
         "scaffold",
         "backlog-truth",
         "--repo",
@@ -72,9 +73,10 @@ def test_scaffold_apply_on_empty_repo_stamps_kit_and_reports_current(tmp_path: P
 
     status = invoke("scaffold", "status", "--repo", str(root), "--format", "json")
     assert status.exit_code == 0
-    assert json.loads(status.output)["present"] is True
-    assert json.loads(status.output)["current"] is True
-    assert json.loads(status.output)["state"] == "current"
+    status_payload = json.loads(status.output)
+    assert status_payload["present"] is True
+    assert status_payload["current"] is True
+    assert status_payload["state"] == "current"
 
 
 @pytest.mark.issue(210)
@@ -137,17 +139,16 @@ def test_scaffold_records_manifest_section_and_check_reports_kit(tmp_path: Path)
     initialize_repo(root, "--name", "Kit Repo", "--coverage-root", "src")
 
     assert invoke("scaffold", "backlog-truth", "--repo", str(root)).exit_code == 0
-    # Scaffold updates the manifest; recompile so lock/generated maps stay coherent.
-    assert invoke("compile", "--repo", str(root)).exit_code == 0, "compile after scaffold"
+    # Scaffolding updates the manifest; recompile so check is not blocked on drift.
+    assert invoke("compile", "--repo", str(root)).exit_code == 0
     manifest = (root / ".murlocs" / "manifest.toml").read_text(encoding="utf-8")
     assert "[kits.backlog_truth]" in manifest
     assert "process_docs" in manifest
     assert "docs/plan/issue-lifecycle.md" in manifest
 
     check = invoke("check", "--repo", str(root), "--format", "json")
-    assert check.exit_code == 0, check.output + check.stderr
-    messages = [item["message"] for item in json.loads(check.output)["findings"]]
-    assert not any("kit" in item["code"] for item in json.loads(check.output)["findings"]), messages
+    assert check.exit_code == 0, check.output
+    assert not any(item["code"].startswith("kit") for item in json.loads(check.output)["findings"])
 
     # Drift a stamped file and ensure check surfaces kit-drift.
     (root / "docs" / "backlog-automation.md").write_text("changed\n", encoding="utf-8")
@@ -159,8 +160,6 @@ def test_scaffold_records_manifest_section_and_check_reports_kit(tmp_path: Path)
 
 @pytest.mark.issue(210)
 def test_closure_gate_stub_passes_without_claims_and_fails_without_anchor(tmp_path: Path):
-    import os
-
     root = _empty_repo(tmp_path)
     assert apply_kit(root, pieces=["workflows"])["ok"] is True
     script = root / "scripts" / "check_closure_acceptance.py"
