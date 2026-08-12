@@ -1,0 +1,26 @@
+{
+  "friction_schema_version": 1,
+  "record_kind": "observation",
+  "id": "curation-fields-smuggled",
+  "signal": "missing",
+  "path": "src/murlocs/paths.py",
+  "summary": "Curation lifecycle fields must not appear on observations.",
+  "intent": "add",
+  "events": [],
+  "evidence": [
+    {
+      "kind": "note",
+      "reference": "fixture",
+      "summary": "Smuggled curation fields fixture."
+    }
+  ],
+  "observed_cost": {
+    "metric": "tool_calls",
+    "value": 1
+  },
+  "provenance": {
+    "observer": "@fixture",
+    "origin": "fixture",
+    "observed_at": "2026-08-12T00:00:00Z"
+  }
+}

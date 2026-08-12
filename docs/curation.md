@@ -9,6 +9,8 @@ and decision lifecycle. It is deliberately separate from active manifest composi
 ```text
 agent or human observation
         |
+        +--> optional .murlocs/friction/<id>.toml  (inert friction observation; see guidance-friction.md)
+        |
         v
 .murlocs/curation/<proposal-id>.toml  (inert review record)
         |

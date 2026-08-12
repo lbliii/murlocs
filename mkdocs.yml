@@ -55,6 +55,7 @@ nav:
       - Changed-path guidance impact: impact.md
       - Adoption status and coverage: adoption.md
       - Governed guidance curation: curation.md
+      - Guidance-friction observations: guidance-friction.md
       - Passive Git hooks: git-hooks.md
       - Activation lifecycle: activation-lifecycle.md
       - Runtime build identity: runtime-identity.md

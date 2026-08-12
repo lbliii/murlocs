@@ -1,0 +1,28 @@
+{
+  "friction_schema_version": 1,
+  "record_kind": "observation",
+  "id": "root-repetitive-budget-note",
+  "signal": "repetitive",
+  "path": "AGENTS.md",
+  "scope": "root",
+  "guidance_refs": [
+    ".murlocs/manifest.toml"
+  ],
+  "summary": "Budget guidance is restated across root operating rules without adding a new constraint.",
+  "evidence": [
+    {
+      "kind": "file_anchor",
+      "reference": ".murlocs/manifest.toml",
+      "summary": "Root manifest already declares max_active_bytes."
+    }
+  ],
+  "observed_cost": {
+    "metric": "files_inspected",
+    "value": 4
+  },
+  "provenance": {
+    "observer": "@maintainer",
+    "origin": "review-notes",
+    "observed_at": "2026-08-12T16:00:00Z"
+  }
+}

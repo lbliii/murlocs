@@ -1,0 +1,24 @@
+{
+  "friction_schema_version": 1,
+  "record_kind": "proposal",
+  "id": "not-an-observation",
+  "signal": "missing",
+  "path": "src/murlocs/paths.py",
+  "summary": "Curation-shaped record kinds must be rejected.",
+  "evidence": [
+    {
+      "kind": "note",
+      "reference": "fixture",
+      "summary": "Wrong kind fixture."
+    }
+  ],
+  "observed_cost": {
+    "metric": "tool_calls",
+    "value": 1
+  },
+  "provenance": {
+    "observer": "@fixture",
+    "origin": "fixture",
+    "observed_at": "2026-08-12T00:00:00Z"
+  }
+}

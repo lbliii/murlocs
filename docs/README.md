@@ -16,6 +16,7 @@ then checks what applies and what a change may affect.
 - [Changed-path guidance impact](impact.md) — use impact reports in review.
 - [Adoption status and coverage](adoption.md) — track rollout and coverage.
 - [Governed guidance curation](curation.md) — propose, review, and maintain guidance.
+- [Guidance-friction observations](guidance-friction.md) — capture inert missing/harmful guidance signals.
 - [Passive Git hooks](git-hooks.md) — collect receipts during normal Git work.
 - [Activation lifecycle](activation-lifecycle.md) — activate guidance in agent hosts and record evidence.
 - [Runtime build identity](runtime-identity.md) — inspect version and installation provenance.

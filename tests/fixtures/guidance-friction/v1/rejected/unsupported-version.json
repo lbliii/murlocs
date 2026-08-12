@@ -1,0 +1,24 @@
+{
+  "friction_schema_version": 2,
+  "record_kind": "observation",
+  "id": "unsupported-version",
+  "signal": "missing",
+  "path": "src/murlocs/paths.py",
+  "summary": "Unsupported schema version must fail visibly.",
+  "evidence": [
+    {
+      "kind": "note",
+      "reference": "fixture",
+      "summary": "Version rejection fixture."
+    }
+  ],
+  "observed_cost": {
+    "metric": "tool_calls",
+    "value": 1
+  },
+  "provenance": {
+    "observer": "@fixture",
+    "origin": "fixture",
+    "observed_at": "2026-08-12T00:00:00Z"
+  }
+}
