@@ -14,6 +14,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). While the
 
 ### Added
 
+- Structured self-hosting dogfood protocol, offline tranche-sheet validator (`src/murlocs/dogfood.py`), privacy-preserving fixture, and published 2026-08-12 report recommending proceed to the live multi-repo pilot (#97).
+
 - Add a versioned agent tool-selection corpus, rubric, and offline validator for first-tool measurement (#124).
 - Versioned inert guidance-friction observation schema (`docs/guidance-friction.md`,
   `src/murlocs/friction.py`) for missing, misleading, conflicting, repetitive,
