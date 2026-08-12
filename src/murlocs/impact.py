@@ -80,60 +80,6 @@ class _AnnotationSnapshotUnavailable(Exception):
     """A bounded current-source read could not establish attachment state."""
 
 
-def _unknown_no_lazy_fetch(stderr: bytes) -> bool:
-    """Return True when Git rejected the global ``--no-lazy-fetch`` option."""
-    return b"unknown option: --no-lazy-fetch" in stderr
-
-
-def _git_command(*args: str, no_lazy_fetch: bool = True) -> list[str]:
-    command = ["git"]
-    if no_lazy_fetch:
-        command.append("--no-lazy-fetch")
-    command.extend(["--no-pager", "--no-replace-objects", *args])
-    return command
-
-
-def _run_git(
-    root: Path,
-    args: list[str],
-    *,
-    input_bytes: bytes | None = None,
-    fallback_without_no_lazy: bool = False,
-) -> subprocess.CompletedProcess[bytes]:
-    """Run a bounded Git read with optional fallback for older Git builds.
-
-    Prefer ``--no-lazy-fetch``. When that global option is unsupported and
-    ``fallback_without_no_lazy`` is set, retry once without it while keeping
-    ``GIT_NO_LAZY_FETCH=1``. Security-sensitive cat-file batch lookups leave
-    the flag off-fallback so they fail closed into conservative routing.
-    """
-    command = _git_command(*args, no_lazy_fetch=True)
-    completed = subprocess.run(
-        command,
-        cwd=root,
-        check=False,
-        capture_output=True,
-        input=input_bytes,
-        env=_safe_git_env(),
-        timeout=GIT_READ_TIMEOUT_SECONDS,
-    )
-    if (
-        fallback_without_no_lazy
-        and completed.returncode
-        and _unknown_no_lazy_fetch(completed.stderr)
-    ):
-        completed = subprocess.run(
-            _git_command(*args, no_lazy_fetch=False),
-            cwd=root,
-            check=False,
-            capture_output=True,
-            input=input_bytes,
-            env=_safe_git_env(),
-            timeout=GIT_READ_TIMEOUT_SECONDS,
-        )
-    return completed
-
-
 def changed_paths_from_revision(root: Path, revision_range: str) -> tuple[str, ...]:
     """Return repository-relative paths changed by a Git revision range."""
     if not revision_range.strip():
@@ -141,9 +87,12 @@ def changed_paths_from_revision(root: Path, revision_range: str) -> tuple[str, .
     if revision_range.lstrip().startswith("-"):
         raise MurlocsError("revision range must not be a Git option")
     try:
-        completed = _run_git(
-            root,
+        completed = subprocess.run(
             [
+                "git",
+                "--no-lazy-fetch",
+                "--no-pager",
+                "--no-replace-objects",
                 "diff",
                 "--no-ext-diff",
                 "--no-textconv",
@@ -154,7 +103,11 @@ def changed_paths_from_revision(root: Path, revision_range: str) -> tuple[str, .
                 revision_range,
                 "--",
             ],
-            fallback_without_no_lazy=True,
+            cwd=root,
+            check=False,
+            capture_output=True,
+            env=_safe_git_env(),
+            timeout=GIT_READ_TIMEOUT_SECONDS,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise MurlocsError(f"could not inspect Git revision range: {exc}") from exc
@@ -672,21 +625,50 @@ def _revision_baseline(root: Path, revision_range: str) -> str | None:
         left, separator, right = revision_range.partition("...")
         if not separator or not left or not right or ".." in right:
             return None
-        args = ["merge-base", "--", left, right]
+        command = [
+            "git",
+            "--no-lazy-fetch",
+            "--no-pager",
+            "--no-replace-objects",
+            "merge-base",
+            "--",
+            left,
+            right,
+        ]
     elif ".." in revision_range:
         left, separator, right = revision_range.partition("..")
         if not separator or not left or not right or ".." in right:
             return None
-        args = ["rev-parse", "--verify", "--end-of-options", f"{left}^{{commit}}"]
+        command = [
+            "git",
+            "--no-lazy-fetch",
+            "--no-pager",
+            "--no-replace-objects",
+            "rev-parse",
+            "--verify",
+            "--end-of-options",
+            f"{left}^{{commit}}",
+        ]
     else:
-        args = [
+        command = [
+            "git",
+            "--no-lazy-fetch",
+            "--no-pager",
+            "--no-replace-objects",
             "rev-parse",
             "--verify",
             "--end-of-options",
             f"{revision_range}^{{commit}}",
         ]
     try:
-        completed = _run_git(root, args, fallback_without_no_lazy=True)
+        completed = subprocess.run(
+            command,
+            cwd=root,
+            check=False,
+            capture_output=True,
+            timeout=GIT_READ_TIMEOUT_SECONDS,
+            env=_safe_git_env(),
+        )
     except OSError, subprocess.TimeoutExpired:
         return None
     value = completed.stdout.strip()
@@ -787,11 +769,21 @@ def _git_revision_blobs(root: Path, revision: str, paths: list[str]) -> dict[str
     object_names = tuple(f"{revision}:{path}" for path in paths)
     batch_input = ("\n".join(object_names) + "\n").encode("utf-8")
     try:
-        checked = _run_git(
-            root,
-            ["cat-file", "--batch-check"],
-            input_bytes=batch_input,
-            fallback_without_no_lazy=True,
+        checked = subprocess.run(
+            [
+                "git",
+                "--no-lazy-fetch",
+                "--no-pager",
+                "--no-replace-objects",
+                "cat-file",
+                "--batch-check",
+            ],
+            cwd=root,
+            check=False,
+            capture_output=True,
+            input=batch_input,
+            env=_safe_git_env(),
+            timeout=GIT_READ_TIMEOUT_SECONDS,
         )
     except OSError, subprocess.TimeoutExpired:
         return None
@@ -806,11 +798,21 @@ def _git_revision_blobs(root: Path, revision: str, paths: list[str]) -> dict[str
     ):
         return None
     try:
-        completed = _run_git(
-            root,
-            ["cat-file", "--batch"],
-            input_bytes=batch_input,
-            fallback_without_no_lazy=True,
+        completed = subprocess.run(
+            [
+                "git",
+                "--no-lazy-fetch",
+                "--no-pager",
+                "--no-replace-objects",
+                "cat-file",
+                "--batch",
+            ],
+            cwd=root,
+            check=False,
+            capture_output=True,
+            input=batch_input,
+            env=_safe_git_env(),
+            timeout=GIT_READ_TIMEOUT_SECONDS,
         )
     except OSError, subprocess.TimeoutExpired:
         return None
@@ -1213,9 +1215,12 @@ def _revision_mentions_global_guidance(root: Path, revision_range: str, source_p
     if not revision_range.strip() or revision_range.lstrip().startswith("-"):
         return False
     try:
-        completed = _run_git(
-            root,
+        completed = subprocess.run(
             [
+                "git",
+                "--no-lazy-fetch",
+                "--no-pager",
+                "--no-replace-objects",
                 "diff",
                 "--no-ext-diff",
                 "--no-textconv",
@@ -1225,17 +1230,21 @@ def _revision_mentions_global_guidance(root: Path, revision_range: str, source_p
                 "--",
                 source_path,
             ],
-            fallback_without_no_lazy=True,
+            cwd=root,
+            check=False,
+            capture_output=True,
+            text=True,
+            env=_safe_git_env(),
+            timeout=GIT_READ_TIMEOUT_SECONDS,
         )
     except OSError, subprocess.TimeoutExpired:
         return True
     if completed.returncode:
         return True
-    stdout = completed.stdout.decode("utf-8", errors="replace")
     before_lines: list[str] = []
     after_lines: list[str] = []
     in_hunk = False
-    for line in stdout.splitlines():
+    for line in completed.stdout.splitlines():
         if line.startswith("@@"):
             in_hunk = True
             continue
@@ -1259,7 +1268,7 @@ def _revision_mentions_global_guidance(root: Path, revision_range: str, source_p
         r"^[+-](?![+-])\s*\[checks(?:\.|\])|"
         r"^[+-](?![+-])\s*\[\[(?:scopes|invariants)\]\]"
     )
-    return any(pattern.search(line) for line in stdout.splitlines())
+    return any(pattern.search(line) for line in completed.stdout.splitlines())
 
 
 def _fragment_changes_root_render(before: dict[str, Any], after: dict[str, Any]) -> bool:
