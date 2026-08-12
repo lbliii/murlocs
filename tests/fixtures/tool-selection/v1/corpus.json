@@ -1,0 +1,268 @@
+{
+  "contract": "io.murlocs.tool-selection-corpus",
+  "schema_version": 1,
+  "corpus_revision": "1.0.0",
+  "rubric": "docs/pilots/tool-selection/rubric.md",
+  "repository": {
+    "name": "murlocs",
+    "url": "https://github.com/lbliii/murlocs",
+    "revision": "tool-selection-corpus-v1"
+  },
+  "tool_catalog": {
+    "contract": "io.murlocs.agent-inventory",
+    "schema_version": 1,
+    "path": "tests/fixtures/agent-inventory/v1/inventory.json",
+    "revision": "v1"
+  },
+  "model": {
+    "id": "corpus-agnostic",
+    "revision": "v1",
+    "pin_policy": "recorded-runs-must-set-concrete-model"
+  },
+  "agent_environment": {
+    "id": "corpus-agnostic",
+    "revision": "v1",
+    "pin_policy": "recorded-runs-must-set-concrete-environment"
+  },
+  "categories": [
+    "orientation",
+    "explanation",
+    "change_review",
+    "completion",
+    "friction",
+    "migration",
+    "no_murlocs_call"
+  ],
+  "notes": [
+    "Synthetic ordinary-task prompts only; no production prompts or telemetry.",
+    "Expected answers are frozen before candidate tool descriptions are scored.",
+    "Tool names match agent-audience entries in the pinned agent-inventory fixture, plus sentinel none."
+  ],
+  "prompts": [
+    {
+      "id": "orient-unfamiliar-module",
+      "category": "orientation",
+      "prompt": "I have never worked in src/murlocs/impact.py. Before I edit anything, help me get oriented on the guidance that applies to that path.",
+      "expectation_kind": "fixed",
+      "expected_first_tool": "orient",
+      "acceptable_alternatives": ["explain"],
+      "notes": "Composite orient is the task-shaped first call; explain is an acceptable granular alternative."
+    },
+    {
+      "id": "orient-before-new-feature",
+      "category": "orientation",
+      "prompt": "Starting a feature that will touch tests/test_impact.py. What repository guidance should I read first for that area?",
+      "expectation_kind": "fixed",
+      "expected_first_tool": "orient",
+      "acceptable_alternatives": ["explain"],
+      "notes": "Unfamiliar work on a named path → orient."
+    },
+    {
+      "id": "orient-adoption-then-path",
+      "category": "orientation",
+      "prompt": "This checkout might only be partially migrated to Murlocs. Before I change src/murlocs/cli.py, tell me where adoption stands and what is safe next.",
+      "expectation_kind": "fixed",
+      "expected_first_tool": "status",
+      "acceptable_alternatives": ["orient", "inventory"],
+      "notes": "Adoption/orientation of an unfamiliar or partial migration often starts with status."
+    },
+    {
+      "id": "explain-guidance-chain",
+      "category": "explanation",
+      "prompt": "Why does src/murlocs/verify.py inherit the rules it does? Show me the guidance chain for that file.",
+      "expectation_kind": "fixed",
+      "expected_first_tool": "explain",
+      "acceptable_alternatives": ["orient"],
+      "notes": "Explicit explanation request → explain."
+    },
+    {
+      "id": "explain-which-map-owns-path",
+      "category": "explanation",
+      "prompt": "Which AGENTS.md map owns tests/test_hooks.py, and what invariants apply there?",
+      "expectation_kind": "fixed",
+      "expected_first_tool": "explain",
+      "acceptable_alternatives": ["orient"],
+      "notes": "Ownership/explanation of a path is explain."
+    },
+    {
+      "id": "explain-operating-rules",
+      "category": "explanation",
+      "prompt": "Summarize the operating rules that apply when editing src/murlocs/task_commands.py.",
+      "expectation_kind": "fixed",
+      "expected_first_tool": "explain",
+      "acceptable_alternatives": ["orient"],
+      "notes": null
+    },
+    {
+      "id": "review-staged-guidance-impact",
+      "category": "change_review",
+      "prompt": "I staged several guidance-related edits. Review the guidance impact of my staged change set before I continue.",
+      "expectation_kind": "fixed",
+      "expected_first_tool": "review-changes",
+      "acceptable_alternatives": ["impact"],
+      "notes": "Explicit change-set review → review-changes; impact is the granular primitive."
+    },
+    {
+      "id": "review-working-tree-paths",
+      "category": "change_review",
+      "prompt": "Here are the paths I changed in the working tree: src/murlocs/outcome.py and docs/outcome-envelope.md. Which guidance scopes and checks should I review?",
+      "expectation_kind": "fixed",
+      "expected_first_tool": "review-changes",
+      "acceptable_alternatives": ["impact"],
+      "notes": null
+    },
+    {
+      "id": "review-revision-range",
+      "category": "change_review",
+      "prompt": "For commits HEAD~3..HEAD, report which Murlocs scopes and registered checks are affected.",
+      "expectation_kind": "fixed",
+      "expected_first_tool": "review-changes",
+      "acceptable_alternatives": ["impact"],
+      "notes": "Revision-range change review stays on review-changes/impact."
+    },
+    {
+      "id": "review-impact-named-paths",
+      "category": "change_review",
+      "prompt": "Run guidance impact for the explicit paths src/murlocs/hooks.py and tests/test_hooks.py.",
+      "expectation_kind": "fixed",
+      "expected_first_tool": "impact",
+      "acceptable_alternatives": ["review-changes"],
+      "notes": "Caller asks for the granular impact primitive by name."
+    },
+    {
+      "id": "finish-structural-receipt",
+      "category": "completion",
+      "prompt": "My staged work is done. Get a fresh structural completion receipt for the staged change set without running registered repository checks.",
+      "expectation_kind": "fixed",
+      "expected_first_tool": "finish",
+      "acceptable_alternatives": ["check"],
+      "notes": "Task-shaped completion → finish; check is an acceptable granular structural gate."
+    },
+    {
+      "id": "finish-working-tree",
+      "category": "completion",
+      "prompt": "I am ready to mark this task complete against the current working tree. Produce the completion-oriented Murlocs receipt.",
+      "expectation_kind": "fixed",
+      "expected_first_tool": "finish",
+      "acceptable_alternatives": ["check"],
+      "notes": null
+    },
+    {
+      "id": "completion-check-drift",
+      "category": "completion",
+      "prompt": "Before I wrap up, validate that managed guidance, proofs, coverage, and ownership still check out on this repository.",
+      "expectation_kind": "fixed",
+      "expected_first_tool": "check",
+      "acceptable_alternatives": ["finish"],
+      "notes": "Caller asks for structural validation rather than the composite finish envelope."
+    },
+    {
+      "id": "friction-review-proposal",
+      "category": "friction",
+      "prompt": "There is an inert curation proposal under .murlocs/curation/ that claims a core operating rule is stale. Review the proposal and its prospective guidance model without promoting anything.",
+      "expectation_kind": "fixed",
+      "expected_first_tool": "curate.review",
+      "acceptable_alternatives": ["curate.check"],
+      "notes": "Friction review stays on inert curation surfaces."
+    },
+    {
+      "id": "friction-validate-records",
+      "category": "friction",
+      "prompt": "Validate the inert curation records in this repository before an owner looks at them.",
+      "expectation_kind": "fixed",
+      "expected_first_tool": "curate.check",
+      "acceptable_alternatives": ["curate.review"],
+      "notes": null
+    },
+    {
+      "id": "friction-confusing-rule",
+      "category": "friction",
+      "prompt": "The generated guidance for src/murlocs/paths.py feels contradictory. Help me understand the active chain before anyone drafts a curation change.",
+      "expectation_kind": "fixed",
+      "expected_first_tool": "explain",
+      "acceptable_alternatives": ["orient", "curate.review"],
+      "notes": "Understand friction first; do not silently mutate active guidance."
+    },
+    {
+      "id": "migration-inventory-first",
+      "category": "migration",
+      "prompt": "This repository still has legacy .stewards maps. Inventory existing guidance and ownership conflicts before we import anything.",
+      "expectation_kind": "fixed",
+      "expected_first_tool": "inventory",
+      "acceptable_alternatives": ["status", "diff"],
+      "notes": "Migration starts with read-only inventory."
+    },
+    {
+      "id": "migration-diff-candidate",
+      "category": "migration",
+      "prompt": "Compare the legacy guidance with its Murlocs candidate projection so we can see what would change.",
+      "expectation_kind": "fixed",
+      "expected_first_tool": "diff",
+      "acceptable_alternatives": ["inventory", "status"],
+      "notes": null
+    },
+    {
+      "id": "migration-adoption-status",
+      "category": "migration",
+      "prompt": "Are we adopted, candidate-only, or still legacy here, and what is the next safe migration action?",
+      "expectation_kind": "fixed",
+      "expected_first_tool": "status",
+      "acceptable_alternatives": ["inventory"],
+      "notes": null
+    },
+    {
+      "id": "none-typo-in-docstring",
+      "category": "no_murlocs_call",
+      "prompt": "Fix the spelling typo in the module docstring of src/murlocs/errors.py. Do not change behavior.",
+      "expectation_kind": "none",
+      "expected_first_tool": "none",
+      "acceptable_alternatives": [],
+      "notes": "Ordinary code edit; first action should not be a Murlocs tool."
+    },
+    {
+      "id": "none-pure-unit-test",
+      "category": "no_murlocs_call",
+      "prompt": "Add a unit test that asserts sha256_bytes of b'abc' matches the known digest. Keep it local to the existing test helpers.",
+      "expectation_kind": "none",
+      "expected_first_tool": "none",
+      "acceptable_alternatives": [],
+      "notes": null
+    },
+    {
+      "id": "none-rename-local-variable",
+      "category": "no_murlocs_call",
+      "prompt": "In a single function in src/murlocs/identity.py, rename a local variable for clarity without changing the public API.",
+      "expectation_kind": "none",
+      "expected_first_tool": "none",
+      "acceptable_alternatives": [],
+      "notes": null
+    },
+    {
+      "id": "none-python-language-question",
+      "category": "no_murlocs_call",
+      "prompt": "In Python 3.14, what is the difference between list[str] and Sequence[str] for a function parameter?",
+      "expectation_kind": "none",
+      "expected_first_tool": "none",
+      "acceptable_alternatives": [],
+      "notes": "Language question with no repository guidance need."
+    },
+    {
+      "id": "ambiguous-look-at-path",
+      "category": "orientation",
+      "prompt": "Look at src/murlocs/agent_inventory.py and tell me what matters.",
+      "expectation_kind": "ambiguous",
+      "expected_first_tool": "orient",
+      "acceptable_alternatives": ["explain", "none"],
+      "notes": "Intentionally underspecified; orient, explain, or reading code without a Murlocs call can all be first moves."
+    },
+    {
+      "id": "ambiguous-done-with-edits",
+      "category": "completion",
+      "prompt": "I think I am done with my edits to the guidance sources.",
+      "expectation_kind": "ambiguous",
+      "expected_first_tool": "finish",
+      "acceptable_alternatives": ["check", "review-changes", "impact"],
+      "notes": "Could mean completion receipt, structural check, or change review depending on host habit."
+    }
+  ]
+}
