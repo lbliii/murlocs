@@ -23,6 +23,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). While the
   validator, simulated two-repo harness fixture, and published report that
   separates executed in-repo work from planned live longitudinal execution
   (#68).
+- Closure gate for pull requests that claim `Closes`/`Fixes`/`Resolves` `#N`:
+  `scripts/check_closure_acceptance.py` plus
+  `.github/workflows/closure-acceptance.yml` fail unless an offline acceptance
+  anchor exists or the body declares `Acceptance #N: n/a (reason)`. Documented
+  as advisory until required in branch protection (#207).
 - Adapter conformance invariant so continuous lifecycle surfaces never block or
   gate on empty change sets; Claude and Copilot adapters updated accordingly
   (#203).
