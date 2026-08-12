@@ -66,6 +66,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). While the
 ### Fixed
 
 - Fix invalid Python 3 multi-exception handlers left by #211 so acceptance, adapters, and impact import on 3.14 (#203, #120, #206).
+- Retry ordinary Git revision reads without unsupported `--no-lazy-fetch` while keeping `GIT_NO_LAZY_FETCH` (#88).
 
 - The Claude Code `pre-completion` Stop hook no longer blocks completion on a
   clean working tree. A turn that changed no files reported

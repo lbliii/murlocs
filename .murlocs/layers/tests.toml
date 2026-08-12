@@ -19,3 +19,8 @@ enforced_by = "pytest"
 id = "206"
 issue = 206
 acceptance = "pytest:issue(206)"
+
+[[work_items]]
+id = "88"
+issue = 88
+acceptance = "pytest:issue(88)"
