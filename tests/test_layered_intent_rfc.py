@@ -79,7 +79,11 @@ def test_layered_intent_rfc_exists_and_covers_acceptance_criteria():
     assert "byte-identical" in text or "byte-compatible" in text.lower()
 
     # Design-only: must not claim a shipped parser/compiler for intent.
-    assert "does **not** implement a parser" in text or "does not implement a parser" in text.lower()
+    lowered = text.lower()
+    assert (
+        "does **not** implement a parser" in text
+        or "does not implement a parser" in lowered
+    )
 
 
 @pytest.mark.issue(153)
