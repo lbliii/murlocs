@@ -1043,11 +1043,14 @@ def scaffold_backlog_truth_command(
     """
     try:
         dry_run = bool(ctx is not None and ctx.dry_run)
-        result = apply_backlog_truth_kit(
-            _root(repo),
-            pieces=only,
-            force=force,
-            dry_run=dry_run,
+        result = cast(
+            ScaffoldPayload,
+            apply_backlog_truth_kit(
+                _root(repo),
+                pieces=only,
+                force=force,
+                dry_run=dry_run,
+            ),
         )
     except MurlocsError as exc:
         return _failure("MURLOCS_SCAFFOLD", exc)
@@ -1061,13 +1064,11 @@ def scaffold_backlog_truth_command(
         *(f"unchanged {path}" for path in result["skipped"]),
     ]
     status = result.get("status")
-    if isinstance(status, dict) and status.get("state"):
+    if status is not None and status.get("state"):
         lines.append(f"kit state: {status['state']}")
     if result["process_docs"]:
-        lines.append(
-            "process docs (outside compile): " + ", ".join(result["process_docs"])
-        )
-    return CommandResult(cast(ScaffoldPayload, result), terminal_text="\n".join(lines))
+        lines.append("process docs (outside compile): " + ", ".join(result["process_docs"]))
+    return CommandResult(cast(dict[str, Any], result), terminal_text="\n".join(lines))
 
 
 def scaffold_status_command(
@@ -1116,7 +1117,7 @@ def scaffold_status_command(
     known = ", ".join(piece.name for piece in BACKLOG_TRUTH_PIECES)
     if status.state == "absent":
         lines.append(f"install with: murlocs scaffold backlog-truth (pieces: {known})")
-    return CommandResult(payload, terminal_text="\n".join(lines))
+    return CommandResult(cast(dict[str, Any], payload), terminal_text="\n".join(lines))
 
 
 def _coverage_payload(roots: list[str], findings: list[Finding]) -> CoveragePayload:

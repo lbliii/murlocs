@@ -90,9 +90,7 @@ KIT_FILES: tuple[KitFile, ...] = (
     KitFile("BACKLOG.md", "docs/plan/BACKLOG.md", "process", process=True),
 )
 
-_SECTION_RE = re.compile(
-    rf"(?ms)^\[{re.escape(MANIFEST_SECTION)}\]\n(?:^(?!\[).*\n?)*"
-)
+_SECTION_RE = re.compile(rf"(?ms)^\[{re.escape(MANIFEST_SECTION)}\]\n(?:^(?!\[).*\n?)*")
 
 
 @dataclass(frozen=True)
@@ -254,8 +252,11 @@ def kit_status(root: Path, *, pieces: Iterable[str] | None = None) -> KitStatus:
 
     process_docs = tuple(item.destination for item in files if item.process)
     present = receipt is not None or bool(present_files)
-    current = present and not missing and not modified and (
-        receipt is not None and set(receipt.pieces) >= set(selected)
+    current = (
+        present
+        and not missing
+        and not modified
+        and (receipt is not None and set(receipt.pieces) >= set(selected))
     )
     return KitStatus(
         present=present,
@@ -278,9 +279,7 @@ def kit_findings(root: Path) -> list[Finding]:
     status = kit_status(root)
     findings: list[Finding] = []
     if not status.present:
-        findings.append(
-            Finding("kit", f"kit {KIT_ID} is declared but no stamped files were found")
-        )
+        findings.append(Finding("kit", f"kit {KIT_ID} is declared but no stamped files were found"))
         return findings
     if status.current:
         return findings

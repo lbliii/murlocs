@@ -57,7 +57,7 @@ def collect_issue_markers(root: Path) -> set[int]:
         for path in base.rglob("test_*.py"):
             try:
                 tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-            except (OSError, SyntaxError, UnicodeDecodeError):
+            except OSError, SyntaxError, UnicodeDecodeError:
                 continue
             for node in ast.walk(tree):
                 if not isinstance(node, ast.Call):
@@ -104,9 +104,7 @@ def main(argv: list[str] | None = None) -> int:
 
     exemptions = extract_exemptions(body)
     markers = collect_issue_markers(args.root)
-    missing = sorted(
-        issue for issue in claimed if issue not in markers and issue not in exemptions
-    )
+    missing = sorted(issue for issue in claimed if issue not in markers and issue not in exemptions)
     if missing:
         print(
             "closure-gate: PR claims to close issues without acceptance proof: "
