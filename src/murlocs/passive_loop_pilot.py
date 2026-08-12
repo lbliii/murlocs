@@ -9,9 +9,9 @@ and keep ``live_execution_complete`` honest.
 """
 
 from __future__ import annotations
-from typing import Any, cast
 
 from collections.abc import Mapping, Sequence
+from typing import Any, cast
 
 CONTRACT = "io.murlocs.passive-loop-pilot"
 SCHEMA_VERSION = 1

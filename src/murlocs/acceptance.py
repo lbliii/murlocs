@@ -27,6 +27,24 @@ _ANCHOR = re.compile(r"^([a-z][a-z0-9_-]*):(.+)\Z")
 # Callable that runs acceptance node ids under ``root`` and returns a process exit code.
 AcceptanceTestRunner = Callable[[Path, Sequence[str]], int]
 
+# GitHub closing keywords (close/fix/resolve + tense variants), then one or more
+# issue references (#N, owner/repo#N, or github.com/.../issues/N).
+_CLOSURE_KEYWORD = re.compile(
+    r"(?i)\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\b\s*:?",
+)
+_ISSUE_REF = re.compile(
+    r"(?:"
+    r"https://github\.com/[\w.-]+/[\w.-]+/issues/(\d+)"
+    r"|[\w.-]+/[\w.-]+#(\d+)"
+    r"|#(\d+)"
+    r")"
+)
+_LIST_CONNECTOR = re.compile(r"(?i)^(?:\s*[,]\s*|\s+and\s+|\s+)")
+# Explicit exemption line in a PR body; reason in parentheses is recommended.
+_ACCEPTANCE_NA = re.compile(
+    r"(?im)^[ \t]*Acceptance[ \t]+#(\d+):[ \t]*n/a(?:[ \t]*\([^)\n]*\))?[ \t]*$"
+)
+
 
 @dataclass(frozen=True)
 class ParsedAcceptanceAnchor:
@@ -261,6 +279,119 @@ def acceptance_anchor_findings(manifest: Manifest) -> list[Finding]:
                 )
             )
     return findings
+
+
+@dataclass(frozen=True)
+class ClosureVerdict:
+    """Outcome of checking PR closure claims against offline acceptance anchors."""
+
+    claimed: frozenset[int]
+    anchored: frozenset[int]
+    exempted: frozenset[int]
+    missing: frozenset[int]
+
+    @property
+    def ok(self) -> bool:
+        return not self.missing
+
+
+def extract_closure_claims(body: str) -> frozenset[int]:
+    """Return issue numbers a PR body claims to close/fix/resolve."""
+    claims: set[int] = set()
+    for keyword in _CLOSURE_KEYWORD.finditer(body):
+        pos = keyword.end()
+        # Leading whitespace before the first issue reference.
+        leading = re.match(r"^\s+", body[pos:])
+        if leading is not None:
+            pos += leading.end()
+        while pos < len(body):
+            ref = _ISSUE_REF.match(body, pos)
+            if ref is None:
+                break
+            number = next(group for group in ref.groups() if group is not None)
+            claims.add(int(number))
+            pos = ref.end()
+            connector = _LIST_CONNECTOR.match(body[pos:])
+            if connector is None:
+                break
+            pos += connector.end()
+            # Stop if the connector did not leave us at another issue ref.
+            if _ISSUE_REF.match(body, pos) is None:
+                break
+    return frozenset(claims)
+
+
+def extract_acceptance_exemptions(body: str) -> frozenset[int]:
+    """Return issue numbers declared ``Acceptance #N: n/a`` in a PR body."""
+    return frozenset(int(match.group(1)) for match in _ACCEPTANCE_NA.finditer(body))
+
+
+def issues_with_acceptance_anchors(
+    root: Path,
+    test_roots: tuple[str, ...] | None = None,
+) -> frozenset[int]:
+    """Return issue numbers that have at least one offline pytest acceptance marker."""
+    discovered = collect_pytest_issue_tests(root, test_roots)
+    numbers: set[int] = set()
+    for reference in discovered:
+        if reference.startswith("issue(") and reference.endswith(")"):
+            payload = reference.removeprefix("issue(").removesuffix(")")
+            if payload.isdigit():
+                numbers.add(int(payload))
+    return frozenset(numbers)
+
+
+def evaluate_closure_acceptance(
+    body: str,
+    root: Path,
+    test_roots: tuple[str, ...] | None = None,
+) -> ClosureVerdict:
+    """Fail closed when a closure claim lacks an anchor and lacks an n/a exemption."""
+    claimed = extract_closure_claims(body)
+    exempted = extract_acceptance_exemptions(body)
+    if not claimed:
+        return ClosureVerdict(
+            claimed=frozenset(),
+            anchored=frozenset(),
+            exempted=exempted,
+            missing=frozenset(),
+        )
+    anchored = issues_with_acceptance_anchors(root, test_roots)
+    missing = frozenset(
+        number for number in claimed if number not in anchored and number not in exempted
+    )
+    return ClosureVerdict(
+        claimed=claimed,
+        anchored=frozenset(number for number in claimed if number in anchored),
+        exempted=frozenset(number for number in claimed if number in exempted),
+        missing=missing,
+    )
+
+
+def format_closure_report(verdict: ClosureVerdict) -> str:
+    """Render a human-readable closure-gate report."""
+    if not verdict.claimed:
+        return "No Closes/Fixes/Resolves claims in PR body; closure gate is vacuously ok."
+    lines = [
+        f"Closure claims: {', '.join(f'#{n}' for n in sorted(verdict.claimed))}",
+    ]
+    if verdict.anchored:
+        lines.append("Anchored: " + ", ".join(f"#{n}" for n in sorted(verdict.anchored)))
+    if verdict.exempted:
+        lines.append(
+            "Exempted (Acceptance #N: n/a): " + ", ".join(f"#{n}" for n in sorted(verdict.exempted))
+        )
+    if verdict.missing:
+        lines.append(
+            "Missing acceptance anchors: " + ", ".join(f"#{n}" for n in sorted(verdict.missing))
+        )
+        lines.append(
+            "Add @pytest.mark.issue(N) (or a work-item acceptance anchor that "
+            "resolves offline), or declare `Acceptance #N: n/a (reason)` in the PR body."
+        )
+    else:
+        lines.append("All closure claims have an acceptance anchor or n/a exemption.")
+    return "\n".join(lines)
 
 
 @dataclass(frozen=True)

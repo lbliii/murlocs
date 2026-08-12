@@ -8,6 +8,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). While the
 
 ## [Unreleased]
 
+### Fixed
+- Hotfix corrupted `tests.toml` work items, restore closure + strength APIs in `acceptance.py`, and repair `impact.py` mangled by conflict resolution during sequential PR merges.
+
 ### Added
 
 - Add a versioned agent tool-selection corpus, rubric, and offline validator for first-tool measurement (#124).
