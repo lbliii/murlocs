@@ -80,9 +80,7 @@ def test_schema_fixture_and_docs_are_present_for_reviewable_updates():
 
 def test_missing_evidence_path_forces_unknown_effective_tier():
     document = _matrix()
-    claude = next(
-        profile for profile in document["profiles"] if profile["id"] == "claude-code"
-    )
+    claude = next(profile for profile in document["profiles"] if profile["id"] == "claude-code")
     claude["evidence"] = ["docs/claude-code-adapter.md", "docs/does-not-exist.md"]
 
     resolved = resolve_host_capability_matrix(
@@ -97,21 +95,13 @@ def test_missing_evidence_path_forces_unknown_effective_tier():
 
 def test_stale_verification_date_forces_unknown_effective_tier():
     document = _matrix()
-    copilot = next(
-        profile
-        for profile in document["profiles"]
-        if profile["id"] == "github-copilot"
-    )
+    copilot = next(profile for profile in document["profiles"] if profile["id"] == "github-copilot")
     max_age = document["evidence_max_age_days"]
     verified = date.fromisoformat(copilot["verification_date"])
     as_of = stale_after(verification_date=verified, max_age_days=max_age)
 
-    resolved = resolve_host_capability_matrix(
-        document, repository_root=ROOT, as_of=as_of
-    )
-    profile = next(
-        item for item in resolved["profiles"] if item["id"] == "github-copilot"
-    )
+    resolved = resolve_host_capability_matrix(document, repository_root=ROOT, as_of=as_of)
+    profile = next(item for item in resolved["profiles"] if item["id"] == "github-copilot")
 
     assert profile["claimed_tier"] == "adapted"
     assert profile["effective_tier"] == "unknown"
@@ -120,17 +110,13 @@ def test_stale_verification_date_forces_unknown_effective_tier():
 
 def test_empty_profile_evidence_forces_unknown_even_when_claimed_tool_only():
     document = _matrix()
-    codex = next(
-        profile for profile in document["profiles"] if profile["id"] == "openai-codex"
-    )
+    codex = next(profile for profile in document["profiles"] if profile["id"] == "openai-codex")
     codex["evidence"] = []
 
     resolved = resolve_host_capability_matrix(
         document, repository_root=ROOT, as_of=date(2026, 8, 12)
     )
-    profile = next(
-        item for item in resolved["profiles"] if item["id"] == "openai-codex"
-    )
+    profile = next(item for item in resolved["profiles"] if item["id"] == "openai-codex")
 
     assert profile["claimed_tier"] == "tool-only"
     assert profile["effective_tier"] == "unknown"
@@ -139,9 +125,7 @@ def test_empty_profile_evidence_forces_unknown_even_when_claimed_tool_only():
 
 def test_unknown_remains_default_without_inventing_native_claims():
     document = _matrix()
-    cursor = next(
-        profile for profile in document["profiles"] if profile["id"] == "cursor"
-    )
+    cursor = next(profile for profile in document["profiles"] if profile["id"] == "cursor")
     assert cursor["claimed_tier"] == "unknown"
     assert cursor["verification_date"] is None
     assert cursor["evidence"] == []
@@ -150,9 +134,7 @@ def test_unknown_remains_default_without_inventing_native_claims():
         document, repository_root=ROOT, as_of=date(2026, 8, 12)
     )
     assert effective_tiers(resolved)["cursor"] == "unknown"
-    assert all(
-        profile["effective_tier"] != "native" for profile in resolved["profiles"]
-    )
+    assert all(profile["effective_tier"] != "native" for profile in resolved["profiles"])
 
 
 def test_capability_rows_separate_documented_from_observed_and_name_fallbacks():
@@ -166,9 +148,7 @@ def test_capability_rows_separate_documented_from_observed_and_name_fallbacks():
     assert by_id["github-copilot"]["hooks"]["portable_fallback"] == "git-hook"
     assert by_id["cursor"]["hooks"]["portable_fallback"] == "git-hook"
     assert resolved["portable_fallbacks"]["hooks"] == "git-hook"
-    assert (
-        resolved["portable_fallbacks"]["instruction_discovery"] == "generated-guidance"
-    )
+    assert resolved["portable_fallbacks"]["instruction_discovery"] == "generated-guidance"
 
 
 @pytest.mark.parametrize(
@@ -185,11 +165,7 @@ def test_capability_rows_separate_documented_from_observed_and_name_fallbacks():
         (
             lambda doc: doc["profiles"].__setitem__(
                 0,
-                {
-                    key: value
-                    for key, value in doc["profiles"][0].items()
-                    if key != "hooks"
-                },
+                {key: value for key, value in doc["profiles"][0].items() if key != "hooks"},
             ),
             "missing hooks",
         ),
@@ -207,9 +183,7 @@ def test_malformed_matrix_fails_visibly(mutation, message):
     mutation(document)
 
     with pytest.raises(HostCapabilityError, match=message):
-        resolve_host_capability_matrix(
-            document, repository_root=ROOT, as_of=date(2026, 8, 12)
-        )
+        resolve_host_capability_matrix(document, repository_root=ROOT, as_of=date(2026, 8, 12))
 
 
 def test_duplicate_profile_ids_are_rejected():
@@ -217,9 +191,7 @@ def test_duplicate_profile_ids_are_rejected():
     document["profiles"].append(copy.deepcopy(document["profiles"][0]))
 
     with pytest.raises(HostCapabilityError, match="duplicate host capability profile"):
-        resolve_host_capability_matrix(
-            document, repository_root=ROOT, as_of=date(2026, 8, 12)
-        )
+        resolve_host_capability_matrix(document, repository_root=ROOT, as_of=date(2026, 8, 12))
 
 
 def test_absolute_or_parent_evidence_paths_are_rejected():
@@ -227,6 +199,4 @@ def test_absolute_or_parent_evidence_paths_are_rejected():
     document["profiles"][0]["evidence"] = ["../secrets.txt"]
 
     with pytest.raises(HostCapabilityError, match="repository-relative"):
-        resolve_host_capability_matrix(
-            document, repository_root=ROOT, as_of=date(2026, 8, 12)
-        )
+        resolve_host_capability_matrix(document, repository_root=ROOT, as_of=date(2026, 8, 12))

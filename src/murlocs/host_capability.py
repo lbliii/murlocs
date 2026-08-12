@@ -15,7 +15,7 @@ import json
 from collections.abc import Mapping, Sequence
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, cast, Literal
 
 CONTRACT = "io.murlocs.host-capability-matrix"
 SCHEMA_VERSION = 1
@@ -81,9 +81,7 @@ _PROFILE_KEYS = frozenset(
     }
 )
 
-_CAPABILITY_KEYS = frozenset(
-    {"summary", "claim_basis", "evidence", "portable_fallback"}
-)
+_CAPABILITY_KEYS = frozenset({"summary", "claim_basis", "evidence", "portable_fallback"})
 
 _ROOT_KEYS = frozenset(
     {
@@ -121,9 +119,7 @@ def load_host_capability_matrix(
     root = repository_root if repository_root is not None else _repository_root()
     reference = as_of if as_of is not None else datetime.now(UTC).date()
     raw = json.loads(matrix_path.read_text(encoding="utf-8"))
-    return resolve_host_capability_matrix(
-        raw, repository_root=root, as_of=reference
-    )
+    return resolve_host_capability_matrix(raw, repository_root=root, as_of=reference)
 
 
 def resolve_host_capability_matrix(
@@ -136,9 +132,7 @@ def resolve_host_capability_matrix(
     document = _mapping(value, "host capability matrix")
     _exact_keys(document, _ROOT_KEYS, "host capability matrix")
     if document["contract"] != CONTRACT:
-        raise HostCapabilityError(
-            f"unsupported host capability contract {document['contract']!r}"
-        )
+        raise HostCapabilityError(f"unsupported host capability contract {document['contract']!r}")
     if document["schema_version"] != SCHEMA_VERSION:
         raise HostCapabilityError(
             f"unsupported host capability schema_version "
@@ -154,9 +148,7 @@ def resolve_host_capability_matrix(
 
     profiles_raw = _list(document["profiles"], "profiles")
     if not profiles_raw:
-        raise HostCapabilityError(
-            "host capability matrix must declare at least one profile"
-        )
+        raise HostCapabilityError("host capability matrix must declare at least one profile")
 
     profiles: list[dict[str, Any]] = []
     seen: set[str] = set()
@@ -165,17 +157,14 @@ def resolve_host_capability_matrix(
             item, repository_root=repository_root, as_of=as_of, max_age=max_age
         )
         if profile["id"] in seen:
-            raise HostCapabilityError(
-                f"duplicate host capability profile {profile['id']!r}"
-            )
+            raise HostCapabilityError(f"duplicate host capability profile {profile['id']!r}")
         seen.add(profile["id"])
         profiles.append(profile)
 
     missing = REQUIRED_PROFILE_IDS - seen
     if missing:
         raise HostCapabilityError(
-            "host capability matrix omits required profiles: "
-            + ", ".join(sorted(missing))
+            "host capability matrix omits required profiles: " + ", ".join(sorted(missing))
         )
 
     return {
@@ -200,9 +189,7 @@ def effective_tiers(matrix: Mapping[str, Any]) -> dict[str, SupportTier]:
         profile_id = profile.get("id")
         tier = profile.get("effective_tier")
         if not isinstance(profile_id, str) or tier not in TIERS:
-            raise HostCapabilityError(
-                "resolved matrix profile is missing id or effective_tier"
-            )
+            raise HostCapabilityError("resolved matrix profile is missing id or effective_tier")
         result[profile_id] = tier  # type: ignore[assignment]
     return result
 
@@ -214,8 +201,7 @@ def _validate_portable_fallbacks(portable: Mapping[str, Any]) -> None:
         value = portable[field]
         if not isinstance(value, str) or value not in PORTABLE_FALLBACKS:
             raise HostCapabilityError(
-                f"portable_fallbacks.{field} must be one of "
-                f"{sorted(PORTABLE_FALLBACKS)}"
+                f"portable_fallbacks.{field} must be one of {sorted(PORTABLE_FALLBACKS)}"
             )
 
 
@@ -233,20 +219,14 @@ def _validate_profile(
     display_name = _nonempty_string(profile["display_name"], "profile.display_name")
     host_kind = profile["host_kind"]
     if host_kind not in HOST_KINDS:
-        raise HostCapabilityError(
-            f"profile {profile_id!r} has invalid host_kind {host_kind!r}"
-        )
+        raise HostCapabilityError(f"profile {profile_id!r} has invalid host_kind {host_kind!r}")
 
     claimed = profile["claimed_tier"]
     if claimed not in TIERS:
-        raise HostCapabilityError(
-            f"profile {profile_id!r} has invalid claimed_tier {claimed!r}"
-        )
+        raise HostCapabilityError(f"profile {profile_id!r} has invalid claimed_tier {claimed!r}")
 
     tested_version = _nonempty_string(profile["tested_version"], "profile.tested_version")
-    verification_date = _optional_date(
-        profile["verification_date"], "profile.verification_date"
-    )
+    verification_date = _optional_date(profile["verification_date"], "profile.verification_date")
     limitations = _string_list(profile["limitations"], "profile.limitations")
     evidence = _path_list(profile["evidence"], "profile.evidence")
 
@@ -274,9 +254,7 @@ def _validate_profile(
         "claimed_tier": claimed,
         "effective_tier": effective,
         "tested_version": tested_version,
-        "verification_date": (
-            None if verification_date is None else verification_date.isoformat()
-        ),
+        "verification_date": (None if verification_date is None else verification_date.isoformat()),
         "limitations": limitations,
         "evidence": evidence,
         "evidence_gaps": reasons,
@@ -299,8 +277,7 @@ def _validate_capability(value: object, *, field: str, profile_id: str) -> dict[
     fallback = item["portable_fallback"]
     if not isinstance(fallback, str) or fallback not in PORTABLE_FALLBACKS:
         raise HostCapabilityError(
-            f"profile {profile_id!r} {field} has invalid portable_fallback "
-            f"{fallback!r}"
+            f"profile {profile_id!r} {field} has invalid portable_fallback {fallback!r}"
         )
     return {
         "summary": summary,
@@ -332,16 +309,12 @@ def _evidence_gap_reasons(
         if age < 0:
             reasons.append("verification_date is in the future")
         elif age > max_age:
-            reasons.append(
-                f"verification_date is stale ({age} days old; max {max_age})"
-            )
+            reasons.append(f"verification_date is stale ({age} days old; max {max_age})")
 
     if not evidence:
         reasons.append("profile evidence list is empty")
     else:
-        reasons.extend(
-            _missing_paths(evidence, repository_root, prefix="profile evidence")
-        )
+        reasons.extend(_missing_paths(evidence, repository_root, prefix="profile evidence"))
 
     for field in CAPABILITY_FIELDS:
         capability = capabilities[field]
@@ -349,17 +322,11 @@ def _evidence_gap_reasons(
         if not cap_evidence:
             reasons.append(f"{field} evidence list is empty")
             continue
-        reasons.extend(
-            _missing_paths(
-                cap_evidence, repository_root, prefix=f"{field} evidence"
-            )
-        )
+        reasons.extend(_missing_paths(cap_evidence, repository_root, prefix=f"{field} evidence"))
     return reasons
 
 
-def _missing_paths(
-    paths: Sequence[str], repository_root: Path, *, prefix: str
-) -> list[str]:
+def _missing_paths(paths: Sequence[str], repository_root: Path, *, prefix: str) -> list[str]:
     missing: list[str] = []
     for relative in paths:
         candidate = repository_root / relative
@@ -375,7 +342,7 @@ def _repository_root() -> Path:
 def _mapping(value: object, context: str) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise HostCapabilityError(f"{context} must be an object")
-    return value
+    return cast(dict[str, Any], value)
 
 
 def _list(value: object, context: str) -> list[Any]:
@@ -411,9 +378,7 @@ def _optional_date(value: object, context: str) -> date | None:
     try:
         return date.fromisoformat(value)
     except ValueError as exc:
-        raise HostCapabilityError(
-            f"{context} must be an ISO date string or null"
-        ) from exc
+        raise HostCapabilityError(f"{context} must be an ISO date string or null") from exc
 
 
 def _string_list(value: object, context: str) -> list[str]:
@@ -430,9 +395,7 @@ def _path_list(value: object, context: str) -> list[str]:
     items = _string_list(value, context)
     for item in items:
         if item.startswith("/") or item.startswith("\\") or ".." in Path(item).parts:
-            raise HostCapabilityError(
-                f"{context} paths must be repository-relative without '..'"
-            )
+            raise HostCapabilityError(f"{context} paths must be repository-relative without '..'")
     return items
 
 
