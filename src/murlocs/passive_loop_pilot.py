@@ -9,9 +9,9 @@ and keep ``live_execution_complete`` honest.
 """
 
 from __future__ import annotations
+from typing import Any, cast
 
 from collections.abc import Mapping, Sequence
-from typing import Any
 
 CONTRACT = "io.murlocs.passive-loop-pilot"
 SCHEMA_VERSION = 1
@@ -20,12 +20,8 @@ PILOT_STATUSES = frozenset({"harness-only", "in-progress", "complete"})
 SIZE_CLASSES = frozenset({"small", "medium", "large"})
 SCOPE_TOPOLOGIES = frozenset({"shallow", "layered", "multi-domain"})
 GUIDANCE_MATURITIES = frozenset({"bootstrap", "migrating", "mature"})
-AGENT_WORKFLOWS = frozenset(
-    {"cli-hooks", "copilot", "claude", "generated-guidance", "mixed-host"}
-)
-FINDING_KINDS = frozenset(
-    {"useful-silence", "useful-intervention", "noise", "missed-opportunity"}
-)
+AGENT_WORKFLOWS = frozenset({"cli-hooks", "copilot", "claude", "generated-guidance", "mixed-host"})
+FINDING_KINDS = frozenset({"useful-silence", "useful-intervention", "noise", "missed-opportunity"})
 OBSERVATION_STATUSES = frozenset({"simulated", "executed"})
 ROLLBACK_METHODS = frozenset(
     {"adapter-remove", "hook-disable", "hooks-uninstall", "manifest-absent"}
@@ -84,9 +80,7 @@ def validate_pilot_sheet(value: object) -> dict[str, Any]:
 
     diversity = _diversity_axes(repositories)
     finding_kinds = {
-        finding["kind"]
-        for repository in repositories
-        for finding in repository["findings"]
+        finding["kind"] for repository in repositories for finding in repository["findings"]
     }
     missing_findings = sorted(FINDING_KINDS - finding_kinds)
     if missing_findings:
@@ -402,9 +396,7 @@ def _nonnegative_int(value: object, label: str) -> None:
 def _reject_sensitive_keys(value: object) -> None:
     if isinstance(value, Mapping):
         if set(value) & FORBIDDEN_KEYS:
-            raise PassiveLoopPilotError(
-                "pilot sheet must not retain prompt or transcript content"
-            )
+            raise PassiveLoopPilotError("pilot sheet must not retain prompt or transcript content")
         for child in value.values():
             _reject_sensitive_keys(child)
     elif isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
@@ -412,10 +404,10 @@ def _reject_sensitive_keys(value: object) -> None:
             _reject_sensitive_keys(child)
 
 
-def _mapping(value: object, label: str) -> Mapping[str, Any]:
+def _mapping(value: object, label: str) -> dict[str, Any]:
     if not isinstance(value, Mapping):
         raise PassiveLoopPilotError(f"{label} must be an object")
-    return value
+    return cast(dict[str, Any], value)
 
 
 def _list(value: object, label: str) -> list[Any]:
