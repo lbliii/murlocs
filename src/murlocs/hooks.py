@@ -868,7 +868,7 @@ def _owned_runner(content: bytes, event: HookEvent) -> HookRunner | None:
             return None
         runner = HookRunner(Path(path), version, build_id, sha256)
         return runner if content == _hook_bytes(event, runner) else None
-    except (MurlocsError, UnicodeDecodeError, TypeError, ValueError, json.JSONDecodeError):
+    except MurlocsError, UnicodeDecodeError, TypeError, ValueError, json.JSONDecodeError:
         return None
 
 

@@ -79,6 +79,7 @@ class _AnnotationSnapshot:
 class _AnnotationSnapshotUnavailable(Exception):
     """A bounded current-source read could not establish attachment state."""
 
+
 def _unknown_no_lazy_fetch(stderr: bytes) -> bool:
     """Return True when Git rejected the global ``--no-lazy-fetch`` option."""
     return b"unknown option: --no-lazy-fetch" in stderr
@@ -686,7 +687,7 @@ def _revision_baseline(root: Path, revision_range: str) -> str | None:
         ]
     try:
         completed = _run_git(root, args, fallback_without_no_lazy=True)
-    except (OSError, subprocess.TimeoutExpired):
+    except OSError, subprocess.TimeoutExpired:
         return None
     value = completed.stdout.strip()
     if completed.returncode or re.fullmatch(rb"[0-9a-f]{40}|[0-9a-f]{64}", value) is None:
@@ -701,7 +702,7 @@ def _historical_manifest(root: Path, revision: str) -> tuple[Manifest | None, st
         return None, "the baseline manifest is unavailable"
     try:
         root_data = tomllib.loads(raw_root.decode("utf-8"))
-    except (UnicodeDecodeError, tomllib.TOMLDecodeError):
+    except UnicodeDecodeError, tomllib.TOMLDecodeError:
         return None, "the baseline manifest is malformed"
     declarations = root_data.get("layers", [])
     if not isinstance(declarations, list) or len(declarations) > ANNOTATION_REVISION_SOURCE_LIMIT:
@@ -765,7 +766,7 @@ def _historical_manifest(root: Path, revision: str) -> tuple[Manifest | None, st
             ),
             None,
         )
-    except (MurlocsError, UnicodeDecodeError, tomllib.TOMLDecodeError, TypeError, ValueError):
+    except MurlocsError, UnicodeDecodeError, tomllib.TOMLDecodeError, TypeError, ValueError:
         return None, "the baseline manifest composition is malformed"
 
 
@@ -792,7 +793,7 @@ def _git_revision_blobs(root: Path, revision: str, paths: list[str]) -> dict[str
             input_bytes=batch_input,
             fallback_without_no_lazy=True,
         )
-    except (OSError, subprocess.TimeoutExpired):
+    except OSError, subprocess.TimeoutExpired:
         return None
     metadata = _parse_git_batch_sizes(checked.stdout, object_names)
     sizes = tuple(item[1] for item in metadata or () if item is not None)
@@ -811,7 +812,7 @@ def _git_revision_blobs(root: Path, revision: str, paths: list[str]) -> dict[str
             input_bytes=batch_input,
             fallback_without_no_lazy=True,
         )
-    except (OSError, subprocess.TimeoutExpired):
+    except OSError, subprocess.TimeoutExpired:
         return None
     contents = _parse_git_batch_blobs(completed.stdout, object_names, metadata)
     if completed.returncode or contents is None or any(item is None for item in contents):
@@ -981,7 +982,7 @@ def _source_has_global_guidance(manifest: Manifest, source_path: str) -> bool:
     """Identify active source content that contributes to root guidance collections."""
     try:
         disk = read_disk_sources(manifest.root)
-    except (MurlocsError, OSError):
+    except MurlocsError, OSError:
         return False
     for source, fragment in zip(disk.sources, disk.fragments, strict=True):
         if source.path != source_path:
@@ -996,7 +997,7 @@ def _stale_source_paths_against_lock(manifest: Manifest) -> tuple[str, ...] | No
     """Return sources changed since compilation, or None without complete evidence."""
     try:
         lock = read_lock(manifest.root)
-    except (MurlocsError, OSError):
+    except MurlocsError, OSError:
         return None
     if lock is None:
         return None
@@ -1011,7 +1012,7 @@ def _workspace_source_changes_root_render(manifest: Manifest, source_path: str) 
     """Compare source semantics with a bounded, batched locked Git baseline."""
     try:
         lock = read_lock(manifest.root)
-    except (MurlocsError, OSError):
+    except MurlocsError, OSError:
         return None
     if lock is None:
         return None
@@ -1045,7 +1046,7 @@ def _workspace_source_changes_root_render(manifest: Manifest, source_path: str) 
             timeout=GIT_READ_TIMEOUT_SECONDS,
         )
         current_bytes = (manifest.root / source_path).read_bytes()
-    except (OSError, subprocess.TimeoutExpired):
+    except OSError, subprocess.TimeoutExpired:
         return None
     if history.returncode or sha256_bytes(current_bytes) != loaded.sha256:
         return None
@@ -1071,7 +1072,7 @@ def _workspace_source_changes_root_render(manifest: Manifest, source_path: str) 
             env=git_env,
             timeout=GIT_READ_TIMEOUT_SECONDS,
         )
-    except (OSError, subprocess.TimeoutExpired):
+    except OSError, subprocess.TimeoutExpired:
         return None
     metadata = _parse_git_batch_sizes(checked.stdout, object_names)
     present_sizes = tuple(entry[1] for entry in metadata or () if entry is not None)
@@ -1100,7 +1101,7 @@ def _workspace_source_changes_root_render(manifest: Manifest, source_path: str) 
             env=git_env,
             timeout=GIT_READ_TIMEOUT_SECONDS,
         )
-    except (OSError, subprocess.TimeoutExpired):
+    except OSError, subprocess.TimeoutExpired:
         return None
     blobs = _parse_git_batch_blobs(completed.stdout, object_names, metadata)
     if completed.returncode or blobs is None:
@@ -1114,7 +1115,7 @@ def _workspace_source_changes_root_render(manifest: Manifest, source_path: str) 
     try:
         before = tomllib.loads(baseline_bytes.decode("utf-8"))
         after = tomllib.loads(current_bytes.decode("utf-8"))
-    except (UnicodeDecodeError, tomllib.TOMLDecodeError):
+    except UnicodeDecodeError, tomllib.TOMLDecodeError:
         return None
     return _fragment_changes_root_render(before, after)
 
@@ -1226,7 +1227,7 @@ def _revision_mentions_global_guidance(root: Path, revision_range: str, source_p
             ],
             fallback_without_no_lazy=True,
         )
-    except (OSError, subprocess.TimeoutExpired):
+    except OSError, subprocess.TimeoutExpired:
         return True
     if completed.returncode:
         return True

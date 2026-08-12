@@ -376,6 +376,7 @@ def run_git(
             "LC_ALL": "C",
         }
     )
+
     def _command(*, no_lazy_fetch: bool) -> list[str]:
         command = ["git"]
         if no_lazy_fetch:
