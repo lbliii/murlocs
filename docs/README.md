@@ -14,6 +14,7 @@ then checks what applies and what a change may affect.
 
 - [Outcome envelope](outcome-envelope.md) — read compact outcomes and repair guidance safely.
 - [Changed-path guidance impact](impact.md) — use impact reports in review.
+- [Intent-shaped task commands](task-commands.md) — orient, review-changes, and finish compose check and impact into one envelope.
 - [Adoption status and coverage](adoption.md) — track rollout and coverage.
 - [Governed guidance curation](curation.md) — propose, review, and maintain guidance.
 - [Guidance-friction observations](guidance-friction.md) — capture inert missing/harmful guidance signals.
