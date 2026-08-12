@@ -72,6 +72,34 @@ Discovery never calls GitHub and never executes tests.
 The helper scripts mirror the chirp backlog-truth tooling: stdlib-only through
 Murlocs, AST-based, suitable for pre-commit or air-gapped laptops.
 
+## Acceptance strength (mutation / revert)
+
+Presence of an acceptance test is necessary but not sufficient. A tautological
+test (`assert True`) can satisfy discovery while proving nothing about the
+implementation. Strength checking (issue #209) adds a coarse mutation signal:
+
+1. Run the linked `issue(N)` tests on the clean tree — they must **pass**.
+2. Temporarily revert the changed implementation paths to their pre-change
+   baseline snapshots.
+3. Re-run the same tests — they must **fail**.
+4. Restore the working tree.
+
+If the tests still pass after the revert, the anchor is weak and is rejected.
+
+- **Library API:** `murlocs.acceptance.verify_acceptance_strength(root, issue, baseline_snapshots=...)`
+- **CLI helper:** `python scripts/check_acceptance_strength.py --issue N --git-base ORIGIN/main --path src/...`
+
+Scope stays on acceptance anchors only: the helper runs the linked `issue(N)`
+node ids, never the whole suite. Full mutation testing remains out of scope.
+Unit tests inject a runner callback so the strength contract stays deterministic
+and offline-friendly without requiring network access.
+
+```bash
+# Example: strength-check Closes #209 against pre-change acceptance.py
+python scripts/check_acceptance_strength.py --issue 209 \
+  --git-base origin/main --path src/murlocs/acceptance.py
+```
+
 ## Relationship to guidance proof anchors
 
 | Kind | Subject | Example |
@@ -127,3 +155,5 @@ binding:
 Until step 3, the job still runs and reports failures on the PR Checks tab, but
 merge is not blocked. Keep the workflow required once the dogfood PR for #207
 has proven the fail/pass paths above.
+Closure enforcement (#207) and drift reconciliation (#208) build on discovery;
+mutation strength (#209) is the faithfulness gate documented above.

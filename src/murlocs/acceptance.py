@@ -9,7 +9,10 @@ from __future__ import annotations
 
 import ast
 import re
-from collections.abc import Iterable
+import subprocess
+import sys
+from collections.abc import Callable, Iterable, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
@@ -21,23 +24,8 @@ if TYPE_CHECKING:
 DEFAULT_TEST_ROOTS = ("tests", "examples")
 _ANCHOR = re.compile(r"^([a-z][a-z0-9_-]*):(.+)\Z")
 
-# GitHub closing keywords (close/fix/resolve + tense variants), then one or more
-# issue references (#N, owner/repo#N, or github.com/.../issues/N).
-_CLOSURE_KEYWORD = re.compile(
-    r"(?i)\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\b\s*:?",
-)
-_ISSUE_REF = re.compile(
-    r"(?:"
-    r"https://github\.com/[\w.-]+/[\w.-]+/issues/(\d+)"
-    r"|[\w.-]+/[\w.-]+#(\d+)"
-    r"|#(\d+)"
-    r")"
-)
-_LIST_CONNECTOR = re.compile(r"(?i)^(?:\s*[,]\s*|\s+and\s+|\s+)")
-# Explicit exemption line in a PR body; reason in parentheses is recommended.
-_ACCEPTANCE_NA = re.compile(
-    r"(?im)^[ \t]*Acceptance[ \t]+#(\d+):[ \t]*n/a(?:[ \t]*\([^)\n]*\))?[ \t]*$"
-)
+# Callable that runs acceptance node ids under ``root`` and returns a process exit code.
+AcceptanceTestRunner = Callable[[Path, Sequence[str]], int]
 
 
 @dataclass(frozen=True)
@@ -276,113 +264,188 @@ def acceptance_anchor_findings(manifest: Manifest) -> list[Finding]:
 
 
 @dataclass(frozen=True)
-class ClosureVerdict:
-    """Outcome of checking PR closure claims against offline acceptance anchors."""
+class AcceptanceStrengthResult:
+    """Outcome of a coarse mutation/revert strength check for one issue anchor.
 
-    claimed: frozenset[int]
-    anchored: frozenset[int]
-    exempted: frozenset[int]
-    missing: frozenset[int]
+    An anchor is *strong* only when its linked ``issue(N)`` tests pass on the
+    clean tree and fail after the changed implementation paths are reverted to
+    their baseline snapshots. A tautological test that ignores the
+    implementation fails this check.
+    """
 
-    @property
-    def ok(self) -> bool:
-        return not self.missing
-
-
-def extract_closure_claims(body: str) -> frozenset[int]:
-    """Return issue numbers a PR body claims to close/fix/resolve."""
-    claims: set[int] = set()
-    for keyword in _CLOSURE_KEYWORD.finditer(body):
-        pos = keyword.end()
-        # Leading whitespace before the first issue reference.
-        leading = re.match(r"^\s+", body[pos:])
-        if leading is not None:
-            pos += leading.end()
-        while pos < len(body):
-            ref = _ISSUE_REF.match(body, pos)
-            if ref is None:
-                break
-            number = next(group for group in ref.groups() if group is not None)
-            claims.add(int(number))
-            pos = ref.end()
-            connector = _LIST_CONNECTOR.match(body[pos:])
-            if connector is None:
-                break
-            pos += connector.end()
-            # Stop if the connector did not leave us at another issue ref.
-            if _ISSUE_REF.match(body, pos) is None:
-                break
-    return frozenset(claims)
+    issue: int
+    strong: bool
+    clean_passed: bool
+    mutated_failed: bool
+    locations: tuple[str, ...]
+    mutated_paths: tuple[str, ...]
+    message: str
 
 
-def extract_acceptance_exemptions(body: str) -> frozenset[int]:
-    """Return issue numbers declared ``Acceptance #N: n/a`` in a PR body."""
-    return frozenset(int(match.group(1)) for match in _ACCEPTANCE_NA.finditer(body))
+def runnable_acceptance_node_ids(locations: Sequence[AcceptanceTestLocation]) -> tuple[str, ...]:
+    """Return pytest node ids suitable for execution (skip module-only markers)."""
+    return tuple(item.location for item in locations if not item.location.endswith("::<module>"))
 
 
-def issues_with_acceptance_anchors(
+def run_pytest_acceptance(root: Path, node_ids: Sequence[str]) -> int:
+    """Run selected pytest node ids under ``root``; return the process exit code."""
+    if not node_ids:
+        return 1
+    completed = subprocess.run(
+        [sys.executable, "-m", "pytest", *node_ids, "-q", "--tb=no"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return completed.returncode
+
+
+def snapshot_paths(root: Path, relative_paths: Sequence[str]) -> dict[str, str | None]:
+    """Capture current contents of repo-relative paths (``None`` if absent)."""
+    snapshots: dict[str, str | None] = {}
+    for relative in relative_paths:
+        path = _resolve_repo_path(root, relative)
+        if path.is_file():
+            snapshots[relative] = path.read_text(encoding="utf-8")
+        else:
+            snapshots[relative] = None
+    return snapshots
+
+
+def _resolve_repo_path(root: Path, relative: str) -> Path:
+    candidate = (root / relative).resolve()
+    root_resolved = root.resolve()
+    if not candidate.is_relative_to(root_resolved):
+        raise ValueError(f"path escapes repository root: {relative}")
+    return candidate
+
+
+@contextmanager
+def temporary_path_snapshots(root: Path, snapshots: Mapping[str, str | None]):
+    """Temporarily replace paths with baseline snapshots, then restore."""
+    if not snapshots:
+        yield
+        return
+    previous = snapshot_paths(root, tuple(snapshots))
+    try:
+        for relative, content in snapshots.items():
+            path = _resolve_repo_path(root, relative)
+            if content is None:
+                if path.is_file():
+                    path.unlink()
+                continue
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content, encoding="utf-8")
+        yield
+    finally:
+        for relative, content in previous.items():
+            path = _resolve_repo_path(root, relative)
+            if content is None:
+                if path.is_file():
+                    path.unlink()
+                continue
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content, encoding="utf-8")
+
+
+def verify_acceptance_strength(
     root: Path,
+    issue: int,
+    *,
+    baseline_snapshots: Mapping[str, str | None],
+    run_tests: AcceptanceTestRunner | None = None,
     test_roots: tuple[str, ...] | None = None,
-) -> frozenset[int]:
-    """Return issue numbers that have at least one offline pytest acceptance marker."""
+) -> AcceptanceStrengthResult:
+    """Require ``issue(N)`` tests to pass clean and fail under a path revert.
+
+    ``baseline_snapshots`` maps repo-relative implementation paths to their
+    pre-change contents (``None`` means the path did not exist before the
+    change). This is the coarse PR-diff revert signal for issue #209: presence
+    of a linked test is necessary but not sufficient.
+    """
+    if not baseline_snapshots:
+        raise ValueError("baseline_snapshots must include at least one changed path")
+
     discovered = collect_pytest_issue_tests(root, test_roots)
-    numbers: set[int] = set()
-    for reference in discovered:
-        if reference.startswith("issue(") and reference.endswith(")"):
-            payload = reference.removeprefix("issue(").removesuffix(")")
-            if payload.isdigit():
-                numbers.add(int(payload))
-    return frozenset(numbers)
+    locations = discovered.get(f"issue({issue})", ())
+    node_ids = runnable_acceptance_node_ids(locations)
+    mutated_paths = tuple(sorted(baseline_snapshots))
+    runner = run_tests or run_pytest_acceptance
 
-
-def evaluate_closure_acceptance(
-    body: str,
-    root: Path,
-    test_roots: tuple[str, ...] | None = None,
-) -> ClosureVerdict:
-    """Fail closed when a closure claim lacks an anchor and lacks an n/a exemption."""
-    claimed = extract_closure_claims(body)
-    exempted = extract_acceptance_exemptions(body)
-    if not claimed:
-        return ClosureVerdict(
-            claimed=frozenset(),
-            anchored=frozenset(),
-            exempted=exempted,
-            missing=frozenset(),
+    if not node_ids:
+        return AcceptanceStrengthResult(
+            issue=issue,
+            strong=False,
+            clean_passed=False,
+            mutated_failed=False,
+            locations=tuple(item.location for item in locations),
+            mutated_paths=mutated_paths,
+            message=(
+                f"issue #{issue} has no runnable @pytest.mark.issue({issue}) "
+                "acceptance test to strength-check"
+            ),
         )
-    anchored = issues_with_acceptance_anchors(root, test_roots)
-    missing = frozenset(
-        number for number in claimed if number not in anchored and number not in exempted
-    )
-    return ClosureVerdict(
-        claimed=claimed,
-        anchored=frozenset(number for number in claimed if number in anchored),
-        exempted=frozenset(number for number in claimed if number in exempted),
-        missing=missing,
+
+    clean_code = runner(root, node_ids)
+    clean_passed = clean_code == 0
+    if not clean_passed:
+        return AcceptanceStrengthResult(
+            issue=issue,
+            strong=False,
+            clean_passed=False,
+            mutated_failed=False,
+            locations=node_ids,
+            mutated_paths=mutated_paths,
+            message=(
+                f"issue #{issue} acceptance tests must pass on the clean tree "
+                f"before strength checking (exit {clean_code})"
+            ),
+        )
+
+    with temporary_path_snapshots(root, baseline_snapshots):
+        mutated_code = runner(root, node_ids)
+    mutated_failed = mutated_code != 0
+
+    if mutated_failed:
+        return AcceptanceStrengthResult(
+            issue=issue,
+            strong=True,
+            clean_passed=True,
+            mutated_failed=True,
+            locations=node_ids,
+            mutated_paths=mutated_paths,
+            message=(
+                f"issue #{issue} acceptance tests fail after reverting "
+                f"{', '.join(mutated_paths)}; anchor is strong"
+            ),
+        )
+
+    return AcceptanceStrengthResult(
+        issue=issue,
+        strong=False,
+        clean_passed=True,
+        mutated_failed=False,
+        locations=node_ids,
+        mutated_paths=mutated_paths,
+        message=(
+            f"issue #{issue} acceptance tests still pass after reverting "
+            f"{', '.join(mutated_paths)}; tautological or weak anchor"
+        ),
     )
 
 
-def format_closure_report(verdict: ClosureVerdict) -> str:
-    """Render a human-readable closure-gate report."""
-    if not verdict.claimed:
-        return "No Closes/Fixes/Resolves claims in PR body; closure gate is vacuously ok."
+def format_strength_report(result: AcceptanceStrengthResult) -> str:
+    """Render a human-readable acceptance-strength report."""
+    status = "STRONG" if result.strong else "WEAK"
     lines = [
-        f"Closure claims: {', '.join(f'#{n}' for n in sorted(verdict.claimed))}",
+        f"Acceptance strength for #{result.issue}: {status}",
+        f"Clean pass: {result.clean_passed}",
+        f"Fails under revert: {result.mutated_failed}",
     ]
-    if verdict.anchored:
-        lines.append("Anchored: " + ", ".join(f"#{n}" for n in sorted(verdict.anchored)))
-    if verdict.exempted:
-        lines.append(
-            "Exempted (Acceptance #N: n/a): " + ", ".join(f"#{n}" for n in sorted(verdict.exempted))
-        )
-    if verdict.missing:
-        lines.append(
-            "Missing acceptance anchors: " + ", ".join(f"#{n}" for n in sorted(verdict.missing))
-        )
-        lines.append(
-            "Add @pytest.mark.issue(N) (or a work-item acceptance anchor that "
-            "resolves offline), or declare `Acceptance #N: n/a (reason)` in the PR body."
-        )
-    else:
-        lines.append("All closure claims have an acceptance anchor or n/a exemption.")
+    if result.locations:
+        lines.append("Tests: " + ", ".join(result.locations))
+    if result.mutated_paths:
+        lines.append("Reverted paths: " + ", ".join(result.mutated_paths))
+    lines.append(result.message)
     return "\n".join(lines)
