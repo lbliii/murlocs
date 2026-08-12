@@ -5,9 +5,9 @@ which agent hosts and orchestrators can use Murlocs, at which support tier, and
 what portable fallback remains when a host feature is absent.
 
 The machine-readable source of truth is
-[`tests/fixtures/host-capability-matrix/v1/matrix.json`](../tests/fixtures/host-capability-matrix/v1/matrix.json).
+`tests/fixtures/host-capability-matrix/v1/matrix.json`.
 Its shape is documented by
-[`schema.json`](../tests/fixtures/host-capability-matrix/v1/schema.json).
+`tests/fixtures/host-capability-matrix/v1/schema.json`.
 `murlocs.host_capability.load_host_capability_matrix` validates the fixture and
 resolves an **effective** tier. Updating claims is a reviewable fixture edit:
 change evidence paths and `verification_date`, then re-run the loader tests.
