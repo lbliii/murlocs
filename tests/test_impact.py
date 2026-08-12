@@ -1338,6 +1338,7 @@ def test_revision_content_inspection_never_executes_textconv(tmp_path):
     assert not sentinel.exists()
 
 
+@pytest.mark.issue(88)
 def test_annotation_explicit_path_is_conservative_path_only_routing(tmp_path):
     root = tmp_path / "repo"
     build(root)
@@ -1358,6 +1359,7 @@ def test_annotation_explicit_path_is_conservative_path_only_routing(tmp_path):
     )
 
 
+@pytest.mark.issue(88)
 def test_annotation_revision_reports_move_without_claiming_semantic_staleness(tmp_path):
     root = tmp_path / "repo"
     build(root)
@@ -1415,6 +1417,7 @@ def test_annotation_revision_reports_removal_and_duplication(tmp_path, content, 
     assert by_id(report, "api")["status"] == "required"
 
 
+@pytest.mark.issue(88)
 def test_annotation_revision_reports_declaration_change_and_surface_parity(tmp_path):
     root = tmp_path / "repo"
     build(root)
@@ -1442,7 +1445,10 @@ def test_annotation_revision_reports_declaration_change_and_surface_parity(tmp_p
     }
 
 
-def test_annotation_unavailable_baseline_never_reports_declared_attachment_unaffected(tmp_path):
+@pytest.mark.issue(88)
+def test_annotation_unavailable_baseline_never_reports_declared_attachment_unaffected(
+    tmp_path,
+):
     root = tmp_path / "repo"
     build(root)
     add_annotation(root)
