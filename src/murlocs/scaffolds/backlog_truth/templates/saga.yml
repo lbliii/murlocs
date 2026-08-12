@@ -1,0 +1,93 @@
+name: Saga
+description: Cross-cutting strategic thread — decompose into epics as GitHub sub-issues
+title: "[Saga] "
+labels:
+  - saga
+  - roadmap
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Tracking:** GitHub issues are authoritative. Create epics and attach
+        them through GitHub's actual sub-issue relationship. Body links and
+        markdown task lists do not create hierarchy.
+
+        **Workability:** Never label a saga `ready`. Every unblocked workstream
+        needs a ready Task; blocked workstreams name the blocker and revisit
+        trigger.
+
+        **Closure:** Sagas close when actual epic children and saga-level
+        release gates close. PRs use `Advances-Epic: #N`; reserve `Closes #N`
+        for Tasks.
+
+        Read `docs/backlog-automation.md` and `docs/plan/issue-lifecycle.md`.
+
+  - type: textarea
+    id: north_star
+    attributes:
+      label: North star
+      description: Strategic outcome this saga proves across multiple epics.
+    validations:
+      required: true
+
+  - type: textarea
+    id: program_dependency
+    attributes:
+      label: Program dependencies
+      description: Blocking issue/upstream plus the exact condition that makes this actionable.
+      placeholder: |
+        Upstream library X must release 2.0 before this saga can ship.
+        Epic #N must close before public inspection work starts.
+    validations:
+      required: false
+
+  - type: textarea
+    id: release_gates
+    attributes:
+      label: Release gates
+      description: Ordered gates that must pass before the saga can close.
+      placeholder: |
+        1. Closure gate required on the default branch.
+        2. Reconcile sweep reports no decided-but-unbuilt residue.
+        3. Day-one scaffold stamps a green kit on a fresh repo.
+    validations:
+      required: true
+
+  - type: textarea
+    id: workstreams
+    attributes:
+      label: Workstreams
+      description: Epic-sized themes only. Track created epics in the GitHub sub-issue panel, not a body checklist.
+    validations:
+      required: true
+
+  - type: textarea
+    id: boundaries
+    attributes:
+      label: Architectural boundaries
+      description: What this repo owns vs upstream/downstream packages.
+    validations:
+      required: false
+
+  - type: textarea
+    id: required_proof
+    attributes:
+      label: Required proof
+      description: Cross-epic evidence — canaries, examples, conformance matrices.
+    validations:
+      required: false
+
+  - type: textarea
+    id: success_signal
+    attributes:
+      label: Success signal
+      description: How we know an external adopter could succeed on this stack.
+    validations:
+      required: true
+
+  - type: textarea
+    id: not_now
+    attributes:
+      label: Not now
+    validations:
+      required: false

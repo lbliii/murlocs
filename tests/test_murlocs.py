@@ -40,6 +40,7 @@ def test_all_array_options_are_discovered_from_command_schemas():
         "finish": ("--path",),
         "init": ("--coverage-root",),
         "review-changes": ("--path",),
+        "scaffold.backlog-truth": ("--only",),
         "split-layers": (
             "--check",
             "--coverage-exemption",

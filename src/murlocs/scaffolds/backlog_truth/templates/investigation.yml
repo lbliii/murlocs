@@ -1,0 +1,64 @@
+name: Investigation
+description: Planner-owned design freeze — never claimable as a worker lease
+title: "Investigation: "
+labels:
+  - investigation
+  - design
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Investigations are **planner-owned**. Close with a decision Tasks may
+        assume. Workers must not claim Investigation issues (`ready` is reserved
+        for Tasks). Lasting decisions should also land an ADR under `docs/adr/`.
+
+        Tree: Saga → Epic → Investigation → Task.
+        Read `docs/plan/issue-lifecycle.md`.
+
+  - type: input
+    id: parent_epic
+    attributes:
+      label: Parent epic
+      description: Issue number (descriptive; attach as a GitHub sub-issue after creation).
+      placeholder: "210"
+    validations:
+      required: true
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Question to freeze
+      description: The single decision this issue owns. No two Tasks may re-decide it.
+    validations:
+      required: true
+
+  - type: textarea
+    id: options
+    attributes:
+      label: Options considered
+      description: Short list — enough for a reconciler, not a whitepaper.
+    validations:
+      required: true
+
+  - type: textarea
+    id: decision
+    attributes:
+      label: Decision
+      description: What we chose and the consequences for implementers. Leave blank while open; fill before close.
+    validations:
+      required: false
+
+  - type: textarea
+    id: tasks_may_assume
+    attributes:
+      label: What Tasks may assume after close
+      description: Explicit contract for worker issues that depend on this freeze.
+    validations:
+      required: true
+
+  - type: input
+    id: adr
+    attributes:
+      label: ADR path (optional)
+      description: e.g. docs/adr/0001-example.md — required if the decision outlives the epic.
+      placeholder: docs/adr/00XX-….md

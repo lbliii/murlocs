@@ -1,0 +1,87 @@
+# Label taxonomy for backlog-truth (GitHub).
+# Apply with a labels sync action or create manually. Names are the contract;
+# colours are suggestions only.
+
+- name: saga
+  color: "5319E7"
+  description: Cross-cutting strategic thread (never ready)
+
+- name: epic
+  color: "BFD4F2"
+  description: Outcome-sized initiative under a saga (never ready)
+
+- name: investigation
+  color: "D4C5F9"
+  description: Planner-owned design freeze (never claimable)
+
+- name: design
+  color: "D4C5F9"
+  description: Alias / companion for investigation freezes
+
+- name: roadmap
+  color: "0E8A16"
+  description: Roadmap-facing saga or program thread
+
+- name: P0
+  color: "B60205"
+  description: Highest priority — stop-the-line
+
+- name: P1
+  color: "D93F0B"
+  description: High priority — near-term must-ship
+
+- name: P2
+  color: "FBCA04"
+  description: Medium priority — integration, pilots, validation
+
+- name: P3
+  color: "0E8A16"
+  description: Low priority — polish and opportunistic work
+
+- name: ready
+  color: "0E8A16"
+  description: Actionable Task leaf with dependencies satisfied (worker lease)
+
+- name: blocked
+  color: "B60205"
+  description: Waiting on an internal dependency or approval
+
+- name: upstream-blocked
+  color: "D93F0B"
+  description: Waiting on an external/upstream event
+
+- name: research
+  color: "C5DEF5"
+  description: Research-oriented leaf (still claimable only when ready)
+
+- name: decision
+  color: "FEF2C0"
+  description: Decision recorded; implementation may live elsewhere
+
+- name: merged-pending-close
+  color: "FBCA04"
+  description: Merged PR closes this non-epic issue — verify and close
+
+- name: stale-epic-review
+  color: "FBCA04"
+  description: Epic whose work merged — re-check children / close
+
+- name: acceptance-tracked
+  color: "C2E0C6"
+  description: Issue has an executable acceptance test
+
+- name: closure-candidate
+  color: "C2E0C6"
+  description: All native child issues completed; verify parent gates
+
+- name: needs-grooming
+  color: "E99695"
+  description: Work state or hierarchy violates the workability contract
+
+- name: needs-decomposition
+  color: "E99695"
+  description: Unblocked parent has no native children
+
+- name: backlog-truth
+  color: "7057FF"
+  description: Derived work/issue truth and acceptance anchors

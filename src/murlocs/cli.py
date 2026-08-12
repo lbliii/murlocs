@@ -67,6 +67,19 @@ from murlocs.repair import (
     recover_repair,
 )
 from murlocs.rollout import ScopePlan, apply_add_scope, plan_add_scope
+from murlocs.scaffolds.backlog_truth import (
+    KIT_ID as BACKLOG_TRUTH_KIT_ID,
+)
+from murlocs.scaffolds.backlog_truth import (
+    PIECES as BACKLOG_TRUTH_PIECES,
+)
+from murlocs.scaffolds.backlog_truth import (
+    apply_kit as apply_backlog_truth_kit,
+)
+from murlocs.scaffolds.backlog_truth import (
+    kit_findings,
+    kit_status,
+)
 from murlocs.source_annotations import annotation_provenance_payload
 from murlocs.split import (
     SplitPlan,
@@ -981,6 +994,125 @@ def _normalize_coverage_roots(root: Path, entries: list[str]) -> list[str]:
     return normalized
 
 
+class ScaffoldPayload(TypedDict):
+    ok: bool
+    kit: str
+    version: int
+    dry_run: bool
+    pieces: list[str]
+    written: list[str]
+    skipped: list[str]
+    receipt: str
+    process_docs: list[str]
+    status: NotRequired[dict[str, object] | None]
+
+
+class ScaffoldStatusPayload(TypedDict):
+    ok: bool
+    kit: str
+    present: bool
+    current: bool
+    state: str
+    version: int | None
+    pieces: list[str]
+    files: list[str]
+    process_docs: list[str]
+    missing: list[str]
+    modified: list[str]
+
+
+def scaffold_backlog_truth_command(
+    repo: Annotated[str, Option(metavar="PATH")] = ".",
+    only: Annotated[list[str] | None, Option(metavar="PIECE")] = None,
+    force: bool = False,
+    ctx: Context | None = None,
+) -> ScaffoldPayload | FailurePayload:
+    """Stamp the backlog-truth kit (templates, workflows, labels, docs).
+
+    Args:
+        repo: Repository root to stamp into.
+        only: Optional kit piece to install; repeat for multiple pieces.
+        force: Replace divergent existing kit files.
+        ctx: Milo host context used to honor dry-run policy.
+    """
+    try:
+        dry_run = bool(ctx is not None and ctx.dry_run)
+        result = apply_backlog_truth_kit(
+            _root(repo),
+            pieces=only,
+            force=force,
+            dry_run=dry_run,
+        )
+    except MurlocsError as exc:
+        return _failure("MURLOCS_SCAFFOLD", exc)
+
+    verb = "would write" if dry_run else "wrote"
+    lines = [
+        f"scaffold {BACKLOG_TRUTH_KIT_ID} "
+        f"({'dry-run' if dry_run else 'applied'}): "
+        f"{len(result['pieces'])} piece(s)",
+        *(f"{verb} {path}" for path in result["written"]),
+        *(f"unchanged {path}" for path in result["skipped"]),
+    ]
+    status = result.get("status")
+    if isinstance(status, dict) and status.get("state"):
+        lines.append(f"kit state: {status['state']}")
+    if result["process_docs"]:
+        lines.append(
+            "process docs (outside compile): " + ", ".join(result["process_docs"])
+        )
+    return CommandResult(cast(ScaffoldPayload, result), terminal_text="\n".join(lines))
+
+
+def scaffold_status_command(
+    repo: Annotated[str, Option(metavar="PATH")] = ".",
+    kit: Annotated[str, Option(metavar="KIT")] = BACKLOG_TRUTH_KIT_ID,
+) -> ScaffoldStatusPayload | FailurePayload:
+    """Report whether a stamped kit is present and current.
+
+    Args:
+        repo: Repository root to inspect.
+        kit: Kit id (currently only ``backlog_truth`` / ``backlog-truth``).
+    """
+    try:
+        normalized = kit.strip().lower().replace("-", "_")
+        if normalized != BACKLOG_TRUTH_KIT_ID:
+            raise MurlocsError(
+                f"unknown kit: {kit}; known kits: {BACKLOG_TRUTH_KIT_ID.replace('_', '-')}"
+            )
+        status = kit_status(_root(repo))
+    except MurlocsError as exc:
+        return _failure("MURLOCS_SCAFFOLD", exc)
+
+    payload: ScaffoldStatusPayload = {
+        "ok": True,
+        "kit": BACKLOG_TRUTH_KIT_ID,
+        "present": status.present,
+        "current": status.current,
+        "state": status.state,
+        "version": status.version,
+        "pieces": list(status.pieces),
+        "files": list(status.files),
+        "process_docs": list(status.process_docs),
+        "missing": list(status.missing),
+        "modified": list(status.modified),
+    }
+    lines = [
+        f"kit {BACKLOG_TRUTH_KIT_ID}: {status.state}",
+        f"pieces: {', '.join(status.pieces) or '(none)'}",
+    ]
+    if status.missing:
+        lines.append("missing: " + ", ".join(status.missing))
+    if status.modified:
+        lines.append("modified: " + ", ".join(status.modified))
+    if status.process_docs:
+        lines.append("process docs: " + ", ".join(status.process_docs))
+    known = ", ".join(piece.name for piece in BACKLOG_TRUTH_PIECES)
+    if status.state == "absent":
+        lines.append(f"install with: murlocs scaffold backlog-truth (pieces: {known})")
+    return CommandResult(payload, terminal_text="\n".join(lines))
+
+
 def _coverage_payload(roots: list[str], findings: list[Finding]) -> CoveragePayload:
     if not roots:
         state: Literal["unconfigured", "structurally_incomplete", "structurally_complete"] = (
@@ -1510,6 +1642,7 @@ def check_command(
             *validate(manifest),
             *annotation_findings(manifest),
             *acceptance_anchor_findings(manifest),
+            *kit_findings(manifest.root),
         ]
         if transaction_pending(manifest.root):
             findings.append(
@@ -2823,6 +2956,35 @@ def build_cli(*, name: str = "murlocs") -> CLI:
         terminal_renderer=_render_result,
     )(finish_command)
     register_hook_commands(app, terminal_renderer=_render_result)
+    scaffold = app.group(
+        "scaffold",
+        description="Stamp opt-in repository kits (templates, workflows, docs)",
+    )
+    scaffold.command(
+        "backlog-truth",
+        description="Stamp backlog-truth issue templates, workflows, labels, and docs",
+        surfaces=("cli",),
+        terminal_renderer=_render_result,
+    )(scaffold_backlog_truth_command)
+    scaffold.command(
+        "status",
+        description="Report whether a stamped kit is present and current",
+        surfaces=("cli", "mcp", "llms"),
+        terminal_renderer=_render_result,
+    )(scaffold_status_command)
+    # Milo 0.4 Group.command() does not copy annotations; preserve trust hints.
+    scaffold._commands["backlog-truth"] = replace(
+        scaffold.get_command("backlog-truth"),
+        annotations={"destructiveHint": True, "openWorldHint": True},
+    )
+    scaffold._commands["status"] = replace(
+        scaffold.get_command("status"),
+        annotations={
+            "readOnlyHint": True,
+            "idempotentHint": True,
+            "openWorldHint": True,
+        },
+    )
     curate = app.group(
         "curate",
         description="Create and inspect inert guidance curation proposals",

@@ -22,6 +22,7 @@ then checks what applies and what a change may affect.
 - [Runtime build identity](runtime-identity.md) — inspect version and installation provenance.
 - [Source annotation authority model](source-annotation-authority.md) — decide which source-linked guidance is authoritative.
 - [Roadmap](roadmap.md) — completed foundations and planned work.
+- [Backlog-truth acceptance anchors](backlog-truth.md) — prove work "done" with offline anchors and optional kit scaffold.
 
 ## Integrate
 
