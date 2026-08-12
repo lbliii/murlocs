@@ -145,7 +145,7 @@ def collect_pytest_issue_tests(
         for path in sorted(test_root.rglob("test_*.py")):
             try:
                 tree = ast.parse(path.read_text(encoding="utf-8"))
-            except (OSError, SyntaxError):
+            except OSError, SyntaxError:
                 continue
             try:
                 rel = path.relative_to(root).as_posix()
