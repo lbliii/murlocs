@@ -1,0 +1,18 @@
+# Illustrative only — overly broad component intent (curation smell).
+
+[[intent]]
+id = "button-widget"
+scope = "ui-button"
+contribution = "Everything the company does."
+outcome = "Make the whole product successful, delightful, secure, fast, and globally compliant."
+success = ["The company succeeds."]
+priorities = [
+  "Delight",
+  "Security",
+  "Performance",
+  "Accessibility",
+  "Internationalization",
+  "Revenue",
+  "Hire more owners",
+]
+non_goals = []

@@ -1,0 +1,10 @@
+# Illustrative only — stale binding: scope id no longer in the manifest.
+
+[[intent]]
+id = "legacy-payments"
+scope = "payments"
+contribution = "Collects revenue paths for the root product outcome."
+outcome = "Payment adapters share one audited interface."
+success = ["evidence:docs/payments.md#shared-interface"]
+priorities = ["Prefer one shared adapter surface."]
+non_goals = ["Per-vendor forks of settlement logic."]

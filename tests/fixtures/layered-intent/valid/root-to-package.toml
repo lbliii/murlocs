@@ -1,0 +1,30 @@
+# Illustrative only — not a shipped schema. See docs/layered-intent.md.
+
+[[intent]]
+id = "network"
+scope = "root"
+outcome = "Repository guidance stays local, layered, and reviewable."
+success = ["Owners can explain the governing outcome for a path."]
+priorities = [
+  "Prefer scoped maps over global commandments.",
+  "Keep active context modest.",
+]
+non_goals = ["Hosted control plane as a prerequisite."]
+
+[[intent]]
+id = "core-domain"
+scope = "core"
+contribution = "Implements the product contract as deterministic CLI behavior."
+outcome = "Parsing, rendering, and verification remain model-free and local-first."
+success = ["Registered checks and invariants stay separately enforceable."]
+priorities = ["Fail closed on structural ambiguity."]
+non_goals = ["Executing registered checks during guidance validation."]
+
+[[intent]]
+id = "cli-package"
+scope = "cli"
+contribution = "Exposes the core contract through one typed Milo registry."
+outcome = "Terminal, programmatic, MCP, and discovery surfaces stay in lockstep."
+success = ["milo verify covers the typed surface."]
+priorities = ["Prefer shared handlers over per-surface forks."]
+non_goals = ["Per-host semantic dialects inside the core registry."]
