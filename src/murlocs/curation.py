@@ -1367,7 +1367,7 @@ def _terminal_review(root: Path, record: CurationRecord) -> dict[str, Any]:
             current_owners = all_owners
         current_hash = source.sha256
         active = True
-    except MurlocsError, OSError, ValueError:
+    except (MurlocsError, OSError, ValueError):
         pass
     return {
         "ok": not any(item.blocking for item in findings),
