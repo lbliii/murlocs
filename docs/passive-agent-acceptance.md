@@ -20,6 +20,11 @@ commitments were created before dispatch and its records were revealed only afte
 finished. It records the generated-guidance fallback honestly: the host supplied repository
 guidance but no native lifecycle timing, so only provision-to-reveal wall-clock latency is present.
 
+Longitudinal multi-repository enablement is a separate protocol:
+[Multi-repository passive-loop pilot](passive-loop-pilot.md). Fresh-session journeys remain the
+per-session acceptance gate; the multi-repo sheet tracks baselines, noise, retained integration,
+and rollback across ordinary work without inventing live success from harness fixtures.
+
 ## Run protocol
 
 For each journey, create a new agent session in an isolated disposable repository. Do not name

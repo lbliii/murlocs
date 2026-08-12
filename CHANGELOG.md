@@ -19,6 +19,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). While the
 - Versioned host capability matrix with native/adapted/tool-only/unknown tiers,
   evidence-gated effective tiers, portable fallbacks, and checked-in Codex,
   Claude Code, Cursor, and GitHub Copilot (orchestrator) profiles (#139).
+- Multi-repository passive-loop pilot protocol, offline observation-sheet
+  validator, simulated two-repo harness fixture, and published report that
+  separates executed in-repo work from planned live longitudinal execution
+  (#68).
 - Adapter conformance invariant so continuous lifecycle surfaces never block or
   gate on empty change sets; Claude and Copilot adapters updated accordingly
   (#203).
