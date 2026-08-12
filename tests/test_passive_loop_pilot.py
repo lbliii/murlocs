@@ -14,12 +14,17 @@ from murlocs.passive_loop_pilot import (
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures" / "passive-loop-pilot" / "v1"
 EXAMPLE = FIXTURE_DIR / "example-sheet.json"
+LIVE = FIXTURE_DIR / "live-cohort-2026-08-12.json"
 PROTOCOL = Path(__file__).parents[1] / "docs" / "passive-loop-pilot.md"
 REPORT = Path(__file__).parents[1] / "docs" / "pilots" / "passive-loop-multi-repo.md"
 
 
 def example_sheet() -> dict[str, object]:
     return json.loads(EXAMPLE.read_text(encoding="utf-8"))
+
+
+def live_sheet() -> dict[str, object]:
+    return json.loads(LIVE.read_text(encoding="utf-8"))
 
 
 @pytest.mark.issue(68)
@@ -66,9 +71,28 @@ def test_protocol_and_report_separate_executed_from_planned_live_work():
     assert "Baseline before activation" in protocol
     assert "Review cadence and rollback" in protocol
     assert "repository-governed" in protocol
-    assert "Live multi-repository longitudinal execution is not complete" in report
+    assert "not complete" in report.lower()
     assert "Planned follow-up" in report
     assert "does not claim" in report.lower() or "not claim" in report.lower()
+    assert "live-cohort-2026-08-12.json" in report
+
+
+@pytest.mark.issue(68)
+def test_live_cohort_sheet_is_in_progress_with_executed_rows():
+    report = validate_pilot_sheet(live_sheet())
+
+    assert report["pilot_id"] == "passive-loop-live-cohort-2026-08-12"
+    assert report["pilot_status"] == "in-progress"
+    assert report["executed_repositories"] == 2
+    assert report["simulated_repositories"] == 0
+    assert report["live_execution_complete"] is False
+    assert report["telemetry_required"] is False
+    assert set(report["diversity_axes"]) == {
+        "guidance_maturity",
+        "primary_agent_workflow",
+        "scope_topology",
+        "size_class",
+    }
 
 
 @pytest.mark.issue(68)

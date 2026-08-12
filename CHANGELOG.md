@@ -14,6 +14,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). While the
 
 ### Added
 
+- Start the live multi-repository passive-loop cohort: first-review executed sheet for two diverse repositories, measured self-host hot-path samples, and an updated report that keeps `live_execution_complete` false until the multi-week window finishes (#68).
+
 - Add a versioned agent tool-selection corpus, rubric, and offline validator for first-tool measurement (#124).
 - Versioned inert guidance-friction observation schema (`docs/guidance-friction.md`,
   `src/murlocs/friction.py`) for missing, misleading, conflicting, repetitive,
