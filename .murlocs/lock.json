@@ -1,7 +1,7 @@
 {
   "generated": {
     "AGENTS.md": {
-      "sha256": "4367e3d483a0e0c95061cc65881e5cd95733c48abb8400eb288f196bd6359bc8"
+      "sha256": "6333e5aa55cd70f1bd64f47042c29910f09b9f1e22e7528093b988d1e7ce81b2"
     },
     "skills/bootstrap-murlocs/AGENTS.md": {
       "sha256": "9de83a38841174543541174e011676bc28dd9b39099bf1e5bb4402aeb2d316ca"
@@ -27,7 +27,7 @@
       "id": "repo-base",
       "kind": "base",
       "path": ".murlocs/layers/base.toml",
-      "sha256": "03d65bd41ff671445822b7196b00d2b8259716d4e34c68f3291724d2732a845d"
+      "sha256": "fef3a18f765b44dfad7f4eaae2db40a953e88dc4cd9ad536befb7eeed6073601"
     },
     {
       "id": "core",
@@ -40,6 +40,7 @@
       "kind": "domain",
       "path": ".murlocs/layers/tests.toml",
       "sha256": "c36bddd1bbd2a32457d749c5fbe480d0c425e9a43a4d09102521fd38075236d4"
+      "sha256": "d03ccc5654e34fd78e82658e5da5c1dfbb946c81ef851eb29fb08fb7f810326c"
     },
     {
       "id": "bootstrap-skill",

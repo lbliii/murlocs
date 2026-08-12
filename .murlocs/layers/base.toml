@@ -51,6 +51,12 @@ location = "pyproject.toml"
 proof_contains = "milo-cli"
 description = "Verify typed CLI, schema, discovery, and MCP transport surfaces."
 
+[checks.closure-acceptance]
+invoke = "python scripts/check_closure_acceptance.py"
+location = "scripts/check_closure_acceptance.py"
+proof_contains = "evaluate_closure_acceptance"
+description = "Fail when a PR Closes/Fixes/Resolves an issue without an acceptance anchor or n/a exemption."
+
 [[scopes]]
 id = "root"
 path = "."

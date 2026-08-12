@@ -1,0 +1,47 @@
+name: Closure acceptance
+
+# Advisory until required in branch protection: a PR that claims
+# Closes/Fixes/Resolves #N must carry a matching offline acceptance anchor
+# (@pytest.mark.issue(N)) or an explicit `Acceptance #N: n/a (reason)` line.
+# See docs/backlog-truth.md. Does not verify anchor strength (#209) or
+# auto-close issues (#208).
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: closure-acceptance-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  closure-acceptance:
+    name: Closure claims have acceptance anchors
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v9.0.0
+        with:
+          python-version: "3.14"
+          prune-cache: true
+
+      - name: Cache uv dependencies
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/uv
+          key: uv-${{ runner.os }}-${{ hashFiles('pyproject.toml', 'uv.lock') }}
+          restore-keys: |
+            uv-${{ runner.os }}-
+
+      - run: uv sync --group dev
+
+      - name: Check Closes/Fixes/Resolves claims against acceptance anchors
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: uv run python scripts/check_closure_acceptance.py
