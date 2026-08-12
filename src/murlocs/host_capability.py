@@ -15,7 +15,7 @@ import json
 from collections.abc import Mapping, Sequence
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
-from typing import Any, cast, Literal
+from typing import Any, Literal, cast
 
 CONTRACT = "io.murlocs.host-capability-matrix"
 SCHEMA_VERSION = 1
