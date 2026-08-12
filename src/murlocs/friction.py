@@ -587,16 +587,18 @@ def _stability_findings(
                         blocking=False,
                     )
                 )
-        if record.signal in {"misleading", "conflicting", "repetitive", "overly_broad"}:
-            if not record.guidance_refs:
-                findings.append(
-                    FrictionFinding(
-                        "stability_guidance_unanchored",
-                        f"observation {record.id!r} signal {record.signal!r} "
-                        "has no guidance_refs anchor",
-                        blocking=False,
-                    )
+        if (
+            record.signal in {"misleading", "conflicting", "repetitive", "overly_broad"}
+            and not record.guidance_refs
+        ):
+            findings.append(
+                FrictionFinding(
+                    "stability_guidance_unanchored",
+                    f"observation {record.id!r} signal {record.signal!r} "
+                    "has no guidance_refs anchor",
+                    blocking=False,
                 )
+            )
     return findings
 
 
@@ -660,16 +662,19 @@ def _projected_context_cost(
         if record.proposed_resolution.intent_hint == "remove":
             projected_delta = -projected_delta
     projected_after = cost.value + projected_delta
-    if cost.metric == "active_context_bytes" and cost.bound is not None:
-        if projected_after > cost.bound:
-            findings.append(
-                FrictionFinding(
-                    "projected_context_over_bound",
-                    f"observation {record.id!r} projected active context "
-                    f"{projected_after} exceeds bound {cost.bound}",
-                    blocking=False,
-                )
+    if (
+        cost.metric == "active_context_bytes"
+        and cost.bound is not None
+        and projected_after > cost.bound
+    ):
+        findings.append(
+            FrictionFinding(
+                "projected_context_over_bound",
+                f"observation {record.id!r} projected active context "
+                f"{projected_after} exceeds bound {cost.bound}",
+                blocking=False,
             )
+        )
     report = {
         "observation_id": record.id,
         "metric": cost.metric,
