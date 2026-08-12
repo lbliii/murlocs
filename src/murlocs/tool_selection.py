@@ -131,10 +131,16 @@ def validate_corpus(value: object, *, repo_root: Path | None = None) -> dict[str
             detail.append(f"missing {missing}")
         if extra:
             detail.append(f"unknown {extra}")
-        raise ToolSelectionCorpusError("categories must match the required set: " + "; ".join(detail))
+        raise ToolSelectionCorpusError(
+            "categories must match the required set: " + "; ".join(detail)
+        )
 
     notes = document["notes"]
-    if not isinstance(notes, list) or not notes or not all(isinstance(item, str) and item for item in notes):
+    if (
+        not isinstance(notes, list)
+        or not notes
+        or not all(isinstance(item, str) and item for item in notes)
+    ):
         raise ToolSelectionCorpusError("notes must be a nonempty list of strings")
 
     allowed_tools = _inventory_tool_names(root / catalog_path) | {NONE_TOOL}
@@ -254,7 +260,10 @@ def _validate_prompt(
         raise ToolSelectionCorpusError(
             f"prompts[{index}] expected_first_tool {expected!r} is not in the pinned tool catalog"
         )
-    alternatives = _string_list(item["acceptable_alternatives"], f"prompts[{index}].acceptable_alternatives")
+    alternatives = _string_list(
+        item["acceptable_alternatives"],
+        f"prompts[{index}].acceptable_alternatives",
+    )
     for alt in alternatives:
         if alt not in allowed_tools:
             raise ToolSelectionCorpusError(
