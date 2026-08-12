@@ -167,7 +167,9 @@ discovery.
 
 The [GitHub Copilot](https://github.com/lbliii/murlocs/blob/main/docs/github-copilot-adapter.md) and
 [Claude Code](https://github.com/lbliii/murlocs/blob/main/docs/claude-code-adapter.md) adapters share the read-only lifecycle contract; the
-[conformance harness](https://github.com/lbliii/murlocs/blob/main/docs/adapter-conformance.md) tests it. Optional
+[conformance harness](https://github.com/lbliii/murlocs/blob/main/docs/adapter-conformance.md) tests it. The
+[host capability matrix](https://github.com/lbliii/murlocs/blob/main/docs/host-capability-matrix.md)
+records native/adapted/tool-only/unknown tiers with evidence-gated defaults. Optional
 [passive Git hooks](https://github.com/lbliii/murlocs/blob/main/docs/git-hooks.md) run checks at commit and push, stay quiet when healthy, and
 do not replace existing managers or custom hook paths. See the
 [activation lifecycle](https://github.com/lbliii/murlocs/blob/main/docs/activation-lifecycle.md) and [outcome envelope](https://github.com/lbliii/murlocs/blob/main/docs/outcome-envelope.md)
@@ -186,7 +188,7 @@ boundary.
 | Understand concepts, trust boundaries, and compilation | [Architecture](https://github.com/lbliii/murlocs/blob/main/docs/architecture.md) |
 | Adopt guidance progressively and configure coverage | [Adoption and coverage](https://github.com/lbliii/murlocs/blob/main/docs/adoption.md) |
 | Plan bootstrap, rollout, migration, repair, or evaluation | [Primary user journeys](https://github.com/lbliii/murlocs/blob/main/docs/journeys.md) |
-| Connect hosts, hooks, or CI | [Activation lifecycle](https://github.com/lbliii/murlocs/blob/main/docs/activation-lifecycle.md) and [Git hooks](https://github.com/lbliii/murlocs/blob/main/docs/git-hooks.md) |
+| Connect hosts, hooks, or CI | [Host capability matrix](https://github.com/lbliii/murlocs/blob/main/docs/host-capability-matrix.md), [Activation lifecycle](https://github.com/lbliii/murlocs/blob/main/docs/activation-lifecycle.md), and [Git hooks](https://github.com/lbliii/murlocs/blob/main/docs/git-hooks.md) |
 | Govern proposals before changing live guidance | [Curation](https://github.com/lbliii/murlocs/blob/main/docs/curation.md) |
 | Capture inert guidance-friction observations | [Guidance friction](https://github.com/lbliii/murlocs/blob/main/docs/guidance-friction.md) |
 | Measure whether guidance improves recorded agent work | [Guidance efficiency evaluation](https://github.com/lbliii/murlocs/blob/main/docs/evaluation.md) |

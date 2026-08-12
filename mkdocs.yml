@@ -63,6 +63,7 @@ nav:
       - Roadmap: roadmap.md
   - Integrate:
       - Agent-host adapter contract: adapter-conformance.md
+      - Host capability matrix: host-capability-matrix.md
       - Claude Code adapter: claude-code-adapter.md
       - GitHub Copilot adapter: github-copilot-adapter.md
       - Source annotation contract v1: source-annotation-contract-v1.md

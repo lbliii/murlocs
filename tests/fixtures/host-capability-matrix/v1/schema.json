@@ -1,0 +1,141 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/lbliii/murlocs/tests/fixtures/host-capability-matrix/v1/schema.json",
+  "title": "Murlocs host capability matrix v1",
+  "description": "Machine-readable host support tiers. Runtime validation is owned by murlocs.host_capability; this schema documents the fixture shape for review.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract",
+    "schema_version",
+    "evidence_max_age_days",
+    "portable_fallbacks",
+    "profiles"
+  ],
+  "properties": {
+    "contract": {
+      "const": "io.murlocs.host-capability-matrix"
+    },
+    "schema_version": {
+      "const": 1
+    },
+    "evidence_max_age_days": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Claims with verification_date older than this many days resolve to effective_tier unknown."
+    },
+    "portable_fallbacks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "instruction_discovery",
+        "instruction_scoping",
+        "refresh_timing",
+        "size_constraints",
+        "mcp",
+        "hooks"
+      ],
+      "properties": {
+        "instruction_discovery": { "$ref": "#/$defs/portable_fallback" },
+        "instruction_scoping": { "$ref": "#/$defs/portable_fallback" },
+        "refresh_timing": { "$ref": "#/$defs/portable_fallback" },
+        "size_constraints": { "$ref": "#/$defs/portable_fallback" },
+        "mcp": { "$ref": "#/$defs/portable_fallback" },
+        "hooks": { "$ref": "#/$defs/portable_fallback" }
+      }
+    },
+    "profiles": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/profile" }
+    }
+  },
+  "$defs": {
+    "support_tier": {
+      "type": "string",
+      "enum": ["native", "adapted", "tool-only", "unknown"]
+    },
+    "claim_basis": {
+      "type": "string",
+      "enum": ["documented", "observed"],
+      "description": "documented = supported documentation claim; observed = conformance or pilot evidence."
+    },
+    "portable_fallback": {
+      "type": "string",
+      "enum": [
+        "generated-guidance",
+        "cli",
+        "mcp-tools",
+        "git-hook",
+        "ci",
+        "none-required"
+      ]
+    },
+    "repo_relative_path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "capability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["summary", "claim_basis", "evidence", "portable_fallback"],
+      "properties": {
+        "summary": { "type": "string", "minLength": 1 },
+        "claim_basis": { "$ref": "#/$defs/claim_basis" },
+        "evidence": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/repo_relative_path" }
+        },
+        "portable_fallback": { "$ref": "#/$defs/portable_fallback" }
+      }
+    },
+    "profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "display_name",
+        "host_kind",
+        "claimed_tier",
+        "tested_version",
+        "verification_date",
+        "instruction_discovery",
+        "instruction_scoping",
+        "refresh_timing",
+        "size_constraints",
+        "mcp",
+        "hooks",
+        "limitations",
+        "evidence"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "display_name": { "type": "string", "minLength": 1 },
+        "host_kind": {
+          "type": "string",
+          "enum": ["agent-host", "orchestrator"]
+        },
+        "claimed_tier": { "$ref": "#/$defs/support_tier" },
+        "tested_version": { "type": "string", "minLength": 1 },
+        "verification_date": {
+          "type": ["string", "null"],
+          "format": "date"
+        },
+        "instruction_discovery": { "$ref": "#/$defs/capability" },
+        "instruction_scoping": { "$ref": "#/$defs/capability" },
+        "refresh_timing": { "$ref": "#/$defs/capability" },
+        "size_constraints": { "$ref": "#/$defs/capability" },
+        "mcp": { "$ref": "#/$defs/capability" },
+        "hooks": { "$ref": "#/$defs/capability" },
+        "limitations": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "evidence": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/repo_relative_path" }
+        }
+      }
+    }
+  }
+}

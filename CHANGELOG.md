@@ -16,6 +16,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). While the
   and overly broad guidance, with path-safety validation, fixture corpus, and
   deterministic duplication/scope/stability/evidence-gap/context-cost analysis
   (#132). Observations do not auto-apply to guidance.
+- Versioned host capability matrix with native/adapted/tool-only/unknown tiers,
+  evidence-gated effective tiers, portable fallbacks, and checked-in Codex,
+  Claude Code, Cursor, and GitHub Copilot (orchestrator) profiles (#139).
 - Adapter conformance invariant so continuous lifecycle surfaces never block or
   gate on empty change sets; Claude and Copilot adapters updated accordingly
   (#203).
