@@ -34,6 +34,7 @@ then checks what applies and what a change may affect.
 ## Research and evidence
 
 - [Guidance efficiency evaluation](evaluation.md) — compare and score recorded runs.
+- [Agent tool-selection corpus and rubric](pilots/tool-selection/README.md) — frozen first-tool prompts and scoring labels (#124).
 - [Chirp and Kida paired-pilot audit](pilots/chirp-kida.md) — a migration audit of two personal projects.
 - [Furatena migration pilot](pilots/furatena.md) — first fully executed migration, with verified rollback.
 - [Dori hard-parity pilot](pilots/dori.md) — adversarial parity audit of an exotic legacy manifest.

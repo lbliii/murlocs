@@ -10,8 +10,8 @@ agents select the right Murlocs entry point. This is the #124 deliverable under 
 | Path | Role |
 | --- | --- |
 | [`rubric.md`](rubric.md) | Normative scoring labels and freeze rules |
-| [`../../tests/fixtures/tool-selection/v1/corpus.json`](../../../tests/fixtures/tool-selection/v1/corpus.json) | Versioned prompt corpus with expected answers |
-| [`../../../src/murlocs/tool_selection.py`](../../../src/murlocs/tool_selection.py) | Strict corpus loader (unknown fields fail) |
+| [`corpus.json`](../../../tests/fixtures/tool-selection/v1/corpus.json) | Versioned prompt corpus with expected answers |
+| [`tool_selection.py`](../../../src/murlocs/tool_selection.py) | Strict corpus loader (unknown fields fail) |
 
 ## Pins
 
