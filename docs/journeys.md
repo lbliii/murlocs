@@ -24,6 +24,20 @@ murlocs explain src/app/core.py --format json
 See [Adoption status and coverage](adoption.md) for the distinction between structural coverage
 and semantic truth.
 
+## Stamp backlog-truth tracking (opt-in)
+
+After bootstrap (or on an empty tree), stamp issue templates, gate/reconcile workflow stubs, labels,
+and process docs. Pieces are individually adoptable; process harness paths stay outside compile.
+
+```bash
+murlocs --dry-run scaffold backlog-truth
+murlocs scaffold backlog-truth
+murlocs scaffold status --format json
+murlocs check --format json
+```
+
+See [Backlog-truth acceptance anchors](backlog-truth.md).
+
 ## Roll out owned scopes progressively
 
 `init` establishes the root scope. Add a domain and then a nested domain, assigning owners and

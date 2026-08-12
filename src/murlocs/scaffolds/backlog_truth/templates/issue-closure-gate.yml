@@ -1,0 +1,33 @@
+name: Issue closure gate
+
+# A PR that says "Closes #N" must ship an executable acceptance test
+# (@pytest.mark.issue(N)) — or declare "Acceptance #N: n/a (reason)" in the body.
+# See docs/backlog-automation.md. This check is intentionally NOT a required
+# status check by default; enable it in branch protection once markers are
+# adopted across the active backlog.
+#
+# Stub wiring: scripts/check_closure_acceptance.py ships with the kit. Full
+# engine parity with murlocs check lands via backlog-truth closure work (#207).
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  closure-acceptance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Closure-acceptance gate
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: python scripts/check_closure_acceptance.py

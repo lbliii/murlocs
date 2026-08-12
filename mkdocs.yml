@@ -61,6 +61,7 @@ nav:
       - Runtime build identity: runtime-identity.md
       - Source annotation authority model: source-annotation-authority.md
       - Roadmap: roadmap.md
+      - Backlog-truth acceptance anchors: backlog-truth.md
   - Integrate:
       - Agent-host adapter contract: adapter-conformance.md
       - Host capability matrix: host-capability-matrix.md

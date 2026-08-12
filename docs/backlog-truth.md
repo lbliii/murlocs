@@ -213,3 +213,21 @@ push runs stay in report mode; label apply and auto-close are dispatch inputs.
 - `murlocs.reconcile.pr_issue_links` / `extract_closing_issues` — closure-intent
   stubs usable without #207
 - `murlocs.reconcile.closeable_issue_numbers` — auto-close gate
+Closure enforcement (#207), drift reconciliation (#208), and mutation strength
+(#209) build on this model but are out of scope here.
+
+## Day-one kit scaffold
+
+Stamp issue templates, closure-gate / reconcile workflow stubs, label taxonomy,
+conventions, and process harness docs into a repository:
+
+```bash
+murlocs scaffold backlog-truth
+murlocs scaffold status
+```
+
+Pieces are individually adoptable (`--only templates`, `--only workflows`, …).
+Install state is recorded under `[kits.backlog_truth]` in
+`.murlocs/manifest.toml` (when present) and `.murlocs/kits/backlog_truth.toml`.
+`murlocs check` reports kit drift. Process docs under `docs/plan/` stay
+**outside** compile — see the stamped `docs/backlog-automation.md`.

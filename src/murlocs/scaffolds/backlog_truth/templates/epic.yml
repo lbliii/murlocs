@@ -1,0 +1,81 @@
+name: Epic
+description: Major initiative — create GitHub sub-issues for tasks, not body checklists
+title: "[Epic] "
+labels:
+  - epic
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Tracking:** Create bounded Tasks (and Investigations) immediately and
+        attach them through GitHub's actual sub-issue relationship. The parent
+        field below is descriptive only; body links and `- [ ] #N` lists do not
+        count.
+
+        **Workability:** Never label an epic `ready`. An unblocked epic exposes
+        at least one ready Task. A blocked epic names its blocker and revisit
+        trigger.
+
+        **Closure:** Epics close when actual sub-issues and epic-level exit
+        gates close. PRs use `Advances-Epic: #N`; reserve `Closes #N` for Task
+        deliverables.
+
+        Read `docs/backlog-automation.md` and `docs/plan/issue-lifecycle.md`.
+
+  - type: input
+    id: parent
+    attributes:
+      label: Parent saga
+      description: Descriptive reference only; attach this epic as an actual GitHub sub-issue after creation.
+      placeholder: "#100"
+    validations:
+      required: false
+
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Outcome
+      description: What is true when this epic is done?
+      placeholder: |
+        A PR that says Closes #N fails unless a matching acceptance anchor exists.
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Problem / context
+      description: User-visible risk, downstream pressure, or why now.
+    validations:
+      required: true
+
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies and related work
+      description: Blocking issues/RFCs/upstreams and exact revisit triggers. Write `None` when unblocked.
+      placeholder: |
+        - #206 acceptance anchors
+        - docs/backlog-truth.md
+    validations:
+      required: false
+
+  - type: textarea
+    id: exit_criteria
+    attributes:
+      label: Exit criteria
+      description: Parent-level cross-child gates only; do not mirror child issue status here.
+      placeholder: |
+        - [ ] Closure gate workflow is stamped and documented
+        - [ ] Reconcile sweep surfaces decided-but-unbuilt residue
+        - [ ] Scaffold reports kit present/current
+    validations:
+      required: true
+
+  - type: textarea
+    id: not_in_scope
+    attributes:
+      label: Not in scope
+      description: What child issues or future work must explicitly avoid.
+    validations:
+      required: false

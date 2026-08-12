@@ -34,3 +34,8 @@ acceptance = "pytest:issue(207)"
 id = "209"
 issue = 209
 acceptance = "pytest:issue(209)"
+
+[[work_items]]
+id = "210"
+issue = 210
+acceptance = "pytest:issue(210)"

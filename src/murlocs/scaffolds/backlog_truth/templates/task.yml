@@ -1,0 +1,163 @@
+name: Task
+description: Actionable leaf work — scope, dependencies, proof, acceptance criteria
+title: "Task: "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Tracking:** This issue body is the task spec. Repo planning files only link here.
+
+        **Closure:** `Closes #N` requires `@pytest.mark.issue(N)` proof or an
+        issue-qualified exemption such as
+        `Acceptance #N: n/a (docs-only; no runtime behavior)`.
+
+        Set title to `Task: …` and add a `P*` label matching the dropdown below.
+        Apply the `ready` label only when dependencies and approvals are satisfied.
+        Investigations are never claimable as worker leases — use the Investigation
+        template for planner-owned freezes.
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - P0
+        - P1
+        - P2
+        - P3
+    validations:
+      required: true
+
+  - type: dropdown
+    id: execution_state
+    attributes:
+      label: Execution state
+      description: Select Ready only when dependencies and required approvals are satisfied; apply the matching workflow label after creation.
+      options:
+        - Ready now
+        - Blocked by an internal issue
+        - Blocked by an upstream or external event
+    validations:
+      required: true
+
+  - type: input
+    id: parent
+    attributes:
+      label: Parent epic
+      description: Descriptive reference; attach this task as an actual GitHub sub-issue after creation.
+      placeholder: "#210"
+    validations:
+      required: true
+
+  - type: textarea
+    id: depends_on
+    attributes:
+      label: Depends on
+      description: Blocking issues only. This task cannot be `ready` until they close. Write `None` when unblocked.
+      placeholder: |
+        - #206 acceptance anchors
+        - #207 closure gate engine
+    validations:
+      required: false
+
+  - type: textarea
+    id: path_scope
+    attributes:
+      label: Path scope
+      description: Repository paths this task may touch (bind to guidance owns / impact when available).
+      placeholder: |
+        - src/murlocs/scaffolds/
+        - docs/backlog-truth.md
+        - tests/test_scaffold_backlog_truth.py
+    validations:
+      required: true
+
+  - type: textarea
+    id: revisit_trigger
+    attributes:
+      label: Blocker / revisit trigger
+      description: For blocked work, name the blocker, the exact condition that clears it, and the first action after unblock. Write `None` when ready.
+    validations:
+      required: true
+
+  - type: input
+    id: design
+    attributes:
+      label: Investigation / design doc (if any)
+      description: Linked Investigation issue or in-repo path — do not re-decide frozen design here.
+      placeholder: "#225 or docs/plan/issue-lifecycle.md"
+    validations:
+      required: false
+
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Outcome
+      description: One sentence — what is true when this issue closes?
+    validations:
+      required: true
+
+  - type: textarea
+    id: next_action
+    attributes:
+      label: Immediate next action
+      description: The first concrete action an agent can take without another design decision.
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: Concrete changes included in this issue.
+    validations:
+      required: true
+
+  - type: textarea
+    id: boundaries
+    attributes:
+      label: Boundaries / not in this issue
+      description: Explicit exclusions to keep the PR focused.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proof
+    attributes:
+      label: Required proof
+      description: Commands and tests that must pass. Name `@pytest.mark.issue(N)` test(s) you will add.
+      placeholder: |
+        - `uv run pytest tests/test_scaffold_backlog_truth.py -q`
+        - `@pytest.mark.issue(N)` covers dry-run and apply
+        - `uv run ruff check .`
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Checklist a reviewer can verify. Prefer testable statements.
+      placeholder: |
+        - [ ] Scaffold stamps templates, workflows, labels, and docs
+        - [ ] Manifest records the kit; check reports present/current
+        - [ ] Pieces remain individually adoptable
+    validations:
+      required: true
+
+  - type: textarea
+    id: collateral
+    attributes:
+      label: Collateral
+      description: Docs, examples, changelog, public API review — if any.
+    validations:
+      required: false
+
+  - type: textarea
+    id: approval
+    attributes:
+      label: Dependencies / approval
+      description: Required approval or decision plus its owner and revisit trigger. This task cannot be `ready` while unresolved.
+    validations:
+      required: false

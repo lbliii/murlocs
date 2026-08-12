@@ -7,6 +7,12 @@
         "name": "check",
         "note": "Short names collide across groups; workflows use dotted paths.",
         "occurrences": 2
+      },
+      {
+        "kind": "llms_unqualified_name",
+        "name": "status",
+        "note": "Short names collide across groups; workflows use dotted paths.",
+        "occurrences": 2
       }
     ],
     "missing_trigger_language": [
@@ -17,12 +23,14 @@
       "explain",
       "impact",
       "inventory",
+      "scaffold.status",
       "status",
       "version"
     ],
     "product_internal": [
       "add-scope",
       "repair",
+      "scaffold.backlog-truth",
       "split-layers"
     ]
   },
@@ -10467,6 +10475,213 @@
       {
         "audience": "product-internal",
         "kind": "granular",
+        "name": "scaffold.backlog-truth",
+        "stable": {
+          "annotations": {
+            "destructiveHint": true,
+            "openWorldHint": true
+          },
+          "contract": null,
+          "input_schema": {
+            "properties": {
+              "force": {
+                "default": false,
+                "description": "Replace divergent existing kit files.",
+                "type": "boolean"
+              },
+              "only": {
+                "default": null,
+                "description": "Optional kit piece to install; repeat for multiple pieces.",
+                "items": {
+                  "type": "string"
+                },
+                "type": "array",
+                "x-milo-cli": {
+                  "kind": "option",
+                  "metavar": "PIECE"
+                }
+              },
+              "repo": {
+                "default": ".",
+                "description": "Repository root to stamp into.",
+                "type": "string",
+                "x-milo-cli": {
+                  "kind": "option",
+                  "metavar": "PATH"
+                }
+              }
+            },
+            "type": "object"
+          },
+          "name": "scaffold.backlog-truth",
+          "output_schema": null,
+          "surfaces": {
+            "cli": true,
+            "llms": false,
+            "mcp": false,
+            "programmatic": false
+          }
+        },
+        "trigger_language": {
+          "assessment": "missing",
+          "signals": []
+        },
+        "volatile": {
+          "description": "Stamp backlog-truth issue templates, workflows, labels, and docs",
+          "mcp_description": null
+        }
+      },
+      {
+        "audience": "agent",
+        "kind": "granular",
+        "name": "scaffold.status",
+        "stable": {
+          "annotations": {
+            "idempotentHint": true,
+            "openWorldHint": true,
+            "readOnlyHint": true
+          },
+          "contract": null,
+          "input_schema": {
+            "properties": {
+              "kit": {
+                "default": "backlog_truth",
+                "description": "Kit id (currently only ``backlog_truth`` / ``backlog-truth``).",
+                "type": "string",
+                "x-milo-cli": {
+                  "kind": "option",
+                  "metavar": "KIT"
+                }
+              },
+              "repo": {
+                "default": ".",
+                "description": "Repository root to inspect.",
+                "type": "string",
+                "x-milo-cli": {
+                  "kind": "option",
+                  "metavar": "PATH"
+                }
+              }
+            },
+            "type": "object"
+          },
+          "name": "scaffold.status",
+          "output_schema": {
+            "anyOf": [
+              {
+                "properties": {
+                  "current": {
+                    "type": "boolean"
+                  },
+                  "files": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "kit": {
+                    "type": "string"
+                  },
+                  "missing": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "modified": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "ok": {
+                    "type": "boolean"
+                  },
+                  "pieces": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "present": {
+                    "type": "boolean"
+                  },
+                  "process_docs": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "state": {
+                    "type": "string"
+                  },
+                  "version": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "current",
+                  "files",
+                  "kit",
+                  "missing",
+                  "modified",
+                  "ok",
+                  "pieces",
+                  "present",
+                  "process_docs",
+                  "state",
+                  "version"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "error": {
+                    "properties": {
+                      "code": {
+                        "type": "string"
+                      },
+                      "message": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "code",
+                      "message"
+                    ],
+                    "type": "object"
+                  },
+                  "ok": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "error",
+                  "ok"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "surfaces": {
+            "cli": true,
+            "llms": true,
+            "mcp": true,
+            "programmatic": true
+          }
+        },
+        "trigger_language": {
+          "assessment": "missing",
+          "signals": []
+        },
+        "volatile": {
+          "description": "Report whether a stamped kit is present and current",
+          "mcp_description": "Report whether a stamped kit is present and current"
+        }
+      },
+      {
+        "audience": "product-internal",
+        "kind": "granular",
         "name": "split-layers",
         "stable": {
           "annotations": {
@@ -10965,6 +11180,7 @@
         "inventory",
         "orient",
         "review-changes",
+        "scaffold.status",
         "status",
         "version"
       ],
@@ -10994,6 +11210,7 @@
         "orient",
         "review-changes",
         "finish",
+        "status",
         "review",
         "check"
       ]

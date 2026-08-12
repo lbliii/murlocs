@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Backlog automation guide
+    url: ../blob/HEAD/docs/backlog-automation.md
+    about: How issues tie to acceptance tests, PR closure, and reconciliation
+  - name: Issue lifecycle (process harness)
+    url: ../blob/HEAD/docs/plan/issue-lifecycle.md
+    about: Saga → Epic → Investigation → Task; ready as the worker lease
+  - name: Browse open issues
+    url: ../issues
+    about: Check for duplicates before opening a new issue

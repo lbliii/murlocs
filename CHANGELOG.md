@@ -36,6 +36,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). While the
 - Backlog drift reconciliation: offline `murlocs.reconcile` +
   `scripts/reconcile_backlog.py`, post-merge/schedule workflow in report mode,
   and fixture proofs for closeable + decided-but-unbuilt (#208).
+- `murlocs scaffold backlog-truth` stamps the opt-in backlog-truth kit:
+  Saga/Epic/Investigation/Task issue templates, label taxonomy, closure-gate
+  and reconcile workflow stubs, conventions doc, and process harness docs
+  outside compile; pieces are individually adoptable and recorded for drift
+  checks (#210, #225, #227).
 - Adapter conformance invariant so continuous lifecycle surfaces never block or
   gate on empty change sets; Claude and Copilot adapters updated accordingly
   (#203).

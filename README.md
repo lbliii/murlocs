@@ -105,6 +105,17 @@ Coverage roots are inferred from the repository layout during `init` — typical
 top-level directories that contain source files. Pass `--coverage-root` explicitly to override
 inference or add additional roots.
 
+### Stamp backlog-truth tracking (opt-in)
+
+```bash
+murlocs scaffold backlog-truth
+murlocs scaffold status
+```
+
+Stamps Saga/Epic/Investigation/Task issue templates, label taxonomy, closure-gate and reconcile
+workflow stubs, conventions, and process harness docs (`docs/plan/…`, outside compile). Pieces are
+individually adoptable with `--only`. See [backlog-truth](https://github.com/lbliii/murlocs/blob/main/docs/backlog-truth.md).
+
 ### Understand a task before changing code
 
 ```bash
