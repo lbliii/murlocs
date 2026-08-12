@@ -74,6 +74,7 @@ nav:
       - Guidance efficiency evaluation: evaluation.md
       - Passive-agent acceptance harness: passive-agent-acceptance.md
       - Multi-repository passive-loop pilot protocol: passive-loop-pilot.md
+      - Backlog-truth acceptance and reconcile: backlog-truth.md
       - Pilots:
           - Chirp and Kida paired-pilot audit: pilots/chirp-kida.md
           - Synthetic 91-map scale pilot: pilots/scale-network.md

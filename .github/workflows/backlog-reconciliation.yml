@@ -1,0 +1,76 @@
+name: Backlog reconciliation
+
+# Continuous backlog drift sweep. Prefer merge-time (push to main) so the loop
+# closes when work lands; weekly schedule catches residual drift. Default is
+# report-only; label apply / auto-close stay opt-in via workflow_dispatch.
+# See docs/backlog-truth.md.
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "17 13 * * 1" # Mondays 13:17 UTC
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: "Apply derived labels (uncheck for a dry-run report only)"
+        type: boolean
+        default: false
+      auto_close:
+        description: "Auto-close closeable issues (passing acceptance required)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+
+concurrency:
+  group: backlog-reconciliation-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v9.0.0
+        with:
+          python-version: "3.14"
+          prune-cache: true
+
+      - name: Cache uv dependencies
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/uv
+          key: uv-${{ runner.os }}-${{ hashFiles('pyproject.toml', 'uv.lock') }}
+          restore-keys: |
+            uv-${{ runner.os }}-
+
+      - run: uv sync --group dev
+
+      - name: Reconcile backlog (report mode)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APPLY: ${{ github.event_name == 'workflow_dispatch' && inputs.apply }}
+          AUTO_CLOSE: ${{ github.event_name == 'workflow_dispatch' && inputs.auto_close }}
+        run: |
+          ARGS="--report-workability --with-dependencies --snapshot backlog-snapshot.json"
+          if [ "$APPLY" = "true" ]; then ARGS="$ARGS --apply"; fi
+          if [ "$AUTO_CLOSE" = "true" ]; then ARGS="$ARGS --auto-close"; fi
+          uv run python scripts/reconcile_backlog.py $ARGS | tee backlog-report.md | tee -a "$GITHUB_STEP_SUMMARY"
+          uv run python scripts/reconcile_backlog.py --json --with-dependencies > backlog-findings.json
+
+      - name: Upload backlog receipts
+        uses: actions/upload-artifact@v4
+        with:
+          name: backlog-reconciliation-${{ github.run_id }}
+          path: |
+            backlog-report.md
+            backlog-findings.json
+            backlog-snapshot.json
+          if-no-files-found: warn
