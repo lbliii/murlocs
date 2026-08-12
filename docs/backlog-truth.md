@@ -157,3 +157,59 @@ merge is not blocked. Keep the workflow required once the dogfood PR for #207
 has proven the fail/pass paths above.
 Closure enforcement (#207) and drift reconciliation (#208) build on discovery;
 mutation strength (#209) is the faithfulness gate documented above.
+Closure enforcement (#207) and mutation strength (#209) build on this model
+separately; drift reconciliation is specified below.
+
+## Drift reconciliation (#208)
+
+A reconcile pass re-derives backlog truth from three signals and surfaces
+divergence as a report (and optional labels):
+
+1. **Merged PR closing intent** — explicit `Closes` / `Fixes` / `Resolves #N`
+   in a merged PR body (weak mentions and `issue-N-…` branch names never alone
+   make an issue closeable).
+2. **Native sub-issue hierarchy** — parent / child edges from GitHub sub-issues
+   when available; otherwise a fixture-friendly offline model that groups
+   siblings by `parent` number.
+3. **Acceptance anchor status** — `pass` / `fail` / `missing`, supplied by a
+   fixture or `--anchor-results` JSON. Discoverable coverage alone is not a
+   pass.
+
+| Finding | Meaning |
+| --- | --- |
+| `closeable` | Open issue closed by a merged PR **and** acceptance status is `pass`. |
+| `merged-pending-close` | Merged PR closes the issue, but acceptance is not passing. |
+| `closure-candidate` | Parent whose native children are all closed as completed. |
+| `decided-but-unbuilt` | A `decision` / `rfc` / `research` issue closed while an `implementation` sibling under the same parent remains open. |
+
+### Boundaries
+
+- **Read-only by default** — Markdown / JSON report (and optional label apply).
+- **Auto-close is opt-in** (`--auto-close`) and gated on `closeable` only: a
+  passing acceptance anchor is required. Fixture mode refuses mutation.
+- Tests never need the network: pass `--fixture path.json`.
+
+### Commands
+
+```bash
+# Hermetic fixture run (CI / local)
+python scripts/reconcile_backlog.py --fixture tests/fixtures/reconcile/sample.json --json
+
+# Live report after merge (requires gh + token)
+python scripts/reconcile_backlog.py --report-workability --with-dependencies
+
+# Opt-in mutations
+python scripts/reconcile_backlog.py --apply
+python scripts/reconcile_backlog.py --auto-close --anchor-results anchors.json
+```
+
+The **Backlog reconciliation** workflow runs on push to `main` (continuous /
+post-merge), on a weekly schedule, and via `workflow_dispatch`. Scheduled and
+push runs stay in report mode; label apply and auto-close are dispatch inputs.
+
+### Library API
+
+- `murlocs.reconcile.reconcile_backlog(...)` — pure offline report
+- `murlocs.reconcile.pr_issue_links` / `extract_closing_issues` — closure-intent
+  stubs usable without #207
+- `murlocs.reconcile.closeable_issue_numbers` — auto-close gate

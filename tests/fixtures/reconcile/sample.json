@@ -1,0 +1,101 @@
+{
+  "issues": [
+    {
+      "number": 10,
+      "title": "Backlog-truth epic",
+      "state": "OPEN",
+      "labels": ["epic"],
+      "subIssues": [
+        {
+          "number": 50,
+          "title": "Ship reconcile",
+          "state": "OPEN",
+          "stateReason": null,
+          "labels": ["P2", "ready"]
+        },
+        {
+          "number": 20,
+          "title": "RFC: decide sibling model",
+          "state": "CLOSED",
+          "stateReason": "COMPLETED",
+          "labels": ["rfc", "decision"]
+        },
+        {
+          "number": 21,
+          "title": "Implement sibling model",
+          "state": "OPEN",
+          "stateReason": null,
+          "labels": ["implementation", "P2", "ready"]
+        },
+        {
+          "number": 30,
+          "title": "Completed child A",
+          "state": "CLOSED",
+          "stateReason": "COMPLETED",
+          "labels": ["P2"]
+        },
+        {
+          "number": 31,
+          "title": "Completed child B",
+          "state": "CLOSED",
+          "stateReason": "COMPLETED",
+          "labels": ["P2"]
+        }
+      ]
+    },
+    {
+      "number": 50,
+      "title": "Ship reconcile",
+      "state": "OPEN",
+      "labels": ["P2", "ready"],
+      "parent": {"number": 10},
+      "subIssues": []
+    },
+    {
+      "number": 20,
+      "title": "RFC: decide sibling model",
+      "state": "CLOSED",
+      "stateReason": "COMPLETED",
+      "labels": ["rfc", "decision"],
+      "parent": {"number": 10},
+      "subIssues": []
+    },
+    {
+      "number": 21,
+      "title": "Implement sibling model",
+      "state": "OPEN",
+      "labels": ["implementation", "P2", "ready"],
+      "parent": {"number": 10},
+      "subIssues": []
+    },
+    {
+      "number": 40,
+      "title": "Parent with completed children",
+      "state": "OPEN",
+      "labels": ["epic"],
+      "subIssues": [
+        {
+          "number": 41,
+          "title": "Done leaf",
+          "state": "CLOSED",
+          "stateReason": "COMPLETED",
+          "labels": ["P2"]
+        }
+      ]
+    }
+  ],
+  "merged_prs": [
+    {
+      "number": 99,
+      "title": "Land reconcile",
+      "body": "Closes #50\n\nAlso mentions #999.",
+      "headRefName": "cursor/reconcile-50"
+    }
+  ],
+  "coverage": {
+    "50": ["tests/test_reconcile_backlog.py::test_dogfood_reconcile_for_issue_208"]
+  },
+  "anchor_results": {
+    "50": "pass"
+  }
+}
