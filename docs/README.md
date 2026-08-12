@@ -26,6 +26,7 @@ then checks what applies and what a change may affect.
 ## Integrate
 
 - [Agent-host adapter contract](adapter-conformance.md) — requirements for host adapters.
+- [Host capability matrix](host-capability-matrix.md) — versioned native/adapted/tool-only/unknown support tiers.
 - [Claude Code adapter](claude-code-adapter.md) — installation, behavior, and limits.
 - [GitHub Copilot adapter](github-copilot-adapter.md) — lifecycle and authority behavior.
 - [Source annotation contract v1](source-annotation-contract-v1.md) — the annotation grammar.

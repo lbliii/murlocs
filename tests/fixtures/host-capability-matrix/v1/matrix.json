@@ -1,0 +1,316 @@
+{
+  "contract": "io.murlocs.host-capability-matrix",
+  "schema_version": 1,
+  "evidence_max_age_days": 180,
+  "portable_fallbacks": {
+    "instruction_discovery": "generated-guidance",
+    "instruction_scoping": "generated-guidance",
+    "refresh_timing": "cli",
+    "size_constraints": "cli",
+    "mcp": "cli",
+    "hooks": "git-hook"
+  },
+  "profiles": [
+    {
+      "id": "openai-codex",
+      "display_name": "OpenAI Codex",
+      "host_kind": "agent-host",
+      "claimed_tier": "tool-only",
+      "tested_version": "repository AGENTS.md discovery (evaluated 2026-08-03)",
+      "verification_date": "2026-08-03",
+      "instruction_discovery": {
+        "summary": "Generated repository AGENTS.md is the documented discovery surface; no host-local install is required for that path.",
+        "claim_basis": "documented",
+        "evidence": [
+          "docs/github-copilot-adapter.md",
+          "docs/architecture.md",
+          "AGENTS.md"
+        ],
+        "portable_fallback": "generated-guidance"
+      },
+      "instruction_scoping": {
+        "summary": "Nested generated AGENTS.md maps supply scoped context; Codex-specific scoping semantics are not separately observed.",
+        "claim_basis": "documented",
+        "evidence": [
+          "docs/architecture.md",
+          "docs/activation-lifecycle.md"
+        ],
+        "portable_fallback": "generated-guidance"
+      },
+      "refresh_timing": {
+        "summary": "No repository-local start/post-edit/stop hook contract was found; refresh is agent- or operator-initiated via CLI/check/impact.",
+        "claim_basis": "documented",
+        "evidence": [
+          "docs/github-copilot-adapter.md",
+          "docs/activation-lifecycle.md"
+        ],
+        "portable_fallback": "cli"
+      },
+      "size_constraints": {
+        "summary": "No Codex-specific instruction budget is recorded; generated maps remain subject to the repository active-context budget.",
+        "claim_basis": "documented",
+        "evidence": [
+          "docs/architecture.md"
+        ],
+        "portable_fallback": "cli"
+      },
+      "mcp": {
+        "summary": "No Codex-specific MCP wiring evidence is checked in; Murlocs MCP remains available as a portable tool surface when the host attaches it.",
+        "claim_basis": "documented",
+        "evidence": [
+          "docs/architecture.md",
+          "docs/task-commands.md"
+        ],
+        "portable_fallback": "cli"
+      },
+      "hooks": {
+        "summary": "Codex was not selected for v1 host hooks; Git hooks and CI remain the enforcing portable fallbacks.",
+        "claim_basis": "documented",
+        "evidence": [
+          "docs/github-copilot-adapter.md",
+          "docs/git-hooks.md"
+        ],
+        "portable_fallback": "git-hook"
+      },
+      "limitations": [
+        "No documented repository-local lifecycle hook contract for required enforcement boundaries.",
+        "Support is tool-only (generated guidance plus CLI/Git/CI); not native or adapted.",
+        "Observed host conformance for Codex instruction delivery remains deferred to later verification work."
+      ],
+      "evidence": [
+        "docs/github-copilot-adapter.md",
+        "docs/architecture.md",
+        "docs/git-hooks.md",
+        "AGENTS.md"
+      ]
+    },
+    {
+      "id": "claude-code",
+      "display_name": "Claude Code",
+      "host_kind": "agent-host",
+      "claimed_tier": "adapted",
+      "tested_version": "claude-code-hooks adapter v1 (.claude/settings.json SessionStart/PreToolUse/PostToolUse/Stop)",
+      "verification_date": "2026-08-03",
+      "instruction_discovery": {
+        "summary": "Adapter discovers exactly .murlocs/manifest.toml from the hook cwd; generated AGENTS.md remains the prompt-mediated guidance fallback.",
+        "claim_basis": "observed",
+        "evidence": [
+          "src/murlocs/claude_adapter.py",
+          "docs/claude-code-adapter.md",
+          "docs/activation-lifecycle.md",
+          ".claude/settings.json"
+        ],
+        "portable_fallback": "generated-guidance"
+      },
+      "instruction_scoping": {
+        "summary": "Edit/Write path confinement rejects parent escapes, out-of-root paths, and symlink escapes before typed operations run.",
+        "claim_basis": "observed",
+        "evidence": [
+          "src/murlocs/claude_adapter.py",
+          "docs/claude-code-adapter.md",
+          "tests/test_claude_adapter.py"
+        ],
+        "portable_fallback": "generated-guidance"
+      },
+      "refresh_timing": {
+        "summary": "SessionStart, PreToolUse, PostToolUse, and Stop map to portable task-start, prospective-impact, post-edit, pre-commit, and pre-completion events.",
+        "claim_basis": "observed",
+        "evidence": [
+          "src/murlocs/claude_adapter.py",
+          "docs/claude-code-adapter.md",
+          ".claude/settings.json",
+          "docs/activation-lifecycle.md"
+        ],
+        "portable_fallback": "cli"
+      },
+      "size_constraints": {
+        "summary": "Compact outcome/context packets are truncated to MAX_CONTEXT_BYTES = 9000.",
+        "claim_basis": "observed",
+        "evidence": [
+          "src/murlocs/claude_adapter.py",
+          "docs/claude-code-adapter.md"
+        ],
+        "portable_fallback": "cli"
+      },
+      "mcp": {
+        "summary": "Lifecycle activation uses Claude Code command hooks, not MCP; MCP/tool edits outside Edit and Write are unavailable to this adapter version.",
+        "claim_basis": "documented",
+        "evidence": [
+          "docs/claude-code-adapter.md",
+          "docs/architecture.md"
+        ],
+        "portable_fallback": "cli"
+      },
+      "hooks": {
+        "summary": "Repository-local .claude/settings.json installs the murlocs-claude-adapter bridge; Stop can be overridden after eight consecutive blocks and host timeouts are fail-open.",
+        "claim_basis": "observed",
+        "evidence": [
+          ".claude/settings.json",
+          "src/murlocs/claude_adapter.py",
+          "docs/claude-code-adapter.md",
+          "tests/test_claude_adapter.py"
+        ],
+        "portable_fallback": "git-hook"
+      },
+      "limitations": [
+        "Prospective-impact remains prompt-mediated in v1 even though PreToolUse could deny edits.",
+        "Host timeout before response emission is non-blocking; Git hooks and CI remain required enforcement.",
+        "Claude Code may override Stop after eight consecutive blocks.",
+        "MCP-backed edits are outside this adapter version."
+      ],
+      "evidence": [
+        "src/murlocs/claude_adapter.py",
+        "docs/claude-code-adapter.md",
+        "docs/adapter-conformance.md",
+        ".claude/settings.json",
+        "tests/test_claude_adapter.py"
+      ]
+    },
+    {
+      "id": "cursor",
+      "display_name": "Cursor",
+      "host_kind": "agent-host",
+      "claimed_tier": "unknown",
+      "tested_version": "not recorded",
+      "verification_date": null,
+      "instruction_discovery": {
+        "summary": "No Cursor-specific discovery evidence is checked in; portable generated AGENTS.md may still be consumed when the host reads repository guidance.",
+        "claim_basis": "documented",
+        "evidence": [
+          "docs/architecture.md",
+          "AGENTS.md"
+        ],
+        "portable_fallback": "generated-guidance"
+      },
+      "instruction_scoping": {
+        "summary": "Cursor-specific scoping and rule-file interaction are unverified in this repository.",
+        "claim_basis": "documented",
+        "evidence": [
+          "docs/architecture.md"
+        ],
+        "portable_fallback": "generated-guidance"
+      },
+      "refresh_timing": {
+        "summary": "No Cursor lifecycle adapter or observed refresh timing evidence is checked in.",
+        "claim_basis": "documented",
+        "evidence": [
+          "docs/activation-lifecycle.md"
+        ],
+        "portable_fallback": "cli"
+      },
+      "size_constraints": {
+        "summary": "No Cursor-specific size constraint evidence is checked in.",
+        "claim_basis": "documented",
+        "evidence": [
+          "docs/architecture.md"
+        ],
+        "portable_fallback": "cli"
+      },
+      "mcp": {
+        "summary": "Cursor MCP attachment to Murlocs tools is not evidenced here; CLI remains the portable tool path.",
+        "claim_basis": "documented",
+        "evidence": [
+          "docs/architecture.md"
+        ],
+        "portable_fallback": "cli"
+      },
+      "hooks": {
+        "summary": "No Cursor repository-local hook adapter is checked in; Git hooks and CI are the portable enforcement path.",
+        "claim_basis": "documented",
+        "evidence": [
+          "docs/git-hooks.md",
+          "docs/activation-lifecycle.md"
+        ],
+        "portable_fallback": "git-hook"
+      },
+      "limitations": [
+        "Default tier is unknown until host-specific evidence is checked in and dated.",
+        "Do not infer native or adapted support from generated AGENTS.md alone.",
+        "Native Codex/Cursor instruction delivery verification is tracked separately from this matrix publication."
+      ],
+      "evidence": []
+    },
+    {
+      "id": "github-copilot",
+      "display_name": "GitHub Copilot (CLI and cloud agent)",
+      "host_kind": "orchestrator",
+      "claimed_tier": "adapted",
+      "tested_version": "github-copilot-hooks adapter v1 (.github/hooks/murlocs.json sessionStart/preToolUse/postToolUse/agentStop)",
+      "verification_date": "2026-08-03",
+      "instruction_discovery": {
+        "summary": "Adapter discovers exactly .murlocs/manifest.toml from the hook cwd; generated AGENTS.md remains available without the adapter.",
+        "claim_basis": "observed",
+        "evidence": [
+          "src/murlocs/copilot_adapter.py",
+          "docs/github-copilot-adapter.md",
+          "docs/activation-lifecycle.md",
+          ".github/hooks/murlocs.json"
+        ],
+        "portable_fallback": "generated-guidance"
+      },
+      "instruction_scoping": {
+        "summary": "Edit/create tool paths are normalized and confined; parent escapes, NULs, and outward symlink resolutions are rejected.",
+        "claim_basis": "observed",
+        "evidence": [
+          "src/murlocs/copilot_adapter.py",
+          "docs/github-copilot-adapter.md",
+          "tests/test_copilot_adapter.py"
+        ],
+        "portable_fallback": "generated-guidance"
+      },
+      "refresh_timing": {
+        "summary": "sessionStart, preToolUse, postToolUse, and agentStop map to portable lifecycle events with typed check/impact receipts.",
+        "claim_basis": "observed",
+        "evidence": [
+          "src/murlocs/copilot_adapter.py",
+          "docs/github-copilot-adapter.md",
+          ".github/hooks/murlocs.json",
+          "docs/activation-lifecycle.md"
+        ],
+        "portable_fallback": "cli"
+      },
+      "size_constraints": {
+        "summary": "Compact context packets are truncated to MAX_CONTEXT_BYTES = 9000.",
+        "claim_basis": "observed",
+        "evidence": [
+          "src/murlocs/copilot_adapter.py",
+          "docs/github-copilot-adapter.md"
+        ],
+        "portable_fallback": "cli"
+      },
+      "mcp": {
+        "summary": "Lifecycle activation uses Copilot repository hooks rather than MCP; Murlocs MCP remains a separate portable tool surface.",
+        "claim_basis": "documented",
+        "evidence": [
+          "docs/github-copilot-adapter.md",
+          "docs/architecture.md"
+        ],
+        "portable_fallback": "cli"
+      },
+      "hooks": {
+        "summary": "Repository-local .github/hooks/murlocs.json installs the murlocs-copilot-adapter bridge for CLI and cloud-agent orchestration; host timeouts and eight-block stop overrides remain fail-open boundaries.",
+        "claim_basis": "observed",
+        "evidence": [
+          ".github/hooks/murlocs.json",
+          "src/murlocs/copilot_adapter.py",
+          "docs/github-copilot-adapter.md",
+          "tests/test_copilot_adapter.py"
+        ],
+        "portable_fallback": "git-hook"
+      },
+      "limitations": [
+        "preToolUse command errors deny the tool, but host timeouts are fail-open.",
+        "sessionStart/postToolUse/agentStop command errors are logged and skipped by the host.",
+        "Copilot overrides after eight consecutive agentStop blocks.",
+        "Absolute host enforcement still requires Git hooks and CI as portable fallbacks."
+      ],
+      "evidence": [
+        "src/murlocs/copilot_adapter.py",
+        "docs/github-copilot-adapter.md",
+        "docs/adapter-conformance.md",
+        ".github/hooks/murlocs.json",
+        "tests/test_copilot_adapter.py"
+      ]
+    }
+  ]
+}
