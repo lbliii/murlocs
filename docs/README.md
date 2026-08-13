@@ -14,6 +14,7 @@ then checks what applies and what a change may affect.
 
 - [Outcome envelope](outcome-envelope.md) — read compact outcomes and repair guidance safely.
 - [Changed-path guidance impact](impact.md) — use impact reports in review.
+- [Intent-shaped task commands](task-commands.md) — orient, review-changes, and finish compose check and impact into one envelope.
 - [Adoption status and coverage](adoption.md) — track rollout and coverage.
 - [Governed guidance curation](curation.md) — propose, review, and maintain guidance.
 - [Guidance-friction observations](guidance-friction.md) — capture inert missing/harmful guidance signals.
@@ -47,5 +48,7 @@ then checks what applies and what a change may affect.
 - [Fresh-session passive-agent acceptance pilot](pilots/passive-agent-acceptance-2026-08-03.md) — recorded pilot results.
 - [Multi-repository passive-loop pilot protocol](passive-loop-pilot.md) — longitudinal baselines, metrics, rollback, and sheet contract.
 - [Multi-repository passive-loop pilot report](pilots/passive-loop-multi-repo.md) — harness/protocol status vs planned live execution.
+- [Self-hosting dogfood protocol](self-hosting-dogfood.md) — structured pre-pilot on the Murlocs repository (#97).
+- [Self-hosting dogfood tranche report](pilots/self-hosting-dogfood-2026-08-12.md) — 2026-08-12 privacy-preserving results.
 - [Textual evidence-marker dogfood experiment](pilots/textual-evidence-markers.md) — findings and recommendation.
 - [Compact outcome blind/reveal](pilots/compact-outcome-blind-reveal.md) — test of outcome rendering.

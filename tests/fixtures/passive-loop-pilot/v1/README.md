@@ -4,9 +4,9 @@
 `observation_status: simulated` and `pilot.status: harness-only`. It is not a multi-week live
 pilot and must never be cited as one.
 
-A live pilot records a separate sheet with the same contract after at least two materially
-different repositories complete the protocol in `docs/passive-loop-pilot.md`. That sheet must set
-`observation_status: executed` for every counted repository and may set
-`acceptance.live_execution_complete` only when the longitudinal run and review cadence are finished.
+A live pilot records a separate sheet with the same contract while the protocol in
+`docs/passive-loop-pilot.md` runs. `live-cohort-2026-08-12.json` is the in-progress first-review
+sheet: counted repositories are `executed`, but `acceptance.live_execution_complete` stays false
+until the multi-week window and retained-integration exit finish.
 
 Neither kind of document may contain a prompt, task text, transcript, tool arguments, or commands.
