@@ -591,7 +591,7 @@ def test_install_rejects_non_content_build_identity(tmp_path: Path) -> None:
     payload = {
         "schema_version": 1,
         "project": "murlocs",
-        "version": "0.1.0",
+        "version": "0.2.0",
         "build": {
             "kind": "unknown",
             "id": "sha256:" + "a" * 64,

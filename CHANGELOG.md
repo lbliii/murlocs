@@ -8,6 +8,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). While the
 
 ## [Unreleased]
 
+### Added
+
+- **`murlocs bootstrap`**: greenfield one-pass structural setup — `init` when safe, auto
+  `add-scope` for every uncovered source-bearing unit, compile until coverage is
+  structurally complete (CLI-only; #115 follow-on).
+
 ### Fixed
 - Restore annotation-impact Git fallback helpers in `impact.py` after a merge conflict resolution dropped them.
 - Hotfix corrupted `tests.toml` work items, restore closure + strength APIs in `acceptance.py`, and repair `impact.py` mangled by conflict resolution during sequential PR merges.

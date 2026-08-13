@@ -36,14 +36,10 @@ agent discovery. Install:
 ```bash
 python -m pip install -e .
 
-murlocs init --name "My Repository"
-# Describe the repository you actually have in .murlocs/manifest.toml.
-murlocs compile
+murlocs bootstrap --name "My Repository"
+# Structural coverage is complete; enrich .murlocs/layers/ or use bootstrap-murlocs for substance.
+murlocs orient src/my_package/feature.py
 murlocs check
-
-# Ask what applies before working in a path or reviewing a change.
-murlocs explain src/my_package/feature.py
-murlocs impact --path src/my_package/feature.py
 ```
 
 `mrr` is the same CLI.

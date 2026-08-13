@@ -81,6 +81,10 @@ from murlocs.scaffolds.backlog_truth import (
     kit_status,
 )
 from murlocs.source_annotations import annotation_provenance_payload
+from murlocs.structural_bootstrap import (
+    plan_structural_bootstrap,
+    run_structural_bootstrap,
+)
 from murlocs.split import (
     SplitPlan,
     apply_split_layers,
@@ -320,6 +324,12 @@ class CoveragePayload(TypedDict):
 
 class InitPayload(CompilePayload):
     coverage: CoveragePayload
+
+
+class BootstrapPayload(InitPayload):
+    initialized: bool
+    scopes_added: list[str]
+    scopes_planned: NotRequired[list[str]]
 
 
 class FindingPayload(TypedDict):
@@ -980,6 +990,107 @@ def init_command(
             ]
         ),
     )
+
+
+def bootstrap_command(
+    repo: Annotated[str, Option(metavar="PATH")] = ".",
+    name: str | None = None,
+    coverage_root: Annotated[list[str] | None, Option(metavar="PATH")] = None,
+    ctx: Context | None = None,
+) -> BootstrapPayload | FailurePayload:
+    """Initialize and complete structural coverage in one deterministic pass.
+
+    Args:
+        repo: Repository root to bootstrap.
+        name: Guidance network name when initializing; defaults to the directory name.
+        coverage_root: Source root to evaluate; repeat for multiple roots. Inferred when omitted on init.
+        ctx: Milo host context used to honor dry-run policy.
+    """
+    try:
+        root = _root(repo)
+        dry_run = bool(ctx is not None and ctx.dry_run)
+        if dry_run:
+            initialized, network, roots, uncovered, findings = plan_structural_bootstrap(
+                root,
+                name=name,
+                coverage_roots=coverage_root,
+            )
+            coverage = _coverage_payload(
+                list(roots),
+                [item for item in findings if item.code == "coverage"],
+            )
+            planned: list[str] = []
+            if initialized:
+                planned.extend([".murlocs/manifest.toml", ".murlocs/PROTOCOL.md", "AGENTS.md"])
+            lines: list[str] = []
+            if initialized:
+                lines.append(f"would initialize {network}")
+            if uncovered:
+                lines.append(
+                    "would add scopes for: "
+                    + ", ".join(uncovered)
+                )
+            lines.append(_coverage_terminal(coverage))
+            return CommandResult(
+                {
+                    "ok": True,
+                    "initialized": initialized,
+                    "network": network,
+                    "generated": planned,
+                    "scopes_added": [],
+                    "scopes_planned": list(uncovered),
+                    "dry_run": True,
+                    "coverage": coverage,
+                },
+                terminal_text="\n".join(lines),
+            )
+
+        result = run_structural_bootstrap(
+            root,
+            name=name,
+            coverage_roots=coverage_root,
+        )
+        coverage = _coverage_payload(
+            list(result.coverage_roots),
+            [item for item in result.findings if item.code == "coverage"],
+        )
+        blocking = [
+            item
+            for item in result.findings
+            if item.code not in {"coverage", "drift", "lock"}
+        ]
+        if blocking or not result.structurally_complete:
+            messages = "; ".join(str(item) for item in blocking)
+            if not result.structurally_complete and not messages:
+                messages = _coverage_terminal(coverage)
+            raise MurlocsError(messages or "structural bootstrap did not complete coverage")
+
+        lines = []
+        if result.initialized:
+            lines.append(f"initialized {result.network}")
+        if result.scopes_added:
+            lines.append(
+                "added scopes: "
+                + ", ".join(result.scopes_added)
+            )
+        lines.append(
+            f"structural bootstrap complete: {len(result.generated)} managed map(s)"
+        )
+        lines.append(_coverage_terminal(coverage))
+        return CommandResult(
+            {
+                "ok": True,
+                "initialized": result.initialized,
+                "network": result.network,
+                "generated": list(result.generated),
+                "scopes_added": list(result.scopes_added),
+                "dry_run": False,
+                "coverage": coverage,
+            },
+            terminal_text="\n".join(lines),
+        )
+    except MurlocsError as exc:
+        return _failure("MURLOCS_BOOTSTRAP", exc)
 
 
 def _normalize_coverage_roots(root: Path, entries: list[str]) -> list[str]:
@@ -2823,6 +2934,13 @@ def build_cli(*, name: str = "murlocs") -> CLI:
         annotations={"destructiveHint": True, "openWorldHint": True},
         terminal_renderer=_render_result,
     )(init_command)
+    app.command(
+        "bootstrap",
+        description="Initialize and complete structural coverage in one pass",
+        surfaces=("cli",),
+        annotations={"destructiveHint": True, "openWorldHint": True},
+        terminal_renderer=_render_result,
+    )(bootstrap_command)
     app.command(
         "compile",
         description="Compile managed AGENTS.md maps",

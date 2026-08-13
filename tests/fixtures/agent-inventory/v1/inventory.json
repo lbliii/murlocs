@@ -29,6 +29,7 @@
     ],
     "product_internal": [
       "add-scope",
+      "bootstrap",
       "repair",
       "scaffold.backlog-truth",
       "split-layers"
@@ -249,6 +250,65 @@
         },
         "volatile": {
           "description": "Adopt reviewed candidate maps with recoverable backups",
+          "mcp_description": null
+        }
+      },
+      {
+        "audience": "product-internal",
+        "kind": "granular",
+        "name": "bootstrap",
+        "stable": {
+          "annotations": {
+            "destructiveHint": true,
+            "openWorldHint": true
+          },
+          "contract": null,
+          "input_schema": {
+            "properties": {
+              "coverage_root": {
+                "default": null,
+                "description": "Source root to evaluate; repeat for multiple roots. Inferred when omitted on init.",
+                "items": {
+                  "type": "string"
+                },
+                "type": "array",
+                "x-milo-cli": {
+                  "kind": "option",
+                  "metavar": "PATH"
+                }
+              },
+              "name": {
+                "default": null,
+                "description": "Guidance network name when initializing; defaults to the directory name.",
+                "type": "string"
+              },
+              "repo": {
+                "default": ".",
+                "description": "Repository root to bootstrap.",
+                "type": "string",
+                "x-milo-cli": {
+                  "kind": "option",
+                  "metavar": "PATH"
+                }
+              }
+            },
+            "type": "object"
+          },
+          "name": "bootstrap",
+          "output_schema": null,
+          "surfaces": {
+            "cli": true,
+            "llms": false,
+            "mcp": false,
+            "programmatic": false
+          }
+        },
+        "trigger_language": {
+          "assessment": "missing",
+          "signals": []
+        },
+        "volatile": {
+          "description": "Initialize and complete structural coverage in one pass",
           "mcp_description": null
         }
       },

@@ -33,6 +33,7 @@ def test_all_array_options_are_discovered_from_command_schemas():
 
     assert observed == {
         "add-scope": ("--defer", "--owners"),
+        "bootstrap": ("--coverage-root",),
         "hook.install": ("--event",),
         "hook.run": ("--path",),
         "hook.uninstall": ("--event",),
