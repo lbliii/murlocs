@@ -1,0 +1,183 @@
+{
+  "contract": "io.murlocs.self-hosting-dogfood",
+  "schema_version": 1,
+  "tranche": {
+    "id": "murlocs-self-host-2026-08-12",
+    "status": "complete",
+    "started_on": "2026-08-12",
+    "ended_on": "2026-08-12",
+    "data_handling": "repository-governed",
+    "telemetry_required": false,
+    "hooks_retained": true,
+    "unresolved_false_blocker": false
+  },
+  "tasks": [
+    {
+      "id": "hook-cli-refactor-76",
+      "theme": "ordinary-hook-cli",
+      "fresh_session": true,
+      "murlocs_mentioned_in_prompt": false,
+      "expectation_commitment": "da50b06d302829a8ce35c085d108aa46e644cf1d2c30012e4af44724278ce403",
+      "classification": "useful-silence",
+      "cause": "repository-process",
+      "evidence_codes": [
+        "pr-76-merged",
+        "behavior-preserving-refactor",
+        "pytest-green"
+      ],
+      "retained_integration_intent": true
+    },
+    {
+      "id": "dry-run-clean-tree",
+      "theme": "dry-run-noop",
+      "fresh_session": true,
+      "murlocs_mentioned_in_prompt": false,
+      "expectation_commitment": "08708cf30dab90c212547fe95f178540ae3a3ad92019f9fbeffd84fb33bb4db0",
+      "classification": "useful-silence",
+      "cause": "engine",
+      "evidence_codes": [
+        "compile-dry-run-unchanged",
+        "no-writes",
+        "cli-minus-n"
+      ],
+      "retained_integration_intent": true
+    },
+    {
+      "id": "hook-runner-install-fail-closed",
+      "theme": "hook-install-failure",
+      "fresh_session": true,
+      "murlocs_mentioned_in_prompt": false,
+      "expectation_commitment": "18e713225044b822a628138128a6e56bf0baf615b6494734732301dd2ccd0ab2",
+      "classification": "useful-intervention",
+      "cause": "hook",
+      "evidence_codes": [
+        "test-hooks-install",
+        "fail-closed-unresolved-runner",
+        "issue-96"
+      ],
+      "retained_integration_intent": true
+    },
+    {
+      "id": "compact-outcome-blind-reveal",
+      "theme": "compact-outcomes",
+      "fresh_session": true,
+      "murlocs_mentioned_in_prompt": false,
+      "expectation_commitment": "d8ce199b31a70f56fd21bbef7a5af4ca283805eef4d6769efd3825418bd862d8",
+      "classification": "mixed",
+      "cause": "adapter",
+      "evidence_codes": [
+        "pilots-compact-outcome-blind-reveal",
+        "authority-comprehension-pass",
+        "wording-defects-change"
+      ],
+      "retained_integration_intent": true
+    },
+    {
+      "id": "authority-layer-impact",
+      "theme": "authority-semantics",
+      "fresh_session": true,
+      "murlocs_mentioned_in_prompt": false,
+      "expectation_commitment": "ea3acb6593d3ac5a46aee2901fdbfe78bfd67ed94d4b68e218c0f520670d602a",
+      "classification": "useful-intervention",
+      "cause": "engine",
+      "evidence_codes": [
+        "impact-core-toml",
+        "authority-required",
+        "owner-lbliii",
+        "may-continue"
+      ],
+      "retained_integration_intent": true
+    },
+    {
+      "id": "ordinary-docs-index",
+      "theme": "ordinary-observer",
+      "fresh_session": true,
+      "murlocs_mentioned_in_prompt": false,
+      "expectation_commitment": "e145a99c7be6c2ae49720e3164e2dcdc45bb59d0fd8ea53b5dfaf5fd37d50ba0",
+      "classification": "useful-silence",
+      "cause": "agent-judgment",
+      "evidence_codes": [
+        "docs-readme-task-commands-link",
+        "fresh-worktree-agent",
+        "keep-enabled-true"
+      ],
+      "retained_integration_intent": true
+    },
+    {
+      "id": "modified-map-repair-boundary",
+      "theme": "deterministic-repair",
+      "fresh_session": true,
+      "murlocs_mentioned_in_prompt": false,
+      "expectation_commitment": "fce87db599e10ce191d58e2dadee8448743a36a82fb69ea7244954848e9d2c77",
+      "classification": "mixed",
+      "cause": "engine",
+      "evidence_codes": [
+        "compile-refuses-modified-generated",
+        "repair-not-silent-overwrite",
+        "explicit-restore-required"
+      ],
+      "retained_integration_intent": true
+    }
+  ],
+  "interviews": {
+    "blind_completed": true,
+    "revealed_completed": true,
+    "discovery_codes": [
+      "agents-md-present",
+      "cli-discovered-during-checks",
+      "no-product-cue-in-prompt"
+    ],
+    "novelty_codes": [
+      "owned-layer-authority-routing",
+      "dry-run-truthfulness",
+      "fail-closed-hook-install"
+    ],
+    "noise_codes": [
+      "code-path-impact-can-escalate",
+      "modified-map-repair-expectations"
+    ],
+    "keep_enabled_codes": [
+      "retain-hooks",
+      "retain-check-impact",
+      "prefer-actionability-fixes"
+    ]
+  },
+  "cross_check": {
+    "hook": true,
+    "cli": true,
+    "ci": true,
+    "latency": true,
+    "rerun": true,
+    "repair": true,
+    "escalation": true,
+    "bypass": false
+  },
+  "recommendations": {
+    "feed_62": [
+      "keep-deterministic-repair-boundaries-explicit"
+    ],
+    "feed_63": [
+      "continue-hot-path-budget-watch"
+    ],
+    "feed_65": [
+      "compact-outcome-wording-already-landed"
+    ],
+    "feed_67": [
+      "fresh-session-journeys-remain-green"
+    ],
+    "feed_68": [
+      "proceed-to-live-multi-repo-cohort",
+      "measure-false-positive-impact-routing"
+    ],
+    "defer": [
+      "new-policy-primitives-from-dogfood-noise"
+    ],
+    "remove": []
+  },
+  "acceptance": {
+    "deterministic_intervention_observed": true,
+    "authority_required_journey_observed": true,
+    "proceed_to_multi_repo_pilot": true,
+    "execution_notes": "Structured-self-host-tranche-complete-with-privacy-preserving-sheet"
+  }
+}

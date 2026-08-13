@@ -17,6 +17,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). While the
 
 ### Added
 
+- Structured self-hosting dogfood protocol, offline tranche-sheet validator (`src/murlocs/dogfood.py`), privacy-preserving fixture, and published 2026-08-12 report recommending proceed to the live multi-repo pilot (#97).
 - Start the live multi-repository passive-loop cohort: first-review executed sheet for two diverse repositories, measured self-host hot-path samples, and an updated report that keeps `live_execution_complete` false until the multi-week window finishes (#68).
 
 - Add a versioned agent tool-selection corpus, rubric, and offline validator for first-tool measurement (#124).
