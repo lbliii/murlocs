@@ -267,7 +267,7 @@
             "properties": {
               "coverage_root": {
                 "default": null,
-                "description": "Source root to evaluate; repeat for multiple roots. Inferred when omitted on init.",
+                "description": "Source root to evaluate; repeat for multiple roots.",
                 "items": {
                   "type": "string"
                 },

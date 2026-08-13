@@ -1027,10 +1027,7 @@ def bootstrap_command(
             if initialized:
                 lines.append(f"would initialize {network}")
             if uncovered:
-                lines.append(
-                    "would add scopes for: "
-                    + ", ".join(uncovered)
-                )
+                lines.append("would add scopes for: " + ", ".join(uncovered))
             lines.append(_coverage_terminal(coverage))
             return CommandResult(
                 {
@@ -1056,9 +1053,7 @@ def bootstrap_command(
             [item for item in result.findings if item.code == "coverage"],
         )
         blocking = [
-            item
-            for item in result.findings
-            if item.code not in {"coverage", "drift", "lock"}
+            item for item in result.findings if item.code not in {"coverage", "drift", "lock"}
         ]
         if blocking or not result.structurally_complete:
             messages = "; ".join(str(item) for item in blocking)
@@ -1070,13 +1065,8 @@ def bootstrap_command(
         if result.initialized:
             lines.append(f"initialized {result.network}")
         if result.scopes_added:
-            lines.append(
-                "added scopes: "
-                + ", ".join(result.scopes_added)
-            )
-        lines.append(
-            f"structural bootstrap complete: {len(result.generated)} managed map(s)"
-        )
+            lines.append("added scopes: " + ", ".join(result.scopes_added))
+        lines.append(f"structural bootstrap complete: {len(result.generated)} managed map(s)")
         lines.append(_coverage_terminal(coverage))
         return CommandResult(
             {

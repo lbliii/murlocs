@@ -42,9 +42,7 @@ class StructuralBootstrapResult:
     @property
     def ok(self) -> bool:
         blocking = [
-            item
-            for item in self.findings
-            if item.code not in {"coverage", "drift", "lock"}
+            item for item in self.findings if item.code not in {"coverage", "drift", "lock"}
         ]
         return not blocking and self.structurally_complete
 
@@ -95,9 +93,7 @@ def _initialize_manifest(
     protocol_path.write_text(PROTOCOL_TEMPLATE, encoding="utf-8")
     manifest = load_manifest(root)
     blocking = [
-        item
-        for item in validate(manifest)
-        if item.code not in {"coverage", "drift", "lock"}
+        item for item in validate(manifest) if item.code not in {"coverage", "drift", "lock"}
     ]
     if blocking:
         messages = "; ".join(str(item) for item in blocking)
