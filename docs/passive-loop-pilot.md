@@ -109,8 +109,9 @@ Recommendations use four buckets: `graduate`, `change`, `remain_experimental`, a
 | Artifact | Role |
 | --- | --- |
 | `tests/fixtures/passive-loop-pilot/v1/example-sheet.json` | Schema and scoring rehearsal. Not live evidence. |
-| `docs/pilots/passive-loop-multi-repo.md` | Published report. Separates executed harness work from planned live execution. |
-| Future executed sheet | Only after two live repositories finish the protocol. |
+| `tests/fixtures/passive-loop-pilot/v1/live-cohort-2026-08-12.json` | In-progress first-review live sheet (executed rows; window open). |
+| `docs/pilots/passive-loop-multi-repo.md` | Published report. Separates harness, first review, and remaining weeks. |
+| Future completed sheet | Only after the multi-week window and retained-integration exit finish. |
 
 `acceptance.live_execution_complete` may be true only when every counted repository is `executed`.
 A `harness-only` pilot must keep that field false. Do not invent measured success for hosts or

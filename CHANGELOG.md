@@ -9,10 +9,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). While the
 ## [Unreleased]
 
 ### Fixed
+- Restore missing backlog work item `208` in `.murlocs/layers/tests.toml` so reconcile dogfood acceptance stays wired.
+
+### Fixed
 - Restore annotation-impact Git fallback helpers in `impact.py` after a merge conflict resolution dropped them.
 - Hotfix corrupted `tests.toml` work items, restore closure + strength APIs in `acceptance.py`, and repair `impact.py` mangled by conflict resolution during sequential PR merges.
 
 ### Added
+
+- Start the live multi-repository passive-loop cohort: first-review executed sheet for two diverse repositories, measured self-host hot-path samples, and an updated report that keeps `live_execution_complete` false until the multi-week window finishes (#68).
 
 - Add a versioned agent tool-selection corpus, rubric, and offline validator for first-tool measurement (#124).
 - Versioned inert guidance-friction observation schema (`docs/guidance-friction.md`,

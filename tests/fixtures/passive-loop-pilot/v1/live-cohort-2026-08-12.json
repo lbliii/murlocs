@@ -1,0 +1,158 @@
+{
+  "contract": "io.murlocs.passive-loop-pilot",
+  "schema_version": 1,
+  "pilot": {
+    "id": "passive-loop-live-cohort-2026-08-12",
+    "status": "in-progress",
+    "protocol_version": 1,
+    "started_on": "2026-08-12",
+    "ended_on": null,
+    "review_cadence": "weekly",
+    "data_handling": "repository-governed",
+    "telemetry_required": false,
+    "rollback_conditions": [
+      "hot-path-latency-budget-breach",
+      "false-positive-routing-above-threshold",
+      "operator-requests-disable",
+      "no-prompt-acceptance-journeys-regress"
+    ]
+  },
+  "repositories": [
+    {
+      "id": "cohort-murlocs-self",
+      "label": "compact-mature-cli-guidance",
+      "profile": {
+        "size_class": "small",
+        "scope_topology": "layered",
+        "guidance_maturity": "mature",
+        "primary_agent_workflow": "cli-hooks"
+      },
+      "baseline": {
+        "guidance_drift_findings": 0,
+        "instruction_bytes": 7607,
+        "agent_remediation_events": 1,
+        "routing_accuracy": 1.0,
+        "human_interventions": 0
+      },
+      "metrics": {
+        "hot_path_latency_ms": {
+          "median": 25,
+          "p95": 285,
+          "basis": "measured"
+        },
+        "false_positive_routing": 0.15,
+        "missed_findings": 0.0,
+        "deterministic_repair_rate": 1.0,
+        "agent_resolution_rate": 1.0,
+        "authority_escalation_rate": 0.3,
+        "retained_integration": true,
+        "operator_feedback": {
+          "responses": 1,
+          "summary_codes": [
+            "first-review-keep-enabled",
+            "measure-impact-false-positives"
+          ]
+        }
+      },
+      "findings": [
+        {
+          "kind": "useful-silence",
+          "example_id": "clean-check-and-dry-run",
+          "note": "Clean-tree-check-and-dry-run-compile-stay-silent"
+        },
+        {
+          "kind": "useful-intervention",
+          "example_id": "authority-on-owned-layer",
+          "note": "Owned-layer-impact-routes-to-named-owner"
+        },
+        {
+          "kind": "noise",
+          "example_id": "code-path-impact-escalation",
+          "note": "Some-code-path-impact-results-escalate-above-silence-expectation"
+        }
+      ],
+      "rollback": {
+        "exercised": true,
+        "safe": true,
+        "method": "hooks-uninstall"
+      },
+      "observation_status": "executed"
+    },
+    {
+      "id": "cohort-furatena-legacy",
+      "label": "broad-migrating-generated-guidance",
+      "profile": {
+        "size_class": "large",
+        "scope_topology": "multi-domain",
+        "guidance_maturity": "migrating",
+        "primary_agent_workflow": "generated-guidance"
+      },
+      "baseline": {
+        "guidance_drift_findings": 0,
+        "instruction_bytes": 51553,
+        "agent_remediation_events": 0,
+        "routing_accuracy": null,
+        "human_interventions": 0
+      },
+      "metrics": {
+        "hot_path_latency_ms": {
+          "median": null,
+          "p95": null,
+          "basis": "unavailable"
+        },
+        "false_positive_routing": null,
+        "missed_findings": null,
+        "deterministic_repair_rate": null,
+        "agent_resolution_rate": null,
+        "authority_escalation_rate": null,
+        "retained_integration": false,
+        "operator_feedback": {
+          "responses": 1,
+          "summary_codes": [
+            "inventory-only-first-review",
+            "passive-loop-not-yet-enabled"
+          ]
+        }
+      },
+      "findings": [
+        {
+          "kind": "missed-opportunity",
+          "example_id": "passive-loop-not-enabled",
+          "note": "Legacy-stewards-network-not-yet-on-passive-loop"
+        },
+        {
+          "kind": "useful-silence",
+          "example_id": "read-only-inventory",
+          "note": "Read-only-inventory-did-not-mutate-subject-repo"
+        }
+      ],
+      "rollback": {
+        "exercised": true,
+        "safe": true,
+        "method": "manifest-absent"
+      },
+      "observation_status": "executed"
+    }
+  ],
+  "recommendations": {
+    "graduate": [
+      "no-prompt-acceptance-harness",
+      "self-hosting-dogfood-gate"
+    ],
+    "change": [
+      "false-positive-routing-thresholds",
+      "code-path-impact-silence-expectations"
+    ],
+    "remain_experimental": [
+      "longitudinal-operator-feedback",
+      "furatena-passive-loop-enablement"
+    ],
+    "remove": []
+  },
+  "acceptance": {
+    "journeys_still_pass": true,
+    "integration_retained": true,
+    "live_execution_complete": false,
+    "execution_notes": "First-review-started-two-repos-executed-multi-week-window-incomplete"
+  }
+}
