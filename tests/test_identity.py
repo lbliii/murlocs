@@ -232,7 +232,7 @@ def test_missing_distribution_metadata_is_unknown(tmp_path: Path) -> None:
         distribution_provider=lambda _name: (_ for _ in ()).throw(identity.PackageNotFoundError),
     )
 
-    assert result["version"] == "0.1.0"
+    assert result["version"] == "0.2.0"
     assert result["build"]["kind"] == "unknown"
     assert result["installation"]["kind"] == "unknown"
 
@@ -291,4 +291,4 @@ def test_global_version_flag_remains_backward_compatible() -> None:
     result = build_cli().invoke(["--version"])
 
     assert result.exit_code == 0
-    assert result.output == "murlocs 0.1.0\n"
+    assert result.output == "murlocs 0.2.0\n"

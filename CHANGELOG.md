@@ -8,6 +8,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). While the
 
 ## [Unreleased]
 
+### Added
+
+- **`murlocs bootstrap`**: greenfield one-pass structural setup — `init` when safe, auto
+  `add-scope` for every uncovered source-bearing unit, compile until coverage is
+  structurally complete (CLI-only; #115 follow-on).
+
 ### Fixed
 - Restore missing backlog work item `208` in `.murlocs/layers/tests.toml` so reconcile dogfood acceptance stays wired.
 
