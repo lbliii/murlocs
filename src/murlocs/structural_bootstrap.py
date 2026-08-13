@@ -150,8 +150,9 @@ def plan_structural_bootstrap(
         network = name or root.name
         entries = infer_coverage_roots(root) if coverage_roots is None else coverage_roots
         roots = _normalize_coverage_roots(root, entries)
-        from murlocs.manifest import parse_manifest_data
         import tomllib
+
+        from murlocs.manifest import parse_manifest_data
 
         preview = parse_manifest_data(
             root,

@@ -81,16 +81,16 @@ from murlocs.scaffolds.backlog_truth import (
     kit_status,
 )
 from murlocs.source_annotations import annotation_provenance_payload
-from murlocs.structural_bootstrap import (
-    plan_structural_bootstrap,
-    run_structural_bootstrap,
-)
 from murlocs.split import (
     SplitPlan,
     apply_split_layers,
     parse_assignments,
     parse_split_targets,
     plan_split_layers,
+)
+from murlocs.structural_bootstrap import (
+    plan_structural_bootstrap,
+    run_structural_bootstrap,
 )
 from murlocs.task_commands import (
     FinishPayload,
@@ -1003,7 +1003,8 @@ def bootstrap_command(
     Args:
         repo: Repository root to bootstrap.
         name: Guidance network name when initializing; defaults to the directory name.
-        coverage_root: Source root to evaluate; repeat for multiple roots. Inferred when omitted on init.
+        coverage_root: Source root to evaluate; repeat for multiple roots.
+            Inferred when omitted on init.
         ctx: Milo host context used to honor dry-run policy.
     """
     try:

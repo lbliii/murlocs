@@ -22,7 +22,17 @@ def test_uncovered_scope_paths_reports_coverage_gaps(tmp_path: Path) -> None:
     root = tmp_path / "repo"
     write(root, "src/app/core.py", "VALUE = 1\n")
     write(root, "tests/test_app.py", "def test_app(): pass\n")
-    result = invoke("init", "--repo", str(root), "--name", "Example", "--coverage-root", "src", "--coverage-root", "tests")
+    result = invoke(
+        "init",
+        "--repo",
+        str(root),
+        "--name",
+        "Example",
+        "--coverage-root",
+        "src",
+        "--coverage-root",
+        "tests",
+    )
     assert result.exit_code == 0, result.output + result.stderr
     manifest = load_manifest(root)
     assert uncovered_scope_paths(manifest) == ["src/app", "tests"]
